@@ -1,0 +1,21 @@
+package com.tji.device.ui.components
+
+import androidx.annotation.DrawableRes
+import com.tji.device.R
+import com.tji.device.data.model.ProductType
+
+@DrawableRes
+fun productEmptyIllustrationRes(productType: ProductType): Int {
+    return when (productType) {
+        ProductType.FireBucket -> R.drawable.img_empty_fire_bucket
+        ProductType.SolarClean -> R.drawable.img_empty_solar_clean
+    }
+}
+
+@DrawableRes
+fun productSceneRes(productType: ProductType): Int {
+    return when (productType) {
+        ProductType.FireBucket -> R.drawable.img_scene_fire_bucket
+        ProductType.SolarClean -> R.drawable.img_scene_solar_clean
+    }
+}

@@ -1,0 +1,28 @@
+.DS_Store
+*.broken-worktree-ref
+.git.broken-worktree-ref
+
+# Gradle / Android build outputs
+.gradle/
+build/
+**/build/
+**/.gradle/
+
+# Local machine configuration
+local.properties
+**/local.properties
+
+# IDE files
+.idea/
+.vscode/
+
+# Kotlin / Android Studio caches
+.kotlin/
+
+# Signing and secrets
+*.jks
+*.keystore
+*.env
+
+# Logs
+*.log
