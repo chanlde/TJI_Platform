@@ -1,12 +1,14 @@
 package com.tji.device.product.solarclean.ui.control
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,32 +19,39 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -56,26 +65,75 @@ import com.tji.device.product.solarclean.model.SolarCleanDeviceInfo
 import com.tji.device.product.solarclean.model.SolarCleanDeviceState
 import com.tji.device.product.solarclean.model.SolarCleanOtaStatus
 import com.tji.device.product.solarclean.viewmodel.SolarCleanControlViewModel
+import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedback
+import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedbackStatus
 import com.tji.device.product.solarclean.viewmodel.SolarCleanOtaCheckState
+import com.tji.device.ui.components.TjiActionButton
+import com.tji.device.ui.components.TjiCardShell
+import com.tji.device.ui.components.TjiControlSlider
+import com.tji.device.ui.components.TjiFeedbackBadge
+import com.tji.device.ui.components.TjiMetricTile
+import com.tji.device.ui.components.TjiSectionCard
+import com.tji.device.ui.components.TjiStatusText
 import com.tji.device.ui.components.productSceneRes
 import com.tji.device.product.solarclean.ui.icon.PumpPressure
 import com.tji.device.product.solarclean.ui.icon.SprayAngle
 import com.tji.device.product.solarclean.ui.icon.SwingSpeed
+import com.tji.device.ui.theme.TjiBackground
+import com.tji.device.ui.theme.TjiError
+import com.tji.device.ui.theme.TjiOnline
+import com.tji.device.ui.theme.TjiPrimary
+import com.tji.device.ui.theme.TjiPrimarySoft
+import com.tji.device.ui.theme.TjiSurfaceSoft
+import com.tji.device.ui.theme.TjiTextMuted
+import com.tji.device.ui.theme.TjiTextPrimary
+import com.tji.device.ui.theme.TjiTextSecondary
+import com.tji.device.ui.theme.TjiWarning
 import com.tji.network.data.OtaLatestResponse
+import com.tji.device.ui.icon.common.Eye
+import com.tji.device.ui.icon.common.EyeOff
 import kotlin.math.roundToInt
+import androidx.core.content.edit
 
-private val PageBackground = Color(0xFFF5F7FA)
-private val PrimaryBlue = Color(0xFF1677FF)
-private val TextPrimary = Color(0xFF1A1A2E)
-private val TextMuted = Color(0xFF8C8C8C)
-private val OnlineGreen = Color(0xFF52C41A)
-private val WarningOrange = Color(0xFFFA8C16)
-private val ErrorRed = Color(0xFFFF4D4F)
+private const val CONTROL_PANEL_PREFS = "solar_clean_control_panel"
+private const val CONTROL_PANEL_EXPANDED_PREFIX = "controls_expanded_"
+private const val TELEMETRY_PANEL_EXPANDED_PREFIX = "telemetry_expanded_"
+private const val OTA_SUCCESS_NOTICE_VISIBLE_MS = 5_000L
+
+private val RenameEditIcon: ImageVector
+    get() = ImageVector.Builder(
+        name = "RenameEdit",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            fill = androidx.compose.ui.graphics.SolidColor(Color(0xFF1677FF))
+        ) {
+            moveTo(5f, 17.2f)
+            verticalLineTo(19f)
+            horizontalLineTo(6.8f)
+            lineTo(17.1f, 8.7f)
+            lineTo(15.3f, 6.9f)
+            lineTo(5f, 17.2f)
+            close()
+            moveTo(18.5f, 7.3f)
+            lineTo(16.7f, 5.5f)
+            lineTo(17.7f, 4.5f)
+            curveTo(18.1f, 4.1f, 18.8f, 4.1f, 19.2f, 4.5f)
+            lineTo(19.5f, 4.8f)
+            curveTo(19.9f, 5.2f, 19.9f, 5.9f, 19.5f, 6.3f)
+            lineTo(18.5f, 7.3f)
+            close()
+        }
+    }.build()
 
 @Composable
 fun SolarCleanControlScreen(
     device: BoundAccountDevice,
     showSettings: Boolean = false,
+    onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val isPreview = LocalInspectionMode.current
@@ -92,6 +150,9 @@ fun SolarCleanControlScreen(
     val otaCheckState by viewModel?.otaCheckState?.collectAsStateWithLifecycle().let {
         it ?: remember { androidx.compose.runtime.mutableStateOf(previewOtaCheckState()) }
     }
+    val commandFeedback by viewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
+        it ?: remember { androidx.compose.runtime.mutableStateOf(SolarCleanCommandFeedback()) }
+    }
 
     LaunchedEffect(viewModel, device.serialNumber) {
         viewModel?.requestDeviceInfo(device.serialNumber)
@@ -102,7 +163,9 @@ fun SolarCleanControlScreen(
             device = device,
             state = displayState,
             otaCheckState = otaCheckState,
+            commandFeedback = commandFeedback,
             enabled = viewModel != null,
+            onRenameDevice = { newName -> onRenameDevice(device, newName) },
             onRefreshDeviceInfo = { viewModel?.requestDeviceInfo(device.serialNumber) },
             onCheckUpdate = {
                 Log.d(
@@ -115,10 +178,12 @@ fun SolarCleanControlScreen(
             modifier = modifier
         )
     } else {
+        val controlsEnabled = viewModel != null && displayState?.isOnline == true
         SolarCleanControlPage(
             device = device,
             state = displayState,
-            enabled = viewModel != null,
+            enabled = controlsEnabled,
+            commandFeedback = commandFeedback,
             onPumpOn = { viewModel?.setPump(device.serialNumber, true) },
             onPumpOff = { viewModel?.setPump(device.serialNumber, false) },
             onPressureChanged = { viewModel?.setPumpPressure(device.serialNumber, it.toDouble()) },
@@ -136,6 +201,7 @@ private fun SolarCleanControlPage(
     device: BoundAccountDevice,
     state: SolarCleanDeviceState?,
     enabled: Boolean,
+    commandFeedback: SolarCleanCommandFeedback,
     onPumpOn: () -> Unit,
     onPumpOff: () -> Unit,
     onPressureChanged: (Int) -> Unit,
@@ -145,16 +211,30 @@ private fun SolarCleanControlPage(
     onSwingOff: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    var controlsExpanded by remember(device.serialNumber) {
+        mutableStateOf(readControlsExpanded(context, device.serialNumber))
+    }
+    var telemetryExpanded by remember(device.serialNumber) {
+        mutableStateOf(readTelemetryExpanded(context, device.serialNumber))
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(PageBackground),
+            .background(TjiBackground),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             PrimaryControlsCard(
                 enabled = enabled,
+                expanded = controlsExpanded,
+                commandFeedback = commandFeedback,
+                onExpandedChange = {
+                    controlsExpanded = it
+                    saveControlsExpanded(context, device.serialNumber, it)
+                },
                 onPumpOn = onPumpOn,
                 onPumpOff = onPumpOff,
                 onPressureChanged = onPressureChanged,
@@ -165,7 +245,14 @@ private fun SolarCleanControlPage(
             )
         }
         item {
-            TelemetryCard(state = state)
+            TelemetryCard(
+                state = state,
+                expanded = telemetryExpanded,
+                onExpandedChange = {
+                    telemetryExpanded = it
+                    saveTelemetryExpanded(context, device.serialNumber, it)
+                }
+            )
         }
     }
 }
@@ -175,26 +262,40 @@ private fun SolarCleanSettingsPage(
     device: BoundAccountDevice,
     state: SolarCleanDeviceState?,
     otaCheckState: SolarCleanOtaCheckState,
+    commandFeedback: SolarCleanCommandFeedback,
     enabled: Boolean,
+    onRenameDevice: (String) -> Unit,
     onRefreshDeviceInfo: () -> Unit,
     onCheckUpdate: () -> Unit,
     onStartOta: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val focusManager = LocalFocusManager.current
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(PageBackground),
+            .background(TjiBackground)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                focusManager.clearFocus()
+            },
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            DeviceInfoSettingsCard(device = device, state = state)
+            DeviceInfoSettingsCard(
+                device = device,
+                state = state,
+                onRenameDevice = onRenameDevice
+            )
         }
         item {
             OtaCard(
                 state = state,
                 otaCheckState = otaCheckState,
+                commandFeedback = commandFeedback,
                 enabled = enabled,
                 onRefreshDeviceInfo = onRefreshDeviceInfo,
                 onCheckUpdate = onCheckUpdate,
@@ -210,13 +311,13 @@ private fun SolarCleanHeroCard(
     state: SolarCleanDeviceState?
 ) {
     val online = state?.isOnline == true
-    CardShell {
+    TjiCardShell {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(136.dp)
                 .background(
-                    brush = Brush.horizontalGradient(listOf(Color.White, Color(0xFFFAFBFF))),
+                    brush = Brush.horizontalGradient(listOf(Color.White, TjiSurfaceSoft)),
                     shape = RoundedCornerShape(12.dp)
                 )
         ) {
@@ -257,7 +358,7 @@ private fun SolarCleanHeroCard(
                     text = device.name,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
+                    color = TjiTextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -265,13 +366,13 @@ private fun SolarCleanHeroCard(
                     text = device.serialNumber,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary,
+                    color = TjiTextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                StatusBadge(
+                TjiStatusText(
                     text = if (online) "在线" else "离线",
-                    color = if (online) OnlineGreen else ErrorRed
+                    color = if (online) TjiOnline else TjiError
                 )
             }
         }
@@ -279,22 +380,43 @@ private fun SolarCleanHeroCard(
 }
 
 @Composable
-private fun TelemetryCard(state: SolarCleanDeviceState?) {
-    SectionCard(title = "飞行状态") {
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MetricTile("水位", state?.waterLevel?.let { waterLevelText(it) } ?: "--")
-            MetricTile("卫星", state?.satelliteCount?.toString() ?: "--")
-            MetricTile("高度", state?.altitudeMeters?.let { "${it.toInt()}m" } ?: "--")
-            MetricTile("速度", state?.speedMetersPerSecond?.let { "%.1fm/s".format(it) } ?: "--")
-            MetricTile("偏航", state?.yawDegrees?.let { "${it.toInt()}°" } ?: "--")
-            MetricTile("俯仰", state?.pitchDegrees?.let { "${it.toInt()}°" } ?: "--")
-            MetricTile("横滚", state?.rollDegrees?.let { "${it.toInt()}°" } ?: "--")
-            MetricTile("纬度", state?.latitude?.let { "%.5f".format(it) } ?: "--")
-            MetricTile("经度", state?.longitude?.let { "%.5f".format(it) } ?: "--")
-            MetricTile("MQTT", mqttStatusText(state))
+private fun TelemetryCard(
+    state: SolarCleanDeviceState?,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit
+) {
+    TjiSectionCard(
+        title = "飞行状态",
+        trailing = {
+            IconButton(
+                onClick = { onExpandedChange(!expanded) },
+                modifier = Modifier.size(34.dp)
+            ) {
+                Icon(
+                    imageVector = if (expanded) Eye else EyeOff,
+                    contentDescription = if (expanded) "收起飞行状态" else "展开飞行状态",
+                    modifier = Modifier.size(21.dp),
+                    tint = TjiPrimary
+                )
+            }
+        }
+    ) {
+        if (expanded) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TjiMetricTile("水位", state?.waterLevel?.let { waterLevelText(it) } ?: "--")
+                TjiMetricTile("卫星", state?.satelliteCount?.toString() ?: "--")
+                TjiMetricTile("高度", state?.altitudeMeters?.let { "${it.toInt()}m" } ?: "--")
+                TjiMetricTile("速度", state?.speedMetersPerSecond?.let { "%.1fm/s".format(it) } ?: "--")
+                TjiMetricTile("偏航", state?.yawDegrees?.let { "${it.toInt()}°" } ?: "--")
+                TjiMetricTile("俯仰", state?.pitchDegrees?.let { "${it.toInt()}°" } ?: "--")
+                TjiMetricTile("横滚", state?.rollDegrees?.let { "${it.toInt()}°" } ?: "--")
+                TjiMetricTile("纬度", state?.latitude?.let { "%.5f".format(it) } ?: "--")
+                TjiMetricTile("经度", state?.longitude?.let { "%.5f".format(it) } ?: "--")
+                TjiMetricTile("MQTT", mqttStatusText(state))
+            }
         }
     }
 }
@@ -302,6 +424,9 @@ private fun TelemetryCard(state: SolarCleanDeviceState?) {
 @Composable
 private fun PrimaryControlsCard(
     enabled: Boolean,
+    expanded: Boolean,
+    commandFeedback: SolarCleanCommandFeedback,
+    onExpandedChange: (Boolean) -> Unit,
     onPumpOn: () -> Unit,
     onPumpOff: () -> Unit,
     onPressureChanged: (Int) -> Unit,
@@ -314,67 +439,107 @@ private fun PrimaryControlsCard(
     var sprayAngle by remember { mutableFloatStateOf(20f) }
     var swingSpeed by remember { mutableFloatStateOf(50f) }
 
-    SectionCard(title = "设备控制") {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ControlSlider(
-                kind = SliderKind.Pressure,
-                title = "水泵压力",
-                value = pumpPressure,
-                unit = "%",
-                enabled = enabled,
-                onValueChange = { pumpPressure = it },
-                onValueChangeFinished = { onPressureChanged(pumpPressure.roundToInt()) }
-            )
-            ControlSlider(
-                kind = SliderKind.Angle,
-                title = "喷洒角度",
-                value = sprayAngle,
-                unit = "°",
-                valueRange = 0f..40f,
-                enabled = enabled,
-                onValueChange = { sprayAngle = it },
-                onValueChangeFinished = { onSprayAngleChanged(sprayAngle.roundToInt()) }
-            )
-            ControlSlider(
-                kind = SliderKind.Speed,
-                title = "摆动速度",
-                value = swingSpeed,
-                unit = "%",
-                enabled = enabled,
-                onValueChange = { swingSpeed = it },
-                onValueChangeFinished = { onSwingSpeedChanged(swingSpeed.roundToInt()) }
-            )
+    TjiSectionCard(
+        title = "设备控制",
+        trailing = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CommandFeedbackBadge(commandFeedback)
+                IconButton(
+                    onClick = { onExpandedChange(!expanded) },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        imageVector = if (expanded) Eye else EyeOff,
+                        contentDescription = if (expanded) "收起操作面板" else "展开操作面板",
+                        modifier = Modifier.size(21.dp),
+                        tint = TjiPrimary
+                    )
+                }
+            }
         }
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ControlButton("开泵", enabled, PrimaryBlue, onPumpOn)
-            ControlButton("关泵", enabled, WarningOrange, onPumpOff)
-            ControlButton("摆动开", enabled, PrimaryBlue, onSwingOn)
-            ControlButton("摆动关", enabled, WarningOrange, onSwingOff)
+    ) {
+        if (expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ControlSlider(
+                    kind = SliderKind.Pressure,
+                    title = "水泵压力",
+                    value = pumpPressure,
+                    unit = "%",
+                    enabled = enabled,
+                    onValueChange = { pumpPressure = it },
+                    onValueChangeFinished = { onPressureChanged(pumpPressure.roundToInt()) }
+                )
+                ControlSlider(
+                    kind = SliderKind.Angle,
+                    title = "喷洒角度",
+                    value = sprayAngle,
+                    unit = "°",
+                    valueRange = 0f..40f,
+                    enabled = enabled,
+                    onValueChange = { sprayAngle = it },
+                    onValueChangeFinished = { onSprayAngleChanged(sprayAngle.roundToInt()) }
+                )
+                ControlSlider(
+                    kind = SliderKind.Speed,
+                    title = "摆动速度",
+                    value = swingSpeed,
+                    unit = "%",
+                    enabled = enabled,
+                    onValueChange = { swingSpeed = it },
+                    onValueChangeFinished = { onSwingSpeedChanged(swingSpeed.roundToInt()) }
+                )
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ControlButton("开泵", enabled, TjiPrimary, onPumpOn)
+                ControlButton("关泵", enabled, TjiWarning, onPumpOff)
+                ControlButton("摆动开", enabled, TjiPrimary, onSwingOn)
+                ControlButton("摆动关", enabled, TjiWarning, onSwingOff)
+            }
         }
     }
 }
 
 @Composable
+private fun CommandFeedbackBadge(feedback: SolarCleanCommandFeedback) {
+    val color = when (feedback.status) {
+        SolarCleanCommandFeedbackStatus.Success -> TjiOnline
+        SolarCleanCommandFeedbackStatus.Failed,
+        SolarCleanCommandFeedbackStatus.Timeout -> TjiError
+        SolarCleanCommandFeedbackStatus.Pending,
+        SolarCleanCommandFeedbackStatus.Idle -> TjiTextMuted
+    }
+    TjiFeedbackBadge(
+        text = feedback.text,
+        color = color,
+        radius = 10.dp,
+        horizontalPadding = 8.dp,
+        verticalPadding = 5.dp
+    )
+}
+
+@Composable
 private fun DeviceInfoSettingsCard(
     device: BoundAccountDevice,
-    state: SolarCleanDeviceState?
+    state: SolarCleanDeviceState?,
+    onRenameDevice: (String) -> Unit
 ) {
     val info = state?.deviceInfo
-    SectionCard(title = "设备信息") {
-        SettingInfoLine(label = "设备名称", value = device.name)
+    TjiSectionCard(title = "设备信息") {
+        DeviceNameSettingLine(
+            value = device.name,
+            onRenameDevice = onRenameDevice
+        )
         SettingInfoLine(label = "设备 SN", value = device.serialNumber)
         SettingInfoLine(label = "当前状态", value = if (state?.isOnline == true) "在线" else "离线")
         SettingInfoLine(label = "固件版本", value = info?.firmwareVersion ?: "--")
+        SettingInfoLine(label = "内部版本", value = info?.firmwareInnerVersion?.toString() ?: "--")
         SettingInfoLine(label = "硬件版本", value = info?.hardwareVersion ?: "--")
-        info?.slot?.takeIf { it.isNotBlank() }?.let {
-            SettingInfoLine(label = "运行分区", value = it)
-        }
-        info?.lastOtaResult?.takeIf { it.isNotBlank() }?.let {
-            SettingInfoLine(label = "上次升级", value = it)
-        }
     }
 }
 
@@ -382,6 +547,7 @@ private fun DeviceInfoSettingsCard(
 private fun OtaCard(
     state: SolarCleanDeviceState?,
     otaCheckState: SolarCleanOtaCheckState,
+    commandFeedback: SolarCleanCommandFeedback,
     enabled: Boolean,
     onRefreshDeviceInfo: () -> Unit,
     onCheckUpdate: () -> Unit,
@@ -390,24 +556,44 @@ private fun OtaCard(
     val info = state?.deviceInfo
     val otaStatus = state?.otaStatus
     val latest = otaCheckState.latest
-    SectionCard(title = "固件升级") {
+    val deviceReachedLatest = isDeviceAtLatest(info, latest)
+    val effectiveOtaStatus = otaStatus?.toCompletedIfDeviceReachedLatest(deviceReachedLatest)
+    val successNoticeKey = "${state?.serialNumber}:${latest?.innerVersion}:${info?.firmwareInnerVersion}"
+    var showSuccessNotice by remember(successNoticeKey) { mutableStateOf(true) }
+    LaunchedEffect(successNoticeKey, effectiveOtaStatus?.status) {
+        if (effectiveOtaStatus?.status?.normalizedOtaStatus() == "SUCCESS") {
+            showSuccessNotice = true
+            kotlinx.coroutines.delay(OTA_SUCCESS_NOTICE_VISIBLE_MS)
+            showSuccessNotice = false
+        }
+    }
+    val hasUpdate = otaCheckState.hasUpdate && !deviceReachedLatest
+    val isOtaBusy = effectiveOtaStatus?.isOtaBusy() == true
+    val displayOtaStatus = effectiveOtaStatus?.takeUnless {
+        it.status.normalizedOtaStatus() == "SUCCESS" && !showSuccessNotice
+    }
+    TjiSectionCard(
+        title = "固件升级",
+        trailing = { CommandFeedbackBadge(commandFeedback) }
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             CompactInfo("当前版本", info?.firmwareVersion ?: "--")
+            CompactInfo("内部版本", info?.firmwareInnerVersion?.toString() ?: "--")
             CompactInfo("硬件版本", info?.hardwareVersion ?: "--")
-            CompactInfo("升级状态", otaStatus?.let { otaStatusText(it) } ?: info?.otaStatus ?: "--")
+            CompactInfo("升级状态", displayOtaStatus?.let { otaStatusText(it) } ?: "空闲")
         }
         latest?.let {
             OtaUpdateInfo(
                 latest = it,
-                hasUpdate = otaCheckState.hasUpdate
+                hasUpdate = hasUpdate
             )
         }
-        otaStatus?.let { OtaProgressLine(it) }
+        displayOtaStatus?.takeIf { it.shouldShowOtaProgress() }?.let { OtaProgressLine(it) }
         otaCheckState.errorMessage?.let {
-            Text(text = it, fontSize = 12.sp, color = ErrorRed)
+            Text(text = it, fontSize = 12.sp, color = TjiError)
         }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -416,21 +602,134 @@ private fun OtaCard(
             ControlButton(
                 text = "刷新信息",
                 enabled = enabled,
-                color = PrimaryBlue,
+                color = TjiPrimary,
                 onClick = onRefreshDeviceInfo
             )
             ControlButton(
                 text = if (otaCheckState.isChecking) "检测中" else "检测更新",
                 enabled = enabled && !otaCheckState.isChecking,
-                color = PrimaryBlue,
+                color = TjiPrimary,
                 onClick = onCheckUpdate
             )
             ControlButton(
                 text = "立即升级",
-                enabled = enabled && otaCheckState.hasUpdate && latest?.isStartable() == true,
-                color = WarningOrange,
+                enabled = enabled && !isOtaBusy && hasUpdate && latest?.isStartable() == true,
+                color = TjiWarning,
                 onClick = onStartOta
             )
+        }
+    }
+}
+
+@Composable
+private fun DeviceNameSettingLine(
+    value: String,
+    onRenameDevice: (String) -> Unit
+) {
+    var editing by remember(value) { mutableStateOf(false) }
+    var draft by remember(value) { mutableStateOf(value) }
+    var hasFocused by remember(value) { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+
+    fun commitRename() {
+        val nextName = draft.trim()
+        editing = false
+        hasFocused = false
+        if (nextName.isBlank()) {
+            draft = value
+            return
+        }
+        if (nextName != value) {
+            onRenameDevice(nextName)
+        }
+    }
+
+    LaunchedEffect(editing) {
+        if (editing) {
+            focusRequester.requestFocus()
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "设备名称",
+            fontSize = 12.sp,
+            color = TjiTextMuted,
+            modifier = Modifier.weight(1f)
+        )
+        Row(
+            modifier = Modifier.weight(1.5f),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (editing) {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TjiTextPrimary
+                        ),
+                        cursorBrush = SolidColor(TjiPrimary),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = { commitRename() }
+                        ),
+                        modifier = Modifier
+                            .focusRequester(focusRequester)
+                            .onFocusChanged {
+                                if (it.isFocused) {
+                                    hasFocused = true
+                                } else if (hasFocused && editing) {
+                                    commitRename()
+                                }
+                            }
+                            .fillMaxWidth()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(TjiPrimary)
+                    )
+                }
+            } else {
+                Text(
+                    text = value,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TjiTextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .clickable {
+                            draft = value
+                            editing = true
+                        }
+                )
+                IconButton(
+                    onClick = {
+                        draft = value
+                        editing = true
+                    },
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Icon(
+                        imageVector = RenameEditIcon,
+                        contentDescription = "修改设备名",
+                        tint = TjiPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -448,14 +747,14 @@ private fun SettingInfoLine(
         Text(
             text = label,
             fontSize = 12.sp,
-            color = TextMuted,
+            color = TjiTextMuted,
             modifier = Modifier.weight(1f)
         )
         Text(
             text = value,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = TextPrimary,
+            color = TjiTextPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1.5f)
@@ -466,12 +765,12 @@ private fun SettingInfoLine(
 @Composable
 private fun CompactInfo(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(text = label, fontSize = 11.sp, color = TextMuted)
+        Text(text = label, fontSize = 11.sp, color = TjiTextMuted)
         Text(
             text = value,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = TextPrimary,
+            color = TjiTextPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -480,11 +779,11 @@ private fun CompactInfo(label: String, value: String) {
 
 @Composable
 private fun OtaUpdateInfo(latest: OtaLatestResponse, hasUpdate: Boolean) {
-    val color = if (hasUpdate) WarningOrange else OnlineGreen
+    val color = if (hasUpdate) TjiWarning else TjiOnline
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFF8FAFF), RoundedCornerShape(10.dp))
+            .background(TjiSurfaceSoft, RoundedCornerShape(10.dp))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
@@ -499,99 +798,69 @@ private fun OtaUpdateInfo(latest: OtaLatestResponse, hasUpdate: Boolean) {
                 color = color
             )
             Text(
-                text = latest.latestVersion ?: "--",
+                text = latest.innerVersion?.let { "内部 $it" } ?: latest.latestVersion ?: "--",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = TjiTextPrimary
             )
         }
         latest.releaseNote?.takeIf { it.isNotBlank() }?.let {
-            Text(text = it, fontSize = 12.sp, color = TextMuted)
+            Text(text = it, fontSize = 12.sp, color = TjiTextMuted)
         }
     }
 }
 
 @Composable
 private fun OtaProgressLine(status: SolarCleanOtaStatus) {
-    val progressText = status.progress?.let { " · $it%" }.orEmpty()
+    val progress = status.progress?.coerceIn(0, 100)
     val reasonText = status.message ?: status.reason
+    val color = otaStatusColor(status.status)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.White.copy(alpha = 0.74f), RoundedCornerShape(10.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = "${otaStatusText(status)}$progressText",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = otaStatusColor(status.status)
-        )
-        reasonText?.takeIf { it.isNotBlank() }?.let {
-            Text(text = it, fontSize = 12.sp, color = TextMuted)
-        }
-    }
-}
-
-@Composable
-private fun CardShell(content: @Composable () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        content = { content() }
-    )
-}
-
-@Composable
-private fun SectionCard(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    CardShell {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.White, Color(0xFFFAFBFF))))
-                .padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = title,
-                fontSize = 14.sp,
+                text = otaProgressTitle(status),
+                fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = color
             )
-            content()
+            progress?.let {
+                Text(
+                    text = "$it%",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TjiTextSecondary
+                )
+            }
+        }
+        progress?.let {
+            LinearProgressIndicator(
+                progress = { it / 100f },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(999.dp)),
+                color = color,
+                trackColor = TjiPrimarySoft
+            )
+        }
+        reasonText?.takeIf { it.isNotBlank() }?.let { rawMessage ->
+            otaUserMessage(rawMessage)?.let {
+                Text(text = it, fontSize = 12.sp, color = TjiTextMuted)
+            }
         }
     }
 }
 
-@Composable
-private fun MetricTile(label: String, value: String) {
-    Column(
-        modifier = Modifier
-            .size(width = 94.dp, height = 68.dp)
-            .background(Color.White.copy(alpha = 0.72f), RoundedCornerShape(10.dp))
-            .padding(horizontal = 10.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(text = label, fontSize = 11.sp, color = TextMuted)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = value,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ControlSlider(
     kind: SliderKind,
@@ -614,58 +883,21 @@ private fun ControlSlider(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SolarCleanControlGlyph(kind = kind, size = 28)
-                Text(text = title, fontSize = 12.sp, color = TextMuted)
+                Text(text = title, fontSize = 12.sp, color = TjiTextMuted)
             }
             Text(
                 text = "${value.roundToInt()}$unit",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = TextPrimary
+                color = TjiTextPrimary
             )
         }
-        Slider(
+        TjiControlSlider(
             value = value,
             onValueChange = { onValueChange(it.coerceIn(valueRange.start, valueRange.endInclusive)) },
             onValueChangeFinished = onValueChangeFinished,
             valueRange = valueRange,
-            enabled = enabled,
-            thumb = {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .shadow(3.dp, RoundedCornerShape(50))
-                        .background(Color.White, RoundedCornerShape(50))
-                        .padding(4.dp)
-                ) {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(PrimaryBlue, RoundedCornerShape(50))
-                    )
-                }
-            },
-            track = { sliderState ->
-                SliderDefaults.Track(
-                    sliderState = sliderState,
-                    modifier = Modifier.height(4.dp),
-                    thumbTrackGapSize = 0.dp,
-                    trackInsideCornerSize = 2.dp,
-                    colors = SliderDefaults.colors(
-                        activeTrackColor = PrimaryBlue,
-                        inactiveTrackColor = Color(0xFFE5ECF8),
-                        disabledActiveTrackColor = Color(0xFFCBD5E1),
-                        disabledInactiveTrackColor = Color(0xFFE5E7EB)
-                    )
-                )
-            },
-            colors = SliderDefaults.colors(
-                thumbColor = PrimaryBlue,
-                activeTrackColor = PrimaryBlue,
-                inactiveTrackColor = Color(0xFFE5ECF8),
-                disabledThumbColor = Color(0xFFCBD5E1),
-                disabledActiveTrackColor = Color(0xFFCBD5E1),
-                disabledInactiveTrackColor = Color(0xFFE5E7EB)
-            )
+            enabled = enabled
         )
     }
 }
@@ -675,7 +907,7 @@ private fun SolarCleanControlGlyph(kind: SliderKind, size: Int = 30) {
     Box(
         modifier = Modifier
             .size(size.dp)
-            .background(Color(0xFFEAF2FF), RoundedCornerShape(10.dp)),
+            .background(TjiPrimarySoft, RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -686,7 +918,7 @@ private fun SolarCleanControlGlyph(kind: SliderKind, size: Int = 30) {
             },
             contentDescription = null,
             modifier = Modifier.size((size - 12).dp),
-            tint = PrimaryBlue
+            tint = TjiPrimary
         )
     }
 }
@@ -704,30 +936,13 @@ private fun ControlButton(
     color: Color,
     onClick: () -> Unit
 ) {
-    Button(
+    TjiActionButton(
+        text = text,
         enabled = enabled,
+        color = color,
         onClick = onClick,
         modifier = Modifier
-            .height(46.dp)
-            .fillMaxWidth(0.47f),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = color,
-            disabledContainerColor = Color(0xFFE5E7EB),
-            disabledContentColor = TextMuted
-        )
-    ) {
-        Text(text = text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun StatusBadge(text: String, color: Color) {
-    Text(
-        text = text,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = color
+            .fillMaxWidth(0.47f)
     )
 }
 
@@ -749,39 +964,176 @@ private fun mqttStatusText(state: SolarCleanDeviceState?): String {
 }
 
 private fun otaStatusText(status: SolarCleanOtaStatus): String {
-    return when (status.status.uppercase()) {
+    return when (status.status.normalizedOtaStatus()) {
+        "IDLE",
+        "NONE" -> "空闲"
         "STARTED" -> "准备升级"
-        "DOWNLOADING" -> "下载中"
-        "VERIFYING" -> "校验中"
+        "DOWNLOADING",
+        "VERIFYING",
+        "INSTALLING" -> "正在升级"
         "READY_TO_REBOOT",
-        "REBOOTING" -> "准备重启"
+        "PENDING_REBOOT",
+        "REBOOTING" -> "等待重启"
         "SUCCESS" -> "升级成功"
         "FAILED" -> "升级失败"
         "ROLLBACK" -> "已回滚"
-        else -> status.status
+        else -> "--"
     }
 }
 
 private fun otaStatusColor(status: String): Color {
-    return when (status.uppercase()) {
-        "SUCCESS" -> OnlineGreen
+    return when (status.normalizedOtaStatus()) {
+        "SUCCESS" -> TjiOnline
         "FAILED",
-        "ROLLBACK" -> ErrorRed
+        "ROLLBACK" -> TjiError
         "DOWNLOADING",
         "VERIFYING",
         "STARTED",
         "READY_TO_REBOOT",
-        "REBOOTING" -> PrimaryBlue
-        else -> TextPrimary
+        "PENDING_REBOOT",
+        "REBOOTING" -> TjiPrimary
+        else -> TjiTextPrimary
     }
+}
+
+private fun otaProgressTitle(status: SolarCleanOtaStatus): String {
+    return when (status.status.normalizedOtaStatus()) {
+        "SUCCESS" -> "升级完成"
+        "READY_TO_REBOOT",
+        "PENDING_REBOOT",
+        "REBOOTING" -> "升级完成，等待设备重启"
+        "FAILED" -> "升级失败"
+        "ROLLBACK" -> "升级失败，已回滚"
+        "STARTED" -> "设备已响应，准备升级"
+        else -> "正在升级"
+    }
+}
+
+private fun otaStateText(status: String?): String {
+    return when (status?.normalizedOtaStatus()) {
+        null,
+        "",
+        "UNKNOWN" -> "--"
+        "IDLE" -> "空闲"
+        "NONE" -> "无"
+        "STARTED" -> "准备升级"
+        "DOWNLOADING",
+        "VERIFYING",
+        "INSTALLING" -> "正在升级"
+        "READY_TO_REBOOT",
+        "PENDING_REBOOT",
+        "REBOOTING" -> "等待重启"
+        "SUCCESS" -> "升级成功"
+        "FAILED" -> "升级失败"
+        "ROLLBACK" -> "已回滚"
+        else -> status
+    }
+}
+
+private fun SolarCleanOtaStatus.shouldShowOtaProgress(): Boolean {
+    return when (status.normalizedOtaStatus()) {
+        "IDLE",
+        "NONE",
+        "UNKNOWN" -> false
+        else -> true
+    }
+}
+
+private fun SolarCleanOtaStatus.isOtaBusy(): Boolean {
+    return when (status.normalizedOtaStatus()) {
+        "STARTED",
+        "DOWNLOADING",
+        "VERIFYING",
+        "INSTALLING",
+        "READY_TO_REBOOT",
+        "PENDING_REBOOT",
+        "REBOOTING" -> true
+        else -> false
+    }
+}
+
+private fun SolarCleanOtaStatus.toCompletedIfDeviceReachedLatest(
+    deviceReachedLatest: Boolean
+): SolarCleanOtaStatus {
+    if (!deviceReachedLatest) return this
+    return when (status.normalizedOtaStatus()) {
+        "READY_TO_REBOOT",
+        "PENDING_REBOOT",
+        "REBOOTING",
+        "DOWNLOADING",
+        "VERIFYING",
+        "INSTALLING" -> copy(status = "SUCCESS", progress = 100, message = null, reason = null)
+        else -> this
+    }
+}
+
+private fun isDeviceAtLatest(
+    info: SolarCleanDeviceInfo?,
+    latest: OtaLatestResponse?
+): Boolean {
+    val currentInner = info?.firmwareInnerVersion
+    val latestInner = latest?.innerVersion
+    if (currentInner != null && latestInner != null) {
+
+        return currentInner >= latestInner
+    }
+    val currentVersion = info?.firmwareVersion
+    val latestVersion = latest?.latestVersion
+    return !currentVersion.isNullOrBlank() &&
+            !latestVersion.isNullOrBlank() &&
+            currentVersion == latestVersion
+}
+
+private fun otaUserMessage(raw: String): String? {
+    val normalized = raw.normalizedOtaStatus()
+    if (normalized != raw && normalized != "UNKNOWN") return null
+    return when (normalized) {
+        "IDLE",
+        "NONE",
+        "UNKNOWN" -> null
+        else -> raw
+    }
+}
+
+private fun String.normalizedOtaStatus(): String {
+    return trim()
+        .uppercase()
+        .removePrefix("OTA_")
 }
 
 private fun OtaLatestResponse.isStartable(): Boolean =
     !latestVersion.isNullOrBlank() &&
-            !hardwareVersion.isNullOrBlank() &&
+            !downloadUrl.isNullOrBlank() &&
             fileSize != null &&
-            !sha256.isNullOrBlank() &&
-            !downloadUrl.isNullOrBlank()
+            !sha256.isNullOrBlank()
+
+private fun readControlsExpanded(context: Context, serialNumber: String): Boolean {
+    return context
+        .getSharedPreferences(CONTROL_PANEL_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(CONTROL_PANEL_EXPANDED_PREFIX + serialNumber, true)
+}
+
+private fun saveControlsExpanded(context: Context, serialNumber: String, expanded: Boolean) {
+    context
+        .getSharedPreferences(CONTROL_PANEL_PREFS, Context.MODE_PRIVATE)
+        .edit {
+            putBoolean(CONTROL_PANEL_EXPANDED_PREFIX + serialNumber, expanded)
+        }
+}
+
+private fun readTelemetryExpanded(context: Context, serialNumber: String): Boolean {
+    return context
+        .getSharedPreferences(CONTROL_PANEL_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(TELEMETRY_PANEL_EXPANDED_PREFIX + serialNumber, true)
+}
+
+private fun saveTelemetryExpanded(context: Context, serialNumber: String, expanded: Boolean) {
+    context
+        .getSharedPreferences(CONTROL_PANEL_PREFS, Context.MODE_PRIVATE)
+        .edit {
+            putBoolean(TELEMETRY_PANEL_EXPANDED_PREFIX + serialNumber, expanded)
+        }
+}
 
 private fun previewSolarCleanState(serialNumber: String): SolarCleanDeviceState {
     return SolarCleanDeviceState(
@@ -801,6 +1153,7 @@ private fun previewSolarCleanState(serialNumber: String): SolarCleanDeviceState 
         deviceInfo = SolarCleanDeviceInfo(
             hardwareVersion = "HW-A",
             firmwareVersion = "1.0.3",
+            firmwareInnerVersion = 3,
             slot = "A",
             otaStatus = "IDLE",
             lastOtaResult = "NONE",

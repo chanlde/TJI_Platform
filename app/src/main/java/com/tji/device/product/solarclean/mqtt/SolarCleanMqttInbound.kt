@@ -33,9 +33,18 @@ class SolarCleanMqttInbound(
     private val onlineTimeoutJobs = mutableMapOf<String, Job>()
     private val lastOnlineSignalAt = mutableMapOf<String, Long>()
 
-    suspend fun handleEvent(linkSn: String, eventType: String, json: JSONObject) {
+    suspend fun handleEvent(
+        linkSn: String,
+        eventType: String,
+        json: JSONObject,
+        isRetained: Boolean = false
+    ) {
         when (eventType) {
             "online" -> {
+                if (isRetained) {
+                    Log.d(TAG, "忽略 retained online: sn=$linkSn")
+                    return
+                }
                 val timestamp = json.optNullableLong("ts")
                 repository.updateOnlineStatus(linkSn, isOnline = true, timestamp = timestamp)
                 resetOnlineTimeout(linkSn)
@@ -53,7 +62,7 @@ class SolarCleanMqttInbound(
                 Log.d(TAG, "SolarClean ack: $ack")
             }
             "state" -> {
-                val state = parseState(linkSn, json)
+                val state = parseState(linkSn, json, allowRealtimeOnline = !isRetained)
                 repository.updateDeviceState(state)
                 if (state.isOnline) {
                     resetOnlineTimeout(linkSn)
@@ -65,7 +74,7 @@ class SolarCleanMqttInbound(
             "deviceInfo" -> {
                 val info = parseDeviceInfo(linkSn, json)
                 repository.updateDeviceInfo(linkSn, info)
-                if (isFreshOrRealtimeSignal(info.timestamp)) {
+                if (!isRetained && isFreshOrRealtimeSignal(info.timestamp)) {
                     repository.updateOnlineStatus(linkSn, isOnline = true, timestamp = onlineTimestamp(info.timestamp))
                     resetOnlineTimeout(linkSn)
                 }
@@ -74,7 +83,9 @@ class SolarCleanMqttInbound(
             "otaStatus" -> {
                 val status = parseOtaStatus(json)
                 repository.updateOtaStatus(linkSn, status)
-                resetOnlineTimeout(linkSn)
+                if (!isRetained) {
+                    resetOnlineTimeout(linkSn)
+                }
                 Log.d(TAG, "SolarClean OTA status: $status")
             }
             "downloadProgress",
@@ -109,7 +120,11 @@ class SolarCleanMqttInbound(
         )
     }
 
-    private fun parseState(serialNumber: String, json: JSONObject): SolarCleanDeviceState {
+    private fun parseState(
+        serialNumber: String,
+        json: JSONObject,
+        allowRealtimeOnline: Boolean
+    ): SolarCleanDeviceState {
         val mqtt = json.optJSONObject("mqtt")
         val download = json.optJSONObject("download")?.let {
             SolarCleanDownloadState(
@@ -122,7 +137,7 @@ class SolarCleanMqttInbound(
         }
         return SolarCleanDeviceState(
             serialNumber = serialNumber,
-            isOnline = isFreshOrRealtimeSignal(json.optNullableLong("ts")),
+            isOnline = allowRealtimeOnline && isFreshOrRealtimeSignal(json.optNullableLong("ts")),
             latitude = json.optNullableDouble("lat"),
             longitude = json.optNullableDouble("lon"),
             altitudeMeters = json.optNullableDouble("alt"),
@@ -147,6 +162,8 @@ class SolarCleanMqttInbound(
                 json.optString("hardware").ifBlank { null }
             },
             firmwareVersion = json.optString("firmware_version").ifBlank { null },
+            firmwareInnerVersion = json.optNullableInt("inner_version")
+                ?: json.optNullableInt("innerVersion"),
             slot = json.optString("slot").ifBlank { null },
             otaStatus = json.optString("ota_status").ifBlank { null },
             lastOtaResult = json.optString("last_ota_result").ifBlank { null },
@@ -165,6 +182,8 @@ class SolarCleanMqttInbound(
             status = status,
             progress = json.optNullableInt("progress"),
             targetVersion = json.optString("target_version").ifBlank { null },
+            targetInnerVersion = json.optNullableInt("target_inner_version")
+                ?: json.optNullableInt("targetInnerVersion"),
             firmwareVersion = json.optString("firmware_version").ifBlank { null },
             currentVersion = json.optString("current_version").ifBlank { null },
             failedVersion = json.optString("failed_version").ifBlank { null },
@@ -273,8 +292,14 @@ class SolarCleanMqttInbound(
     private fun JSONObject.optNullableDouble(name: String): Double? =
         if (has(name) && !isNull(name)) optDouble(name) else null
 
-    private fun JSONObject.optNullableInt(name: String): Int? =
-        if (has(name) && !isNull(name)) optInt(name) else null
+    private fun JSONObject.optNullableInt(name: String): Int? {
+        if (!has(name) || isNull(name)) return null
+        return when (val value = opt(name)) {
+            is Number -> value.toInt()
+            is String -> value.trim().toIntOrNull()
+            else -> optInt(name)
+        }
+    }
 
     private fun JSONObject.optNullableLong(name: String): Long? =
         if (has(name) && !isNull(name)) optLong(name) else null

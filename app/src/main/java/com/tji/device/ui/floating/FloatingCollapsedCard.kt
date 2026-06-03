@@ -1,7 +1,6 @@
 package com.tji.device.ui.floating
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
@@ -22,6 +21,8 @@ import kotlin.math.roundToInt
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.ui.icon.product.productIconVector
+import com.tji.device.ui.theme.TjiPrimary
+import com.tji.device.ui.theme.TjiWarning
 
 @Composable
 fun CollapsedCard(
@@ -32,12 +33,12 @@ fun CollapsedCard(
     onMove: (Float, Float) -> Unit
 ) {
     Card(
+        onClick = onExpand,
         colors = CardDefaults.cardColors(containerColor = Color(0xB31E88E5)),
+        shape = RoundedCornerShape(15.dp),
         modifier = Modifier
             .defaultMinSize(minWidth = 140.dp, minHeight = 80.dp)
-            .clip(RoundedCornerShape(15.dp))
             .dragGesture(onMove)
-            .clickable { onExpand() }
             .padding(2.dp)
     ) {
         Column(
@@ -55,8 +56,11 @@ fun ProductFloatingGlyph(
     compact: Boolean = false
 ) {
     val backgroundColor = when (productType) {
-        ProductType.FireBucket -> Color(0xFF6DAEEA)
-        ProductType.SolarClean -> Color(0xFFF2C56C)
+        ProductType.FireBucket -> TjiPrimary.copy(alpha = 0.72f)
+        ProductType.SolarClean -> TjiWarning.copy(alpha = 0.72f)
+        ProductType.DropperSixStage -> TjiPrimary.copy(alpha = 0.82f)
+        ProductType.RadioDetection -> TjiPrimary.copy(alpha = 0.82f)
+        ProductType.Speaker -> TjiWarning.copy(alpha = 0.82f)
     }
     val size = if (compact) 24.dp else 44.dp
 

@@ -17,8 +17,8 @@ fun FloatingWindowContent(
     onMove: (Float, Float) -> Unit,
     onResize: (Float, Float) -> Unit
 ) {
-    val activeLink = uiState.selectedLink ?: uiState.links.firstOrNull()
-    val allSwitches = activeLink?.onlineSwitches ?: emptyList()
+    val activeLink = uiState.selectedLink
+    val allSwitches = activeLink?.allSwitches.orEmpty()
     var selectedSwitchIndex by remember { mutableStateOf(0) }
 
     if (selectedSwitchIndex >= allSwitches.size && allSwitches.isNotEmpty()) {

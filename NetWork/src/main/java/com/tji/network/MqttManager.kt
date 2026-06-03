@@ -7,6 +7,7 @@ import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -25,18 +26,21 @@ class MqttManager private constructor(private val config: MQTTConfig) {
     @Volatile
     private var connectStartedAt: Long = 0L
     companion object {
-        @Volatile
-        private var INSTANCE: MqttManager? = null
+        private val INSTANCES = ConcurrentHashMap<String, MqttManager>()
 
         /**
          * 返回进程内单例。**仅在首次创建时**会使用 [config]（若传入非 null）；后续调用一律忽略 [config]，避免误以为可热切换 Broker。
          * 若需在登录后使用用户侧 [MQTTConfig]，请在应用冷启动或明确「首次」调用时传入。
          */
         fun getInstance(config: MQTTConfig? = null): MqttManager {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: run {
+            return getInstance(MqttProfiles.PLATFORM, config)
+        }
+
+        fun getInstance(profileKey: String, config: MQTTConfig? = null): MqttManager {
+            return INSTANCES[profileKey] ?: synchronized(this) {
+                INSTANCES[profileKey] ?: run {
                     val finalConfig = config ?: MQTTConfig.default()
-                    MqttManager(finalConfig).also { INSTANCE = it }
+                    MqttManager(finalConfig).also { INSTANCES[profileKey] = it }
                 }
             }
         }
@@ -46,9 +50,19 @@ class MqttManager private constructor(private val config: MQTTConfig) {
         }
 
         fun reset(config: MQTTConfig = MQTTConfig.default()): MqttManager {
+            return reset(MqttProfiles.PLATFORM, config)
+        }
+
+        fun reset(profileKey: String, config: MQTTConfig = MQTTConfig.default()): MqttManager {
             return synchronized(this) {
-                INSTANCE?.client?.disconnect()
-                MqttManager(config).also { INSTANCE = it }
+                INSTANCES[profileKey]?.client?.disconnect()
+                MqttManager(config).also { INSTANCES[profileKey] = it }
+            }
+        }
+
+        fun disconnectAll() {
+            INSTANCES.values.forEach { manager ->
+                runCatching { manager.disconnect() }
             }
         }
     }
@@ -168,6 +182,7 @@ class MqttManager private constructor(private val config: MQTTConfig) {
     fun subscribe(
         topic: String,
         onMessage: (String) -> Unit,
+        onMessageWithMeta: ((String, Boolean) -> Unit)? = null,
         onError: ((Throwable) -> Unit)? = null,
         onSubscribed: (() -> Unit)? = null,
         qos: Int = config.qos
@@ -179,6 +194,7 @@ class MqttManager private constructor(private val config: MQTTConfig) {
                     subscribe(
                         topic = topic,
                         onMessage = onMessage,
+                        onMessageWithMeta = onMessageWithMeta,
                         onError = onError,
                         onSubscribed = onSubscribed,
                         qos = qos
@@ -204,7 +220,7 @@ class MqttManager private constructor(private val config: MQTTConfig) {
                     "MQTT message received #$seq: topic=$topic qos=${publish.qos.code}, " +
                             "retain=${publish.isRetain}, bytes=${publish.payloadAsBytes.size}, receiveAt=$receiveAt"
                 )
-                onMessage(message)
+                onMessageWithMeta?.invoke(message, publish.isRetain) ?: onMessage(message)
             }
             .send()
             .whenComplete { _, throwable ->

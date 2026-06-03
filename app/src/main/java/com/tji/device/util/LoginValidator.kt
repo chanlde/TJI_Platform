@@ -19,8 +19,15 @@ object userData {
     /** 登录下发的账号绑定设备（SN + 名称 + 推断产品线） */
     var boundAccountDevices: List<BoundAccountDevice>? = null
     
-    /** 已选择的 Link SN（用于订阅） */
-    var selectedLinkSerial: String? = null
+    private val _selectedLinkSerial = MutableStateFlow<String?>(null)
+    val selectedLinkSerialFlow: StateFlow<String?> = _selectedLinkSerial.asStateFlow()
+
+    /** 已选择的设备 SN（用于订阅与悬浮窗当前设备同步） */
+    var selectedLinkSerial: String?
+        get() = _selectedLinkSerial.value
+        set(value) {
+            _selectedLinkSerial.value = value
+        }
 
     private val _preferredProductType = MutableStateFlow(ProductType.FireBucket)
     val preferredProductTypeFlow: StateFlow<ProductType> = _preferredProductType.asStateFlow()

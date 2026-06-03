@@ -41,6 +41,7 @@ data class SolarCleanDownloadState(
 data class SolarCleanDeviceInfo(
     val hardwareVersion: String?,
     val firmwareVersion: String?,
+    val firmwareInnerVersion: Int? = null,
     val slot: String? = null,
     val otaStatus: String? = null,
     val lastOtaResult: String? = null,
@@ -54,6 +55,7 @@ data class SolarCleanOtaStatus(
     val status: String,
     val progress: Int? = null,
     val targetVersion: String? = null,
+    val targetInnerVersion: Int? = null,
     val firmwareVersion: String? = null,
     val currentVersion: String? = null,
     val failedVersion: String? = null,
@@ -66,10 +68,11 @@ data class SolarCleanOtaStatus(
 
 data class SolarCleanOtaPackage(
     val targetVersion: String,
-    val hardwareVersion: String,
+    val downloadUrl: String,
     val fileSize: Long,
     val sha256: String,
-    val downloadUrl: String,
+    val targetInnerVersion: Int? = null,
+    val hardwareVersion: String? = null,
     val signature: String? = null
 )
 

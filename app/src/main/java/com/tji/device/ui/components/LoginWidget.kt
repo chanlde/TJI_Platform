@@ -30,6 +30,9 @@ import androidx.compose.ui.unit.sp
 import com.tji.device.R
 import com.tji.device.data.model.Login
 import com.tji.device.ui.theme.LoginColors
+import com.tji.device.ui.theme.TjiPrimarySoft
+import com.tji.device.ui.theme.TjiSurfaceSoft
+import com.tji.device.util.SecurePrefs
 import com.tji.device.util.ToastUtils
 import com.tji.device.ui.main.LocalMainViewModel
 
@@ -92,8 +95,7 @@ fun LoginWidget(
     val isPreview = LocalInspectionMode.current
     val mainViewModel = if (isPreview) null else LocalMainViewModel.current
 
-    // 获取 SharedPreferences
-    val sharedPreferences = context.getSharedPreferences("user_preferences", Context.MODE_PRIVATE)
+    val sharedPreferences = remember(context) { SecurePrefs.userPreferences(context) }
     val savedAccount = sharedPreferences.getString("account", "")
     val savedPassword = sharedPreferences.getString("password", "")
     val savedRememberMe = sharedPreferences.getBoolean("rememberMe", false)
@@ -344,8 +346,8 @@ private fun LoginBackground(
                 Brush.verticalGradient(
                     colors = listOf(
                         LoginColors.Background,
-                        Color(0xFFF0F4FF),
-                        Color(0xFFE8F0FF)
+                        TjiSurfaceSoft,
+                        TjiPrimarySoft
                     )
                 )
             )

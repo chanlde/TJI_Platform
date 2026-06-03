@@ -19,9 +19,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.KeyboardArrowLeft
-import androidx.compose.material.icons.rounded.KeyboardArrowRight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,12 +38,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.ui.components.BatteryIndicator
 import com.tji.device.ui.icon.common.BatteryOutline
 import com.tji.device.ui.floating.FloatingLinkSummary
 import com.tji.device.ui.floating.FloatingSwitchSummary
+import com.tji.device.ui.theme.TjiBorder
+import com.tji.device.ui.theme.TjiError
+import com.tji.device.ui.theme.TjiOnline
+import com.tji.device.ui.theme.TjiTextMuted
+import com.tji.device.ui.theme.TjiWarning
+import com.tji.device.ui.theme.TjiWarningSoft
 
 @Composable
 fun FireBucketFloatingPanel(
@@ -80,14 +85,14 @@ fun FireBucketFloatingPanel(
                 modifier = Modifier
                     .size(6.dp)
                     .background(
-                        color = if (switch.isOnline) Color(0xFF4CAF50) else Color(0xFFBDBDBD),
+                        color = if (switch.isOnline) TjiOnline else TjiTextMuted,
                         shape = RoundedCornerShape(3.dp)
                     )
             )
             Text(
                 text = switch.name,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                color = Color(0xFF757575)
+                color = TjiTextMuted
             )
             Spacer(modifier = Modifier.width(8.dp))
             BatteryIndicator(
@@ -99,12 +104,18 @@ fun FireBucketFloatingPanel(
 
     Spacer(modifier = Modifier.height(5.dp))
     HorizontalDivider(
-        color = Color(0xFFD9D9D9).copy(alpha = 0.6f),
+        color = TjiBorder.copy(alpha = 0.8f),
         thickness = 1.dp
     )
 
     if (switch == null || link == null) {
-        EmptyProductPanel(productType = ProductType.FireBucket)
+        EmptyProductPanel(
+            message = if (link == null) {
+                "设备未连接"
+            } else {
+                "当前 Link 暂无水桶设备"
+            }
+        )
     } else {
         Column(
             modifier = Modifier
@@ -131,7 +142,7 @@ fun FireBucketFloatingPanel(
 
 @Composable
 fun EmptyProductPanel(
-    productType: ProductType
+    message: String
 ) {
     Column(
         modifier = Modifier
@@ -142,7 +153,7 @@ fun EmptyProductPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    color = Color(0xFFFFF3E0).copy(alpha = 0.5f),
+                    color = TjiWarningSoft.copy(alpha = 0.7f),
                     shape = RoundedCornerShape(12.dp)
                 )
                 .padding(vertical = 20.dp, horizontal = 16.dp),
@@ -155,15 +166,15 @@ fun EmptyProductPanel(
                 Icon(
                     imageVector = Icons.Rounded.Info,
                     contentDescription = null,
-                    tint = Color(0xFFFF9800),
+                    tint = TjiWarning,
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
-                    text = "${ProductCatalog.definitionOf(productType).displayName} 暂无可用设备",
+                    text = message,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.Medium
                     ),
-                    color = Color(0xFFE65100)
+                    color = TjiWarning
                 )
             }
         }
@@ -185,7 +196,7 @@ private fun ControlButtons(
     ) {
         ControlButton(
             onClick = { onSwitchQuickToggle(linkSerial, switch, true) },
-            backgroundColor = Color(0xFFC22E2E),
+            backgroundColor = TjiError,
             icon = {
                 Icon(
                     imageVector = BatteryOutline,
@@ -200,7 +211,7 @@ private fun ControlButtons(
 
         ControlButton(
             onClick = { onSwitchQuickToggle(linkSerial, switch, false) },
-            backgroundColor = Color(0xFFC22E2E),
+            backgroundColor = TjiError,
             icon = {
                 Icon(
                     imageVector = BatteryOutline,
@@ -234,10 +245,10 @@ private fun SwitchIndicator(
             modifier = Modifier.size(28.dp)
         ) {
             Icon(
-                imageVector = Icons.Rounded.KeyboardArrowLeft,
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
                 contentDescription = "上一个",
                 modifier = Modifier.size(18.dp),
-                tint = Color(0xFF757575)
+                tint = TjiTextMuted
             )
         }
 
@@ -254,9 +265,9 @@ private fun SwitchIndicator(
                         .size(if (isSelected) 8.dp else 6.dp)
                         .background(
                             color = if (isSelected) {
-                                if (switch.isOnline) Color(0xFF4CAF50) else Color(0xFFBDBDBD)
+                                if (switch.isOnline) TjiOnline else TjiTextMuted
                             } else {
-                                Color(0xFFBDBDBD).copy(alpha = 0.5f)
+                                TjiTextMuted.copy(alpha = 0.5f)
                             },
                             shape = CircleShape
                         )
@@ -279,10 +290,10 @@ private fun SwitchIndicator(
             modifier = Modifier.size(28.dp)
         ) {
             Icon(
-                imageVector = Icons.Rounded.KeyboardArrowRight,
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                 contentDescription = "下一个",
                 modifier = Modifier.size(18.dp),
-                tint = Color(0xFF757575)
+                tint = TjiTextMuted
             )
         }
     }

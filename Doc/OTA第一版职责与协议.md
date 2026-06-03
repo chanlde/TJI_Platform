@@ -65,7 +65,7 @@ App 进入光伏清洗设备界面后，执行以下流程：
 App 的版本判断逻辑：
 
 ```text
-if server.latest_version > device.firmware_version:
+if server.innerVersion > device.inner_version:
     显示可升级
 else:
     显示已是最新版本
@@ -97,26 +97,42 @@ App 只负责提示、确认和下发升级命令。
 App 请求：
 
 ```http
-GET /api/ota/latest?product_type=SolarClean
+GET /api/data/appversion/getAppVersion?productId={productId}&type={type}
 ```
 
-服务器只按产品类型返回当前启用的最新固件包；App 使用设备上报的 `firmware_version` 在本地比较是否有更新。`hardware_version` 不参与查询，只在 App 下发 `START_OTA` 时带给单片机做最终校验。
+`type` 用来区分升级包类型：
+
+| type | 含义 | productId |
+| --- | --- | --- |
+| 1 | App 更新包 | 1=水枪控制，2=水桶控制 |
+| 2 | 设备固件更新包 | 3=光伏清洗，4=消防吊桶 |
+
+光伏清洗固件查询固定使用：
+
+```http
+GET /api/data/appversion/getAppVersion?productId=3&type=2
+```
 
 服务器返回：
 
 ```json
 {
-  "latest_version": "1.0.4",
-  "hardware_version": "HW-A",
-  "file_size": 123456,
-  "sha256": "xxxxx",
-  "download_url": "https://example.com/firmware/HW-A/v2.bin",
-  "release_note": "修复清洗逻辑问题"
+  "id": 8,
+  "version": "4",
+  "productName": "光伏清洗",
+  "techDesc": "光伏清洗bin",
+  "innerVersion": "6",
+  "publishDate": "2026-05-29 00:00:00",
+  "path": "/download/SolarClean_APP_V0.0.1_0X08020000.bin",
+  "fileSize": 245760,
+  "sha256": "xxxxxxxx",
+  "type": 2
 }
 ```
 
-第一版服务器可以先简单返回该硬件型号下启用的最新版本。  
-如果后面需要指定设备升级，再增加设备白名单、客户白名单、灰度发布等功能。
+App 使用设备上报的内部版本 `inner_version` 与服务器 `innerVersion` 在本地比较是否有更新。`firmware_version` 和服务器 `version` 主要用于用户展示，不作为第一判断依据。服务器当前返回 `path`，App 下发 `START_OTA` 前会把相对路径补成完整下载地址。
+
+服务器必须返回 `fileSize` 和 `sha256`。App 会把 `fileSize` 转成 MQTT 的 `file_size` 下发给单片机，单片机必须校验文件大小和 sha256。
 
 ## 5. 单片机需要做什么
 
@@ -148,8 +164,12 @@ SolarClean/devices/PV-CLEAN-0001/status
 
 ```json
 {
+  "v": 1,
+  "type": "deviceInfo",
+  "ts": 8481,
   "hardware_version": "HW-A",
-  "firmware_version": 1
+  "firmware_version": "0.0.1.0",
+  "inner_version": 3
 }
 ```
 
@@ -206,7 +226,7 @@ SolarClean/devices/PV-CLEAN-0001/control
 | 4 | SET_SPRAY_ANGLE | `amplitudeDeg` | 喷洒单边摆幅角，0-40 |
 | 5 | SET_SWING_SPEED | `speedPercent` | 摆动速度，0-100 |
 | 6 | SET_SERVO_SWING | `on`，可选 `speedPercent`、`amplitude` | 摆动开关 |
-| 20 | START_OTA | `target_version`、`hardware_version`、`file_size`、`sha256`、`download_url`，可选 `signature` | 开始 OTA |
+| 20 | START_OTA | 必填 `target_version`、`target_inner_version`、`download_url`、`file_size`、`sha256`；可选 `hardware_version`、`signature` | 开始 OTA |
 | 30 | ROUTE_LIST | 无 | 查询航线槽位，当前 App 暂不使用 |
 | 31 | ROUTE_DELETE | `slot` | 删除航线槽位，当前 App 暂不使用 |
 | 32 | ROUTE_DOWNLOAD | `slot`、`url`、`size`，可选 `checksum` | 下载航线，当前 App 暂不使用 |
@@ -217,8 +237,12 @@ SolarClean/devices/PV-CLEAN-0001/control
 
 ```json
 {
+  "v": 1,
+  "type": "deviceInfo",
+  "ts": 8481,
   "hardware_version": "HW-A",
-  "firmware_version": 1
+  "firmware_version": "0.0.1.0",
+  "inner_version": 3
 }
 ```
 
@@ -249,13 +273,15 @@ SolarClean/devices/{sn}/control
   "ts": 1777617643410,
   "cmd": 20,
   "cmdName": "START_OTA",
-  "target_version": "1.0.9",
-  "hardware_version": "HW-A",
-  "file_size": 123456,
-  "sha256": "xxxxx",
-  "download_url": "https://example.com/firmware/HW-A/v2.bin"
+  "target_version": "4",
+  "target_inner_version": 6,
+  "file_size": 245760,
+  "sha256": "xxxxxxxx",
+  "download_url": "https://api.tjinnovations.cloud/download/SolarClean_APP_V0.0.1_0X08020000.bin"
 }
 ```
+
+`file_size` 来自服务器 `fileSize`。`sha256` 来自服务器同名字段。App 不再允许缺少这两个字段时启动 OTA。
 
 cmd topic 不要设置 retain：
 
@@ -280,7 +306,7 @@ retain: false
 4. 校验 sha256
 5. 校验通过后准备重启
 6. 重启进入新固件
-7. 新固件启动成功后，上报 firmware_version = 2
+7. 新固件启动成功后，上报新的 firmware_version 和 inner_version
 ```
 
 升级前的设备状态检查属于单片机内部必做逻辑，不放在本文档展开。
@@ -412,7 +438,7 @@ SolarClean/devices/PV-CLEAN-0001/status
 4. App 立刻收到 retained info
 5. App 发送 GET_DEVICE_INFO
 6. 单片机重新上报 info
-7. App 请求服务器 /api/ota/latest
+7. App 请求服务器 /api/data/appversion/getAppVersion?productId=3&type=2
 8. App 对比版本
 9. App 显示是否有更新
 ```
@@ -438,8 +464,8 @@ SolarClean/devices/PV-CLEAN-0001/status
 
 - 订阅 `SolarClean/devices/{sn}/status`
 - 发送 `cmd=1` / `cmdName=GET_DEVICE_INFO`
-- 请求服务器 `/api/ota/latest`
-- 对比 `latest_version` 和 `firmware_version`
+- 请求服务器 `/api/data/appversion/getAppVersion?productId=3&type=2`
+- 对比服务器 `innerVersion` 和设备 `inner_version`
 - 显示“已是最新版本”或“发现新版本”
 - 发送 `cmd=20` / `cmdName=START_OTA`
 - 订阅 `SolarClean/devices/{sn}/status`
@@ -448,11 +474,14 @@ SolarClean/devices/PV-CLEAN-0001/status
 ### 9.2 服务器
 
 - 保存固件版本信息
-- 保存硬件版本
-- 保存固件大小
-- 保存 SHA256
+- 保存硬件版本（建议）
+- 保存固件大小（建议）
+- 保存 SHA256（建议）
 - 保存下载地址
-- 提供 `/api/ota/latest` 接口
+- 提供 `/api/data/appversion/getAppVersion` 接口
+- 使用 `type=1` 区分 App 更新，`type=2` 区分设备固件更新
+- 光伏清洗固件使用 `productId=3&type=2`
+- 消防吊桶固件使用 `productId=4&type=2`
 - 提供固件 bin 文件下载
 
 ### 9.3 单片机
@@ -465,7 +494,7 @@ SolarClean/devices/PV-CLEAN-0001/status
 - 校验 `file_size`
 - 校验 `sha256`
 - 上报 `ota/status`
-- 升级成功后重新上报 `firmware_version`
+- 升级成功后重新上报 `firmware_version` 和 `inner_version`
 
 ## 10. 关键注意事项
 

@@ -10,16 +10,17 @@ import com.tji.device.data.model.ProductType
 import com.tji.device.data.repository.AuthRepository
 import com.tji.device.data.vminterface.LoginViewModelInterface
 import com.tji.device.di.AppContainer.mqttSubscriptionManager
+import com.tji.device.service.mqtt.ProductMqttRouter
 import com.tji.device.util.userData
 import com.tji.network.data.ApiResponse
 import com.tji.network.DataReportManager
-import com.tji.network.MqttManager
 import com.tji.network.data.BoundDeviceRow
 import com.tji.network.data.LoginResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * 登录视图模型
@@ -138,22 +139,35 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
 
     private fun connectMqttForAccount(account: String) {
         _account.value = account
+        val platformClientId = currentMqttClientId(account)
+        val radioDetectionClientId = currentRadioDetectionMqttClientId(account)
         userData.updateMqttConfig(
             username = account,
-            clientId = currentMqttClientId(account)
+            clientId = platformClientId
         )
-        MqttManager.reset(userData.mqttConfig).connect()
+        ProductMqttRouter.resetForAccount(
+            account = account,
+            platformClientId = platformClientId,
+            radioDetectionClientId = radioDetectionClientId
+        )
+        ProductMqttRouter.platformManager().connect()
     }
 
     private fun currentMqttClientId(account: String): String =
-        userData.mqttConfig.clientId.takeIf { it.isNotBlank() }
-            ?: "TJI_APP_${account}_${System.currentTimeMillis()}"
+        "TJI_APP_${account}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
+
+    private fun currentRadioDetectionMqttClientId(account: String): String =
+        "FC100_APP_${account}_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
 
     private fun parseBoundDevices(loginData: LoginResponse?): List<BoundAccountDevice> {
-        val serverBoundDevices = loginData?.boundDevices
-            ?.takeIf { it.isNotEmpty() }
-            ?.mapNotNull { it.toBoundAccountDevice() }
-            ?: loginData?.toBoundAccountDevicesFromStringRows().orEmpty()
+        if (loginData == null) {
+            return emptyList()
+        }
+
+        val serverBoundDevices = buildList {
+            addAll(loginData.boundDevices.orEmpty().mapNotNull { it.toBoundAccountDevice() })
+            addAll(loginData.toBoundAccountDevicesFromTypedRows())
+        }
 
         return serverBoundDevices.distinctBy {
             "${it.productType.name}:${it.serialNumber}"
@@ -250,9 +264,11 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
 
     private fun BoundDeviceRow.toBoundAccountDevice(): BoundAccountDevice? {
         val serial = serialNumber?.takeIf { it.isNotBlank() }
+            ?: sn1?.takeIf { it.isNotBlank() }
             ?: sn?.takeIf { it.isNotBlank() }
             ?: return null
-        val displayName = deviceName?.takeIf { it.isNotBlank() }
+        val displayName = productName?.takeIf { it.isNotBlank() }
+            ?: deviceName?.takeIf { it.isNotBlank() }
             ?: name?.takeIf { it.isNotBlank() }
             ?: serial
         return BoundAccountDevice(
@@ -263,27 +279,30 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
                 productType = productType,
                 productCode = productCode,
                 fallbackName = displayName
-            )
+            ),
+            serverId = id
         )
     }
 
-    private fun com.tji.network.data.LoginResponse.toBoundAccountDevicesFromStringRows(): List<BoundAccountDevice> {
-        return when {
+    private fun LoginResponse.toBoundAccountDevicesFromTypedRows(): List<BoundAccountDevice> {
+        val legacyDevices = when {
             boundDeviceRows.orEmpty().isNotEmpty() -> {
                 BoundAccountDevice.parseFromLoginDeviceRows(boundDeviceRows.orEmpty())
             }
 
             else -> {
-                val fireBucketDevices = BoundAccountDevice.parseFromLoginDeviceRows(
+                BoundAccountDevice.parseFromLoginDeviceRows(
                     rows = bucketsns.orEmpty(),
                     forcedProductType = ProductType.FireBucket
                 )
-                val solarCleanDevices = BoundAccountDevice.parseFromLoginDeviceRows(
-                    rows = cleansns.orEmpty(),
-                    forcedProductType = ProductType.SolarClean
-                )
-                fireBucketDevices + solarCleanDevices
             }
         }
+
+        val solarCleanDevices = cleanDevicesResolved()
+            .mapNotNull { it.toBoundAccountDevice() }
+        val radioDetectionDevices = radioDetectionDevicesResolved()
+            .mapNotNull { it.toBoundAccountDevice() }
+
+        return legacyDevices + solarCleanDevices + radioDetectionDevices
     }
 }

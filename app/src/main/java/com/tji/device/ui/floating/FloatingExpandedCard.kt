@@ -18,20 +18,42 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tji.device.ui.icon.common.minimize
+import com.tji.device.di.AppContainer
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import com.tji.device.product.droppersixstage.ui.floating.DropperSixStageFloatingPanel
+import com.tji.device.product.firebucket.ui.floating.EmptyProductPanel
 import com.tji.device.product.firebucket.ui.floating.FireBucketFloatingPanel
 import com.tji.device.product.solarclean.ui.floating.SolarCleanFloatingPanel
+import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedback
+import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedbackStatus
+import com.tji.device.product.solarclean.viewmodel.SolarCleanControlViewModel
+import com.tji.device.ui.components.TjiFeedbackBadge
+import com.tji.device.ui.components.TjiOnlineStatus
+import com.tji.device.ui.theme.TjiError
+import com.tji.device.ui.theme.TjiOnline
+import com.tji.device.ui.theme.TjiPrimarySoft
+import com.tji.device.ui.theme.TjiTextPrimary
+import com.tji.device.ui.theme.TjiTextSecondary
 
 @Composable
 fun ExpandedCard(
@@ -46,6 +68,21 @@ fun ExpandedCard(
     onMove: (Float, Float) -> Unit
 ) {
     val switch = allSwitches.getOrNull(currentSwitchIndex)
+    val isPreview = LocalInspectionMode.current
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        FloatingWindowAppearance.load(context)
+    }
+    val configuredAlpha by FloatingWindowAppearance.backgroundAlpha.collectAsStateWithLifecycle()
+    val solarAlpha = configuredAlpha.coerceIn(0f, 1f)
+    val solarCleanViewModel: SolarCleanControlViewModel? = if (productType == ProductType.SolarClean && !isPreview) {
+        viewModel(factory = AppContainer.solarCleanControlViewModelFactory)
+    } else {
+        null
+    }
+    val solarCleanFeedback by solarCleanViewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
+        it ?: remember { mutableStateOf(SolarCleanCommandFeedback()) }
+    }
 
     Box(
         modifier = Modifier
@@ -55,8 +92,8 @@ fun ExpandedCard(
             .background(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.58f),
-                        Color.White.copy(alpha = 0.58f)
+                        Color.White.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.58f),
+                        TjiPrimarySoft.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.58f)
                     )
                 ),
                 shape = RoundedCornerShape(12.dp)
@@ -65,17 +102,18 @@ fun ExpandedCard(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.8f),
-                        Color.White.copy(alpha = 0.3f)
+                        Color.White.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.8f),
+                        Color.White.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.3f)
                     )
                 ),
                 shape = RoundedCornerShape(12.dp)
             )
     ) {
-        Column(modifier = Modifier.padding(vertical = 5.dp)) {
+        Column(modifier = Modifier.padding(vertical = if (productType == ProductType.SolarClean) 3.dp else 5.dp)) {
             FloatingWindowHeader(
                 productType = productType,
                 link = link,
+                commandFeedback = if (productType == ProductType.SolarClean) solarCleanFeedback else null,
                 onMinimize = onMinimize,
                 onClose = onClose
             )
@@ -90,6 +128,9 @@ fun ExpandedCard(
                     onSwitchQuickToggle = onSwitchQuickToggle
                 )
                 ProductType.SolarClean -> SolarCleanFloatingPanel(link = link)
+                ProductType.DropperSixStage -> DropperSixStageFloatingPanel(link = link)
+                ProductType.RadioDetection -> EmptyProductPanel(message = "无线电检测暂不提供悬浮窗快捷控制")
+                ProductType.Speaker -> EmptyProductPanel(message = "喊话器请在 App 内使用实时喊话")
             }
         }
     }
@@ -99,25 +140,28 @@ fun ExpandedCard(
 private fun FloatingWindowHeader(
     productType: ProductType,
     link: FloatingLinkSummary?,
+    commandFeedback: SolarCleanCommandFeedback?,
     onMinimize: () -> Unit,
     onClose: () -> Unit
 ) {
-    val title = if (productType == ProductType.SolarClean) {
-        link?.name ?: link?.serialNumber ?: ProductCatalog.definitionOf(productType).displayName
-    } else {
-        ProductCatalog.definitionOf(productType).displayName
-    }
+    val title = link?.name
+        ?: link?.serialNumber
+        ?: ProductCatalog.definitionOf(productType).displayName
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(
+                horizontal = if (productType == ProductType.SolarClean) 10.dp else 12.dp,
+                vertical = if (productType == ProductType.SolarClean) 6.dp else 8.dp
+            )
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.weight(1f)
         ) {
             ProductFloatingGlyph(
                 productType = productType,
@@ -127,36 +171,39 @@ private fun FloatingWindowHeader(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    fontSize = if (productType == ProductType.SolarClean) 13.sp else 14.sp
                 ),
-                color = Color(0xFF1A1A1A),
+                color = TjiTextPrimary,
                 maxLines = 1,
                 modifier = Modifier.weight(1f, fill = false)
             )
+            if (productType == ProductType.SolarClean || productType == ProductType.DropperSixStage) {
+                TjiOnlineStatus(isOnline = link?.isOnline == true, pill = true)
+            }
             if (productType == ProductType.SolarClean) {
-                FloatingStatusBadge(isOnline = link?.isOnline == true)
+                FloatingCommandFeedbackBadge(commandFeedback)
             }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             IconButton(
                 onClick = onMinimize,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(if (productType == ProductType.SolarClean) 24.dp else 28.dp)
             ) {
                 Icon(
                     imageVector = minimize,
                     contentDescription = "收起",
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(if (productType == ProductType.SolarClean) 14.dp else 16.dp)
                 )
             }
             IconButton(
                 onClick = onClose,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(if (productType == ProductType.SolarClean) 24.dp else 28.dp)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "关闭",
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(if (productType == ProductType.SolarClean) 16.dp else 18.dp)
                 )
             }
         }
@@ -164,20 +211,14 @@ private fun FloatingWindowHeader(
 }
 
 @Composable
-private fun FloatingStatusBadge(isOnline: Boolean) {
-    val color = if (isOnline) Color(0xFF16A34A) else Color(0xFFFF4D4F)
-    val background = if (isOnline) Color(0xFFEAF8EF) else Color(0xFFFFEAEA)
-    Box(
-        modifier = Modifier
-            .background(background, RoundedCornerShape(999.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = if (isOnline) "在线" else "离线",
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = color
-        )
+private fun FloatingCommandFeedbackBadge(feedback: SolarCleanCommandFeedback?) {
+    if (feedback == null) return
+    val color = when (feedback.status) {
+        SolarCleanCommandFeedbackStatus.Success -> TjiOnline
+        SolarCleanCommandFeedbackStatus.Failed,
+        SolarCleanCommandFeedbackStatus.Timeout -> TjiError
+        SolarCleanCommandFeedbackStatus.Pending,
+        SolarCleanCommandFeedbackStatus.Idle -> TjiTextSecondary
     }
+    TjiFeedbackBadge(text = feedback.text, color = color, horizontalPadding = 7.dp, verticalPadding = 4.dp)
 }

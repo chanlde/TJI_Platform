@@ -45,6 +45,7 @@ class FloatingWindowViewModel(
     init {
         observeLinks()
         observePreferredProductType()
+        observeSelectedLinkSerial()
         Log.d("FloatingWindowService", "Current mode: ${uiState.value.mode}")
 
     }
@@ -53,10 +54,10 @@ class FloatingWindowViewModel(
         viewModelScope.launch {
             userData.preferredProductTypeFlow.collect { preferredType ->
                 _uiState.update { current ->
-                    if (current.selectedLink != null) {
+                    if (current.selectedLinkSerial != null) {
                         current
                     } else {
-                        current.copy(preferredProductType = preferredType)
+                        current.copy(preferredProductType = preferredType.floatingFallback())
                     }
                 }
             }
@@ -70,15 +71,18 @@ class FloatingWindowViewModel(
             }.collect { devices ->
                 Log.d(TAG, "observeLinks -> 接收到设备列表 size=${devices.size}")
                 _uiState.update { current ->
-                    val summaries = devices.map { it.toFloatingSummary() }
+                    val summaries = devices
+                        .filter { it.productType.supportsFloatingWindow() }
+                        .map { it.toFloatingSummary() }
                     val selectedSerial = current.selectedLinkSerial?.takeIf { serial ->
                         summaries.any { it.serialNumber == serial }
-                    } ?: summaries.firstOrNull {
-                        it.productType == current.preferredProductType && it.isOnline
-                    }?.serialNumber
-                    ?: summaries.firstOrNull {
-                        it.productType == current.preferredProductType
-                    }?.serialNumber
+                    }
+                        ?: summaries.firstOrNull {
+                            it.productType == current.preferredProductType && it.isOnline
+                        }?.serialNumber
+                        ?: summaries.firstOrNull {
+                            it.productType == current.preferredProductType
+                        }?.serialNumber
 
                     val selectedLink = summaries.firstOrNull { it.serialNumber == selectedSerial }
                     val shouldForceOfflineVisible =
@@ -93,11 +97,54 @@ class FloatingWindowViewModel(
                     current.copy(
                         links = summaries,
                         selectedLinkSerial = selectedSerial,
+                        selectedLinkName = selectedLink?.name ?: current.selectedLinkName,
                         preferredProductType = selectedLink?.productType
-                            ?: current.preferredProductType,
+                            ?: current.preferredProductType.floatingFallback(),
                         isLoading = false,
                         errorMessage = if (summaries.isEmpty()) "暂无可用设备" else null,
                         showOfflineSwitches = current.showOfflineSwitches || shouldForceOfflineVisible
+                    )
+                }
+            }
+        }
+    }
+
+    private fun observeSelectedLinkSerial() {
+        viewModelScope.launch {
+            userData.selectedLinkSerialFlow.collect { serial ->
+                _uiState.update { current ->
+                    val link = serial?.let { selectedSerial ->
+                        current.links.firstOrNull { it.serialNumber == selectedSerial }
+                    }
+                    val boundProductType = serial?.let { selectedSerial ->
+                        userData.boundAccountDevices
+                            .orEmpty()
+                            .firstOrNull { it.serialNumber == selectedSerial }
+                            ?.productType
+                    }
+                    val boundName = serial?.let { selectedSerial ->
+                        userData.boundAccountDevices
+                            .orEmpty()
+                            .firstOrNull { it.serialNumber == selectedSerial }
+                            ?.name
+                    }
+                    val nextProductType = link?.productType ?: boundProductType ?: current.preferredProductType
+                    if (!nextProductType.supportsFloatingWindow()) {
+                        Log.d(TAG, "当前产品不启用悬浮窗快捷控制: serial=$serial product=$nextProductType")
+                        return@update current.copy(
+                            selectedLinkSerial = null,
+                            selectedLinkName = null,
+                            preferredProductType = current.preferredProductType.floatingFallback()
+                        )
+                    }
+                    Log.d(
+                        TAG,
+                        "同步当前设备到悬浮窗: serial=$serial product=$nextProductType runtimeFound=${link != null}"
+                    )
+                    current.copy(
+                        selectedLinkSerial = serial,
+                        selectedLinkName = link?.name ?: boundName ?: serial,
+                        preferredProductType = nextProductType
                     )
                 }
             }
@@ -135,8 +182,10 @@ class FloatingWindowViewModel(
         _uiState.update { state ->
             val link = state.links.firstOrNull { it.serialNumber == serialNumber }
             if (link != null) {
+                userData.selectedLinkSerial = serialNumber
                 state.copy(
                     selectedLinkSerial = serialNumber,
+                    selectedLinkName = link.name,
                     preferredProductType = link.productType
                 )
             } else {
@@ -167,6 +216,12 @@ class FloatingWindowViewModel(
         toggleSwitch(linkSerial, switch.serialNumber, targetAngle)
     }
 }
+
+private fun ProductType.supportsFloatingWindow(): Boolean =
+    this != ProductType.RadioDetection
+
+private fun ProductType.floatingFallback(): ProductType =
+    if (supportsFloatingWindow()) this else ProductType.FireBucket
 
 class FloatingWindowViewModelFactory(
     private val productRuntimeRegistry: ProductRuntimeRegistry,

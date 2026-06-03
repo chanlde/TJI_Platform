@@ -4,11 +4,15 @@ import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.tji.device.product.firebucket.model.Switch
@@ -18,6 +22,13 @@ import com.tji.device.ui.components.BatteryIndicator
 import com.tji.device.ui.components.CustomSlider
 import com.tji.device.ui.components.DeviceInfoButton
 import com.tji.device.ui.components.StatusChip
+import com.tji.device.ui.components.TjiActionButton
+import com.tji.device.ui.theme.TjiBorder
+import com.tji.device.ui.theme.TjiPrimary
+import com.tji.device.ui.theme.TjiSurface
+import com.tji.device.ui.theme.TjiTextPrimary
+import com.tji.device.ui.theme.TjiTextSecondary
+import com.tji.device.ui.theme.TjiWarning
 
 @Composable
 fun SwitchItem(
@@ -38,48 +49,49 @@ fun SwitchItem(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        shape = MaterialTheme.shapes.medium,
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFE7F1EE),      // 设置按钮背景颜色
-            contentColor = Color(0xFF020817)      // 设置按钮文本颜色
+            containerColor = TjiSurface,
+            contentColor = TjiTextPrimary
         )
     ) {
         Column(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(14.dp)
                 .fillMaxWidth()
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(0.dp) // 去除默认的内边距
-
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
                         text = switch.deviceName,
-                        style = MaterialTheme.typography.titleMedium
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TjiTextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
                     StatusChip(switch.isOnline)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    // 电量显示
                     BatteryIndicator(
                         voltage = switch.inputVoltage,
                         iconSize = 20.dp
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
                 DeviceInfoButton(switch = switch)
-
             }
 
             HorizontalDivider(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = TjiBorder,
                 thickness = 1.dp
             )
 
@@ -99,32 +111,29 @@ fun SwitchItem(
         }
 
         Row(
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = modifier
                 .fillMaxWidth()
-                .padding(bottom = 10.dp)
+                .padding(horizontal = 14.dp, vertical = 0.dp)
+                .padding(bottom = 12.dp)
         ) {
-            Button(
+            TjiActionButton(
+                text = "打开",
+                enabled = true,
+                color = TjiPrimary,
                 onClick = { updateAngleAndControl(90f) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,      // 设置按钮背景颜色
-                    contentColor = Color(0xFF020817)      // 设置按钮文本颜色
-                )
-            ) {
-                Text("打开")
-            }
+                modifier = Modifier
+                    .weight(1f)
+            )
 
-            Spacer(modifier = Modifier.width(50.dp))
-
-            Button(
+            TjiActionButton(
+                text = "关闭",
+                enabled = true,
+                color = TjiWarning,
                 onClick = { updateAngleAndControl(0f) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,      // 设置按钮背景颜色
-                    contentColor = Color(0xFF020817)      // 设置按钮文本颜色
-                )
-            ) {
-                Text("关闭")
-            }
+                modifier = Modifier
+                    .weight(1f)
+            )
         }
     }
 }
@@ -144,14 +153,14 @@ fun AngleSlider(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "阀门角度:",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
+                text = "阀门角度",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TjiTextPrimary
             )
             Text(
                 text = "${value.toInt()}°",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
+                style = MaterialTheme.typography.titleMedium,
+                color = TjiTextPrimary
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -163,7 +172,7 @@ fun AngleSlider(
             Text(
                 text = "${minValue.toInt()}°",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = TjiTextSecondary
             )
 
             CustomSlider(
@@ -177,7 +186,7 @@ fun AngleSlider(
             Text(
                 text = "${maxValue.toInt()}°",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = TjiTextSecondary
             )
         }
     }

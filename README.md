@@ -1,6 +1,6 @@
 # TJI Platform
 
-版本：`V2.0.1`
+版本：`V2.0.2`
 
 TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 App。当前项目由原来的消防吊桶控制 App 演进而来，目标是把消防吊桶、光伏清洗等简单设备统一放到同一个平台 App 中管理；大疆 MSDK 这类复杂产品暂不放入本 App。
 
@@ -36,6 +36,14 @@ app/src/main/java/com/tji/device/
 NetWork/            # 网络、HTTP、MQTT 基础模块
 Doc/                # 项目说明与协议文档
 ```
+
+新增产品线前先阅读：
+
+```text
+Doc/新增产品线接入规范.md
+```
+
+该文档用于统一新增产品的目录隔离、UI 风格、MQTT topic、悬浮窗、测试和交付清单。具体产品需求再写到对应产品自己的 Doc 下。
 
 ## MQTT 约定
 
@@ -96,8 +104,8 @@ App 当前负责：
 当前版本配置在 `gradle.properties`：
 
 ```properties
-APP_VERSION_CODE=16
-APP_VERSION_NAME=V2.0.1
+APP_VERSION_CODE=202
+APP_VERSION_NAME=V2.0.2
 ```
 
 ## 当前重点

@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import com.amap.api.maps.MapsInitializer
+import com.tji.device.di.AppContainer
 import com.tji.device.util.ToastUtils
 import com.tji.network.DataReportManager
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +26,11 @@ class MyApplication : Application(), LifecycleOwner {
     override fun onCreate() {
         super.onCreate()
 
+        AppContainer.initialize(this)
+
+        MapsInitializer.updatePrivacyShow(this, true, true)
+        MapsInitializer.updatePrivacyAgree(this, true)
+
         ToastUtils.init(applicationContext)
 
         lifecycleScope.launch {
@@ -41,7 +48,12 @@ class MyApplication : Application(), LifecycleOwner {
 
     private suspend fun checkUpdate() {
         try {
-            val response = DataReportManager.getInstance().getProductInfo()
+            Log.d(
+                TAG,
+                "开始检查 App 更新: productId=$APP_UPDATE_PRODUCT_ID type=$APP_UPDATE_TYPE " +
+                        "localVersionCode=${BuildConfig.VERSION_CODE} localVersionName=${BuildConfig.VERSION_NAME}"
+            )
+            val response = DataReportManager.getInstance().getProductInfo(APP_UPDATE_PRODUCT_ID)
             if (response.code != 200) {
                 Log.w(TAG, "版本检查接口非 200: code=${response.code} message=${response.message}")
                 return
@@ -72,5 +84,7 @@ class MyApplication : Application(), LifecycleOwner {
 
     companion object {
         private const val TAG = "MyApplication"
+        private const val APP_UPDATE_TYPE = 1
+        private const val APP_UPDATE_PRODUCT_ID = 2
     }
 }

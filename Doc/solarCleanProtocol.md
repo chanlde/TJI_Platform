@@ -44,7 +44,7 @@ App 当前下发命令码：
 | 4 | SET_SPRAY_ANGLE | `amplitudeDeg` | 喷洒单边摆幅角，0-40 |
 | 5 | SET_SWING_SPEED | `speedPercent` | 摆动速度，0-100 |
 | 6 | SET_SERVO_SWING | `on`，可选 `speedPercent`、`amplitude` | 摆动开关 |
-| 20 | START_OTA | `target_version`、`hardware_version`、`file_size`、`sha256`、`download_url`，可选 `signature` | 开始 OTA |
+| 20 | START_OTA | 必填 `target_version`、`target_inner_version`、`download_url`、`file_size`、`sha256`；可选 `hardware_version`、`signature` | 开始 OTA |
 | 30 | ROUTE_LIST | 无 | 查询航线槽位，当前 App 暂不使用 |
 | 31 | ROUTE_DELETE | `slot` | 删除航线槽位，当前 App 暂不使用 |
 | 32 | ROUTE_DOWNLOAD | `slot`、`url`、`size`，可选 `checksum` | 下载航线，当前 App 暂不使用 |

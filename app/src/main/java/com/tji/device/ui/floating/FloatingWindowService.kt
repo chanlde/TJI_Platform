@@ -30,9 +30,9 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.tji.device.data.model.ProductType
 import com.tji.device.di.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.math.roundToInt
+
 class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStateRegistryOwner {
 
     private val binder = LocalBinder()
@@ -50,25 +50,17 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
         get() = savedStateRegistryController.savedStateRegistry
 
 
-    private val _test= MutableStateFlow(false)
-    val test: StateFlow<Boolean> = _test
-
-
-
     private val layoutParams by lazy {
         WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE,
+            overlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 60
-            y = 320
+            x = defaultCenterX()
+            y = defaultCenterY()
         }
     }
 
@@ -76,6 +68,25 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
 
     private fun dpToPx(dp: Int): Int =
         (dp * resources.displayMetrics.density).roundToInt()
+
+    private fun defaultCenterX(): Int {
+        val metrics = resources.displayMetrics
+        return ((metrics.widthPixels - dpToPx(50)) / 2).coerceAtLeast(0)
+    }
+
+    private fun defaultCenterY(): Int {
+        val metrics = resources.displayMetrics
+        return ((metrics.heightPixels - dpToPx(50)) / 2).coerceAtLeast(0)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun overlayWindowType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    }
 
     // 手动通过 ViewModelProvider 获取 ViewModel
     private val viewModel: FloatingWindowViewModel by lazy {
@@ -162,7 +173,10 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
             FloatingWindowMode.ICON -> WindowSize(dpToPx(50), dpToPx(50))
             FloatingWindowMode.EXPANDED -> when (productType) {
                 ProductType.FireBucket -> WindowSize(width = dpToPx(360), height = dpToPx(520))
-                ProductType.SolarClean -> WindowSize(width = dpToPx(340), height = WRAP_CONTENT)
+                ProductType.SolarClean -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
+                ProductType.DropperSixStage -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
+                ProductType.RadioDetection -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
+                ProductType.Speaker -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
             }
         }
 

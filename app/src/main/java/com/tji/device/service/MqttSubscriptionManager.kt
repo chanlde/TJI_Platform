@@ -2,14 +2,16 @@ package com.tji.device.service
 
 import android.util.Log
 import com.tji.device.data.model.ProductType
+import com.tji.device.product.radiodetection.mqtt.RadioDetectionMqttTopics
+import com.tji.device.service.mqtt.ProductMqttRouter
 import com.tji.device.service.mqtt.mqttTopicsFor
-import com.tji.network.MqttManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -30,6 +32,7 @@ class MqttSubscriptionManager(
 ) {
     private val subscribedTopics = ConcurrentHashMap.newKeySet<String>()
     private val subscribedDevices = ConcurrentHashMap.newKeySet<SubscriptionTarget>()
+    private val messageScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /** 订阅时登记的「此 SN 当前属于哪条产品线」 */
     private val subscriptionProductBySerial = ConcurrentHashMap<String, ProductType>()
     /** 同一 SN 上串行「退订 / 强制重订」，避免与 `async`、重连叠加以致 unsubscribe/subscribe 交错重复。 */
@@ -88,24 +91,26 @@ class MqttSubscriptionManager(
         Log.d(TAG, "--- 处理设备取消订阅: $serialNumber product=$productType ---")
 
         try {
-            val layouts = when (productType) {
-                null -> {
-                    Log.w(TAG, "退订时无 SN 产品线记录，按全部产品线尝试退订: $serialNumber")
-                    ProductType.values().map { mqttTopicsFor(it) }
-                }
-                else -> listOf(mqttTopicsFor(productType))
+            if (productType == null) {
+                Log.w(TAG, "退订时无 SN 产品线记录，按全部产品线尝试退订: $serialNumber")
             }
 
-            val topics = layouts.flatMap { layout ->
-                listOf(layout.lifecycleTopic(serialNumber), layout.statusTopic(serialNumber))
+            val topics = when (productType) {
+                null -> ProductType.values().flatMap { subscriptionTopicsFor(serialNumber, it) }.map { it.first }
+                else -> subscriptionTopicsFor(serialNumber, productType).map { it.first }
             }
 
             topics.forEach { topic ->
                 try {
-                    if (subscribedTopics.contains(topic)) {
+                    val keys = subscriptionKeysForTopic(topic, productType)
+                    if (keys.isNotEmpty()) {
                         Log.d(TAG, "🔄 取消订阅主题: $topic")
-                        MqttManager.getInstance().unsubscribe(topic)
-                        subscribedTopics.remove(topic)
+                        productType?.let { ProductMqttRouter.managerFor(it) }
+                            ?: ProductType.values()
+                                .map { ProductMqttRouter.managerFor(it) }
+                                .distinctBy { it.getConfig() }
+                                .forEach { it.unsubscribe(topic) }
+                        keys.forEach { subscribedTopics.remove(it) }
                         Log.d(TAG, "✅ 取消订阅成功: $topic")
                     }
                 } catch (e: Exception) {
@@ -164,15 +169,12 @@ class MqttSubscriptionManager(
         subscriptionProductBySerial[serialNumber] = productType
 
         try {
-            val layout = mqttTopicsFor(productType)
-            val topics = listOf(
-                layout.lifecycleTopic(serialNumber) to 1,
-                layout.statusTopic(serialNumber) to 0,
-            )
+            val topics = subscriptionTopicsFor(serialNumber, productType)
 
             topics.forEach { (topic, qos) ->
                 try {
-                    if (subscribedTopics.contains(topic)) {
+                    val key = subscriptionKey(topic, productType)
+                    if (subscribedTopics.contains(key)) {
                         Log.d(TAG, "跳过已订阅主题: $topic")
                         subscribedDevices.add(SubscriptionTarget(serialNumber, productType))
                         return@forEach
@@ -180,11 +182,11 @@ class MqttSubscriptionManager(
 
                     Log.d(TAG, "订阅主题: $topic qos=$qos")
 
-                    MqttManager.getInstance().subscribe(
+                    ProductMqttRouter.managerFor(productType).subscribe(
                         topic = topic,
                         qos = qos,
                         onMessage = { message ->
-                            CoroutineScope(Dispatchers.IO).launch {
+                            messageScope.launch {
                                 try {
                                     mqttEventHandler.handleMessage(
                                         serialNumber,
@@ -196,11 +198,25 @@ class MqttSubscriptionManager(
                                 }
                             }
                         },
+                        onMessageWithMeta = { message, isRetained ->
+                            messageScope.launch {
+                                try {
+                                    mqttEventHandler.handleMessage(
+                                        serialNumber,
+                                        productType,
+                                        message,
+                                        isRetained = isRetained
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "消息处理失败 - SN: $serialNumber", e)
+                                }
+                            }
+                        },
                         onError = { throwable ->
                             Log.e(TAG, "订阅失败 - 主题: $topic", throwable)
                         },
                         onSubscribed = {
-                            subscribedTopics.add(topic)
+                            subscribedTopics.add(key)
                             subscribedDevices.add(SubscriptionTarget(serialNumber, productType))
                             Log.d(TAG, "✅ 订阅成功: $topic")
                         }
@@ -218,5 +234,34 @@ class MqttSubscriptionManager(
         }
 
         Log.d(TAG, "--- 设备订阅处理结束: $serialNumber ---")
+    }
+
+    fun cleanup() {
+        messageScope.cancel()
+    }
+
+    private fun subscriptionTopicsFor(serialNumber: String, productType: ProductType): List<Pair<String, Int>> {
+        val layout = mqttTopicsFor(productType)
+        val topics = mutableListOf(
+            layout.lifecycleTopic(serialNumber) to 1,
+            layout.statusTopic(serialNumber) to 0,
+        )
+        if (productType == ProductType.RadioDetection) {
+            topics += RadioDetectionMqttTopics.rgbAckTopic(serialNumber) to 1
+        }
+        return topics
+    }
+
+    private fun subscriptionKey(topic: String, productType: ProductType?): String {
+        val profileKey = productType?.let { ProductMqttRouter.profileKeyFor(it) } ?: "all"
+        return "$profileKey::$topic"
+    }
+
+    private fun subscriptionKeysForTopic(topic: String, productType: ProductType?): List<String> {
+        if (productType != null) {
+            val key = subscriptionKey(topic, productType)
+            return if (subscribedTopics.contains(key)) listOf(key) else emptyList()
+        }
+        return subscribedTopics.filter { it.endsWith("::$topic") }
     }
 }

@@ -17,7 +17,7 @@ class MqttService : Service() {
         super.onDestroy()
         Log.d("MqttService", "Service onDestroy")
 
-        MqttManager.getInstance().disconnect()
+        MqttManager.disconnectAll()
     }
 
     override fun onBind(intent: Intent?): IBinder? {

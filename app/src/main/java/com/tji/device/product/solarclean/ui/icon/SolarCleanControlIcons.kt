@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.tji.device.ui.theme.TjiPrimary
 
 val PumpPressure: ImageVector
     get() {
@@ -150,9 +151,9 @@ private var _SwingSpeed: ImageVector? = null
 private fun SolarCleanControlIconsPreview() {
     MaterialTheme {
         Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            Icon(PumpPressure, contentDescription = "水泵压力", tint = Color(0xFF1677FF))
-            Icon(SprayAngle, contentDescription = "喷洒角度", tint = Color(0xFF1677FF))
-            Icon(SwingSpeed, contentDescription = "摆动速度", tint = Color(0xFF1677FF))
+            Icon(PumpPressure, contentDescription = "水泵压力", tint = TjiPrimary)
+            Icon(SprayAngle, contentDescription = "喷洒角度", tint = TjiPrimary)
+            Icon(SwingSpeed, contentDescription = "摆动速度", tint = TjiPrimary)
         }
     }
 }

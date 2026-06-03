@@ -226,20 +226,20 @@ firmware/
     v1.0.4/app.bin
 ```
 
-固件元信息示例：
+固件元信息示例（新版服务器接口）：
 
 ```json
 {
-  "version": "1.0.4",
-  "product_type": "SolarClean",
-  "hardware_version": "HW-A",
-  "size": 245760,
+  "id": 8,
+  "version": "4",
+  "productName": "光伏清洗",
+  "techDesc": "光伏清洗bin",
+  "innerVersion": "6",
+  "publishDate": "2026-05-29 00:00:00",
+  "path": "/download/SolarClean_APP_V0.0.1_0X08020000.bin",
+  "fileSize": 245760,
   "sha256": "xxxxxxxx",
-  "signature": "xxxxxxxx",
-  "min_battery": 30,
-  "force": false,
-  "release_note": "修复电机保护逻辑",
-  "download_url": "https://example.com/firmware/HW-A/v1.0.4/app.bin"
+  "type": 2
 }
 ```
 
@@ -404,55 +404,61 @@ App 固件启动后，上报：
 
 ```json
 {
-  "product_type": "SolarClean",
+  "v": 1,
+  "type": "deviceInfo",
+  "ts": 8481,
   "hardware_version": "HW-A",
   "firmware_version": "1.0.3",
+  "inner_version": 3,
   "slot": "A",
   "ota_status": "IDLE",
   "last_ota_result": "NONE",
   "last_fail_reason": "NONE",
-  "battery": 86,
-  "network": "online"
+  "network": "4g"
 }
 ```
 
 ### 7.2 查询新版本
 
-设备或 App 向服务器查询新版本。
+App 向服务器查询新版本。
 
 请求示例：
 
-```json
-{
-  "product_type": "SolarClean",
-  "hardware_version": "HW-A",
-  "firmware_version": "1.0.3"
-}
+```http
+GET /api/data/appversion/getAppVersion?productId=3&type=2
 ```
 
 服务器返回：
 
 ```json
 {
-  "has_update": true,
-  "version": "1.0.4",
-  "product_type": "SolarClean",
-  "hardware_version": "HW-A",
-  "size": 245760,
-  "sha256": "xxxxxxxx",
-  "signature": "xxxxxxxx",
-  "force": false,
-  "min_battery": 30,
-  "release_note": "修复电机保护逻辑",
-  "download_url": "https://example.com/firmware/HW-A/v1.0.4/app.bin"
+  "id": 8,
+  "version": "4",
+  "productName": "光伏清洗",
+  "techDesc": "光伏清洗bin",
+  "innerVersion": "6",
+  "publishDate": "2026-05-29 00:00:00",
+  "path": "/download/SolarClean_APP_V0.0.1_0X08020000.bin",
+  "type": 2
 }
 ```
+
+版本类型：
+
+| type | 含义 | productId |
+| --- | --- | --- |
+| 1 | App 更新包 | 1=水枪控制，2=水桶控制 |
+| 2 | 设备固件更新包 | 3=光伏清洗，4=消防吊桶 |
+
+App 使用设备上报的内部版本 `inner_version` 与服务器 `innerVersion` 做本地比较。`firmware_version` 和服务器 `version` 主要用于用户展示。服务器 `path` 如果是相对路径，App 下发 `START_OTA` 前补全为完整下载地址。
 
 App 显示：
 
 ```text
 当前版本：1.0.3
 最新版本：1.0.4
+当前内部版本：3
+最新内部版本：6
 更新内容：修复电机保护逻辑
 是否升级？
 ```
@@ -466,15 +472,15 @@ App 显示：
 ```json
 {
   "command": "START_OTA",
-  "target_version": "1.0.4",
-  "product_type": "SolarClean",
-  "hardware_version": "HW-A",
-  "size": 245760,
+  "target_version": "4",
+  "target_inner_version": 6,
+  "file_size": 245760,
   "sha256": "xxxxxxxx",
-  "signature": "xxxxxxxx",
-  "download_url": "https://example.com/firmware/HW-A/v1.0.4/app.bin"
+  "download_url": "https://api.tjinnovations.cloud/download/SolarClean_APP_V0.0.1_0X08020000.bin"
 }
 ```
+
+服务器返回 `fileSize` 和 `sha256` 后，App 必须下发 MQTT 字段 `file_size` 和 `sha256`。单片机必须用这两个字段做固件大小和 Hash 校验。
 
 设备收到指令后先检查升级条件：
 

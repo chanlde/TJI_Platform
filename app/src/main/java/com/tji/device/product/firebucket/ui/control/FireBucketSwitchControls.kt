@@ -37,8 +37,9 @@ fun SwitchItemComposable(linkSn: String, switch: Switch) {
             if (!isPreview) switchVm?.setAngle(linkSn, updatedParms)
         },
         onAngleChange = { newAngle ->
-            scParms = scParms.copy(angle = newAngle)
-            if (!isPreview) switchVm?.setAngle(linkSn, scParms)
+            val updatedParms = scParms.copy(angle = newAngle)
+            scParms = updatedParms
+            if (!isPreview) switchVm?.setAngle(linkSn, updatedParms)
         }
     )
 }

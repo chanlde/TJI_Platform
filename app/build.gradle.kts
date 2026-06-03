@@ -1,5 +1,6 @@
 import com.android.build.gradle.api.ApkVariantOutput
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
+import java.util.Properties
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -12,6 +13,15 @@ plugins {
 }
 val APP_VERSION_CODE: String  by project
 val APP_VERSION_NAME: String by project
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+val amapApiKey: String = providers.gradleProperty("AMAP_API_KEY")
+    .orElse(localProperties.getProperty("AMAP_API_KEY", ""))
+    .get()
 
 android {
     namespace = "com.tji.device"
@@ -26,6 +36,7 @@ android {
         versionName = APP_VERSION_NAME
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
     }
 
     buildTypes {
@@ -87,6 +98,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("com.amap.api:3dmap:10.0.600")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -100,6 +113,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.animation)
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

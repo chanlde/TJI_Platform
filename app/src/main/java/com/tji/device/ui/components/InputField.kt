@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.tji.device.ui.icon.common.Eye
 import com.tji.device.ui.icon.common.EyeOff
 import com.tji.device.ui.theme.LoginColors
+import com.tji.device.ui.theme.TjiDangerSoft
+import com.tji.device.ui.theme.TjiSurfaceSoft
 
 @Composable
 fun InputField(
@@ -69,11 +71,20 @@ fun InputField(
                 }
             }
         } else null,
+        supportingText = if (isError && errorMessage.isNotBlank()) {
+            {
+                Text(
+                    text = errorMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        } else null,
         modifier = Modifier.fillMaxWidth(),
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = Color(0xFFF8FAFF),
-            unfocusedContainerColor = Color(0xFFF8FAFF),
-            errorContainerColor = Color(0xFFFFF0F0),
+            focusedContainerColor = TjiSurfaceSoft,
+            unfocusedContainerColor = TjiSurfaceSoft,
+            errorContainerColor = TjiDangerSoft,
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
             errorIndicatorColor = Color.Transparent,

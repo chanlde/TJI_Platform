@@ -24,6 +24,9 @@ data class FloatingLinkSummary(
     val onlineSwitches: List<FloatingSwitchSummary>,
     val offlineSwitches: List<FloatingSwitchSummary>
 ) {
+    val allSwitches: List<FloatingSwitchSummary>
+        get() = onlineSwitches + offlineSwitches
+
     companion object {
         fun fromSwitches(
             serialNumber: String,
@@ -65,6 +68,7 @@ data class FloatingWindowUiState(
     var mode: FloatingWindowMode = FloatingWindowMode.ICON,
     val links: List<FloatingLinkSummary> = emptyList(),
     val selectedLinkSerial: String? = null,
+    val selectedLinkName: String? = null,
     val preferredProductType: ProductType = ProductType.FireBucket,
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
@@ -74,10 +78,23 @@ data class FloatingWindowUiState(
         get() = links.isNotEmpty()
 
     val selectedLink: FloatingLinkSummary?
-        get() = selectedLinkSerial?.let { serial ->
-            links.firstOrNull { it.serialNumber == serial }
-        } ?: links.firstOrNull { it.productType == preferredProductType }
+        get() {
+            val serial = selectedLinkSerial
+            return if (serial != null) {
+                links.firstOrNull { it.serialNumber == serial }
+                    ?: FloatingLinkSummary(
+                        serialNumber = serial,
+                        name = selectedLinkName?.takeIf { it.isNotBlank() } ?: serial,
+                        isOnline = false,
+                        productType = preferredProductType,
+                        onlineSwitches = emptyList(),
+                        offlineSwitches = emptyList()
+                    )
+            } else {
+                links.firstOrNull { it.productType == preferredProductType }
+            }
+        }
 
     val activeProductType: ProductType
-        get() = selectedLinkSerial?.let { selectedLink?.productType } ?: preferredProductType
+        get() = selectedLink?.productType ?: preferredProductType
 }

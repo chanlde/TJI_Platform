@@ -13,6 +13,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
+import com.tji.device.ui.theme.TjiPrimary
+import com.tji.device.ui.theme.TjiPrimarySoft
+import com.tji.device.ui.theme.TjiWarning
+import com.tji.device.ui.theme.TjiWarningSoft
 
 @Composable
 fun ProductTypeBadge(
@@ -20,8 +24,11 @@ fun ProductTypeBadge(
     modifier: Modifier = Modifier
 ) {
     val (backgroundColor, contentColor) = when (productType) {
-        ProductType.FireBucket -> Color(0xFFE8F3EF) to Color(0xFF215C47)
-        ProductType.SolarClean -> Color(0xFFFFF1D8) to Color(0xFF8A5A00)
+        ProductType.FireBucket -> TjiPrimarySoft to TjiPrimary
+        ProductType.SolarClean -> TjiWarningSoft to TjiWarning
+        ProductType.DropperSixStage -> TjiPrimarySoft to TjiPrimary
+        ProductType.RadioDetection -> TjiPrimarySoft to TjiPrimary
+        ProductType.Speaker -> TjiWarningSoft to TjiWarning
     }
 
     Box(

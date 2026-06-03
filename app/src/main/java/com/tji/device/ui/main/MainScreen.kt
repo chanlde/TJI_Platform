@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -42,11 +41,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,20 +68,35 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductCatalog
+import com.tji.device.data.model.TestDeviceFallbacks
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.firebucket.model.Switch
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.ui.components.productEmptyIllustrationRes
 import com.tji.device.ui.components.productSceneRes
+import com.tji.device.ui.components.TjiOnlineStatus
+import com.tji.device.ui.floating.FloatingWindowAppearance
 import com.tji.device.ui.icon.product.productIconVector
 import com.tji.device.ui.theme.LoginColors
+import com.tji.device.ui.theme.TjiBackground
+import com.tji.device.ui.theme.TjiBorder
+import com.tji.device.ui.theme.TjiPrimary
+import com.tji.device.ui.theme.TjiPrimaryDark
+import com.tji.device.ui.theme.TjiPrimarySoft
+import com.tji.device.ui.theme.TjiSurfaceSoft
+import com.tji.device.ui.theme.TjiTextMuted
+import com.tji.device.ui.theme.TjiTextPrimary
+import com.tji.device.ui.theme.TjiTextSecondary
+import com.tji.device.ui.theme.TjiWarning
+import com.tji.device.ui.theme.TjiWarningSoft
+import com.tji.device.util.ToastUtils
 import com.tji.device.util.userData
 
-private val PlatformHomeBackground = Color(0xFFF5F7FA)
-private val PlatformInk = Color(0xFF101828)
-private val PlatformMuted = Color(0xFF667085)
-private val PlatformBlue = Color(0xFF3478F6)
+private val PlatformHomeBackground = TjiBackground
+private val PlatformInk = TjiTextPrimary
+private val PlatformMuted = TjiTextSecondary
+private val PlatformBlue = TjiPrimary
 
 private enum class MetricKind {
     Device,
@@ -104,16 +121,35 @@ fun MainScreen(
     var selectedLinkSerial by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var showDeviceSettings by remember { mutableStateOf(false) }
+    var boundDeviceVersion by remember { mutableStateOf(0) }
     userData.preferredProductTypeFlow.collectAsStateWithLifecycle()
-    val boundAccountDevices = userData.boundAccountDevices.orEmpty()
+    val boundAccountDevices = remember(boundDeviceVersion, userData.boundAccountDevices) {
+        userData.boundAccountDevices.orEmpty()
+    }
     val selectedBoundDevice = remember(selectedLinkSerial, boundAccountDevices) {
         val sn = selectedLinkSerial ?: return@remember null
         boundAccountDevices.firstOrNull { it.serialNumber == sn }
+            ?: TestDeviceFallbacks.speaker.takeIf {
+                activeProductPage == ProductType.Speaker && it.serialNumber == sn
+            }
+            ?: radioDetectionDemoDevice().takeIf {
+                activeProductPage == ProductType.RadioDetection && it.serialNumber == sn
+            }
     }
     val selectedRuntimeDevice = remember(runtimeDevices, selectedBoundDevice) {
         val info = selectedBoundDevice ?: return@remember null
         runtimeDevices.firstOrNull {
             it.serialNumber == info.serialNumber && it.productType == info.productType
+        } ?: if (info.productType == ProductType.RadioDetection && info.serialNumber == radioDetectionDemoDevice().serialNumber) {
+            ProductDeviceRuntimeSnapshot(
+                serialNumber = info.serialNumber,
+                name = info.name,
+                productType = info.productType,
+                isOnline = true,
+                childCount = null
+            )
+        } else {
+            null
         }
     }
     val selectedFireBucketLink = remember(selectedRuntimeDevice, selectedBoundDevice) {
@@ -130,20 +166,21 @@ fun MainScreen(
         containerColor = PlatformHomeBackground,
         topBar = {
             when {
-                selectedBoundDevice != null -> DeviceDetailTopBar(
+                selectedBoundDevice != null && selectedBoundDevice.productType != ProductType.RadioDetection -> DeviceDetailTopBar(
                     title = if (showDeviceSettings) "设备设置" else selectedBoundDevice.name,
                     isOnline = selectedRuntimeDevice?.isOnline == true,
-                    showSettings = selectedBoundDevice.productType == ProductType.SolarClean && !showDeviceSettings,
+                    showSettings = !showDeviceSettings,
                     onBack = {
                         if (showDeviceSettings) {
                             showDeviceSettings = false
                         } else {
                             selectedLinkSerial = null
+                            userData.selectedLinkSerial = null
                         }
                     },
                     onSettings = { showDeviceSettings = true }
                 )
-                activeProductPage != null -> ProductPageTopBar(
+                activeProductPage != null && selectedBoundDevice == null -> ProductPageTopBar(
                     productType = activeProductPage,
                     onBack = { activeProductPage = null }
                 )
@@ -160,18 +197,35 @@ fun MainScreen(
             selectedFireBucketLink = selectedFireBucketLink,
             onProductSelected = {
                 selectedLinkSerial = null
+                userData.selectedLinkSerial = null
                 showDeviceSettings = false
                 activeProductPage = it
                 mainViewModel.openProduct(it)
             },
             onLinkSelected = {
                 selectedLinkSerial = it.serialNumber
+                userData.selectedLinkSerial = it.serialNumber
                 showDeviceSettings = false
                 userData.preferredProductType = it.productType
                 mainViewModel.openDevice(it)
             },
+            onSelectedDeviceBack = {
+                selectedLinkSerial = null
+                userData.selectedLinkSerial = null
+                showDeviceSettings = false
+            },
             onSettingsClick = { showSettings = true },
             showDeviceSettings = showDeviceSettings,
+            onRenameDevice = { device, newName ->
+                mainViewModel.updateDeviceName(device, newName) { success, message ->
+                    if (success) {
+                        ToastUtils.showToast("设备名修改成功")
+                        boundDeviceVersion += 1
+                    } else {
+                        ToastUtils.showToast(message ?: "设备名修改失败")
+                    }
+                }
+            },
         )
     }
 
@@ -193,6 +247,7 @@ fun MainScreen(
                 showDeviceSettings = false
             } else if (selectedBoundDevice != null) {
                 selectedLinkSerial = null
+                userData.selectedLinkSerial = null
             } else if (activeProductPage != null) {
                 activeProductPage = null
             } else {
@@ -212,8 +267,10 @@ private fun MainScreenContent(
     selectedFireBucketLink: FireBucketLinkDevice?,
     onProductSelected: (ProductType) -> Unit,
     onLinkSelected: (BoundAccountDevice) -> Unit,
+    onSelectedDeviceBack: () -> Unit = {},
     onSettingsClick: () -> Unit,
     showDeviceSettings: Boolean = false,
+    onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     when {
@@ -226,6 +283,8 @@ private fun MainScreenContent(
             device = selectedBoundDevice,
             fireBucketLink = selectedFireBucketLink,
             showSettings = showDeviceSettings,
+            onRenameDevice = onRenameDevice,
+            onBack = onSelectedDeviceBack,
             modifier = modifier
         )
         activeProductPage != null -> {
@@ -332,46 +391,6 @@ private fun ProductHome(
                 }
             }
         }
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "已绑定设备",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = PlatformInk
-                )
-                Text(
-                    text = "按设备进入控制台",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = PlatformMuted
-                )
-            }
-        }
-        when {
-            boundAccountDevices.isNotEmpty() -> {
-                items(boundAccountDevices, key = { "${it.productType.name}:${it.serialNumber}" }) { device ->
-                    val live = runtimeDevices.firstOrNull {
-                        it.serialNumber == device.serialNumber && it.productType == device.productType
-                    }
-                    PlatformDeviceCard(
-                        device = device,
-                        live = live,
-                        onClick = { onLinkSelected(device) }
-                    )
-                }
-            }
-            else -> {
-                item {
-                    EmptyPlatformHomeCard()
-                }
-            }
-        }
     }
 }
 
@@ -389,35 +408,19 @@ private fun ProductDevicesScreen(
 ) {
     val scopedLive = runtimeDevices.filter { it.productType == productType }
     val accountDevices = knownLinks.filter { it.productType == productType }
-    val showPicker = accountDevices.isNotEmpty() || scopedLive.isNotEmpty()
-    val totalChoices = if (accountDevices.isNotEmpty()) {
-        accountDevices.size
-    } else {
-        scopedLive.size
+    val displayAccountDevices = when {
+        accountDevices.isNotEmpty() -> accountDevices
+        productType == ProductType.Speaker -> listOf(TestDeviceFallbacks.speaker)
+        else -> emptyList()
     }
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        if (showPicker && totalChoices >= 1) {
-            item {
-                Text(
-                    text = if (totalChoices > 1) {
-                        "请选择要操作的设备（共 $totalChoices 台）"
-                    } else {
-                        "选择设备"
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = LoginColors.OnSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-            }
-        }
         when {
-            accountDevices.isNotEmpty() -> {
-                items(accountDevices, key = { it.serialNumber }) { info ->
+            displayAccountDevices.isNotEmpty() -> {
+                items(displayAccountDevices, key = { it.serialNumber }) { info ->
                     val live = scopedLive.firstOrNull { it.serialNumber == info.serialNumber }
                     PlatformDeviceCard(
                         device = info,
@@ -452,6 +455,14 @@ private fun ProductDevicesScreen(
             }
         }
     }
+}
+
+private fun radioDetectionDemoDevice(): BoundAccountDevice {
+    return BoundAccountDevice(
+        serialNumber = "T1640618D",
+        name = "频谱检测仪",
+        productType = ProductType.RadioDetection
+    )
 }
 
 @Composable
@@ -490,26 +501,30 @@ private fun ProductEntryCard(
         }
 
         Card(
+            onClick = onClick,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(cardHeight)
-                .clickable(onClick = onClick),
+                .height(cardHeight),
             shape = shape,
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 14.dp else 8.dp),
             border = androidx.compose.foundation.BorderStroke(
                 width = 1.dp,
-                color = if (selected) Color(0xFFB8D0FF) else Color(0xFFE8EDF5)
+                color = if (selected) TjiPrimary.copy(alpha = 0.32f) else TjiBorder
             )
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .clip(shape)
                     .background(
                         brush = Brush.horizontalGradient(
                             colors = when (productType) {
-                                ProductType.FireBucket -> listOf(Color.White, Color(0xFFF8FBFF))
-                                ProductType.SolarClean -> listOf(Color.White, Color(0xFFF8FCFF))
+                                ProductType.FireBucket -> listOf(Color.White, TjiSurfaceSoft)
+                                ProductType.SolarClean -> listOf(Color.White, TjiSurfaceSoft)
+                                ProductType.DropperSixStage -> listOf(Color.White, TjiSurfaceSoft)
+                                ProductType.RadioDetection -> listOf(Color.White, Color(0xFFEAF2FF))
+                                ProductType.Speaker -> listOf(Color.White, TjiWarningSoft)
                             }
                         ),
                         shape = shape
@@ -561,7 +576,7 @@ private fun ProductEntryCard(
                         Text(
                             text = ProductCatalog.definitionOf(productType).platformValueLine,
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF7A8799),
+                            color = TjiTextMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -622,19 +637,25 @@ private fun PlatformDeviceCard(
     onClick: () -> Unit
 ) {
     val accentColors = when (device.productType) {
-        ProductType.FireBucket -> listOf(Color.White, Color(0xFFF7FAFF))
-        ProductType.SolarClean -> listOf(Color.White, Color(0xFFFFFBF4))
+        ProductType.FireBucket -> listOf(Color.White, TjiSurfaceSoft)
+        ProductType.SolarClean -> listOf(Color.White, TjiWarningSoft)
+        ProductType.DropperSixStage -> listOf(Color.White, TjiSurfaceSoft)
+        ProductType.RadioDetection -> listOf(Color.White, Color(0xFFEAF2FF))
+        ProductType.Speaker -> listOf(Color.White, TjiWarningSoft)
     }
     val subDeviceCount = live?.childCount
     val isOnline = live?.isOnline == true
-    val displayName = live?.name ?: device.name
-    val subtitle = subDeviceCount?.let { "$it 台子设备" }
-        ?: device.serialNumber.takeUnless { it.equals(displayName, ignoreCase = true) }
+    val displayName = device.name
+    val subtitle = when {
+        device.productType == ProductType.RadioDetection -> device.serialNumber
+        subDeviceCount != null -> "$subDeviceCount 台子设备"
+        else -> device.serialNumber.takeUnless { it.equals(displayName, ignoreCase = true) }
+    }
 
     Card(
+        onClick = onClick,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
@@ -642,6 +663,7 @@ private fun PlatformDeviceCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
                 .background(
                     brush = Brush.verticalGradient(accentColors),
                     shape = RoundedCornerShape(24.dp)
@@ -680,7 +702,6 @@ private fun PlatformDeviceCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    InlineDeviceStatus(isOnline = isOnline)
                 }
                 subtitle?.let {
                     Text(
@@ -692,6 +713,8 @@ private fun PlatformDeviceCard(
                     )
                 }
             }
+            InlineDeviceStatus(isOnline = isOnline)
+
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
                 contentDescription = null,
@@ -703,23 +726,7 @@ private fun PlatformDeviceCard(
 
 @Composable
 private fun InlineDeviceStatus(isOnline: Boolean) {
-    val color = if (isOnline) Color(0xFF00B578) else Color(0xFFFF4D4F)
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(color, CircleShape)
-        )
-        Text(
-            text = if (isOnline) "在线" else "离线",
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
+    TjiOnlineStatus(isOnline = isOnline)
 }
 
 private fun productTitle(productType: ProductType): String {
@@ -731,7 +738,7 @@ private fun ProductGlyph(productType: ProductType) {
     Box(
         modifier = Modifier
             .size(52.dp)
-            .background(Color(0xFFEFF5FF), RoundedCornerShape(18.dp)),
+            .background(TjiPrimarySoft, RoundedCornerShape(18.dp)),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -746,7 +753,10 @@ private fun ProductGlyph(productType: ProductType) {
 private fun productAccentColor(productType: ProductType): Color {
     return when (productType) {
         ProductType.FireBucket -> PlatformBlue
-        ProductType.SolarClean -> Color(0xFFE6A11B)
+        ProductType.SolarClean -> TjiWarning
+        ProductType.DropperSixStage -> PlatformBlue
+        ProductType.RadioDetection -> Color(0xFF3B82F6)
+        ProductType.Speaker -> TjiWarning
     }
 }
 
@@ -866,7 +876,7 @@ private fun CircularArrowButton(selected: Boolean) {
         Icon(
             imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
             contentDescription = null,
-            tint = if (selected) Color(0xFF155EEF) else PlatformBlue
+            tint = if (selected) TjiPrimaryDark else PlatformBlue
         )
     }
 }
@@ -876,7 +886,7 @@ private fun MetricGlyph(kind: MetricKind) {
     Box(
         modifier = Modifier
             .size(42.dp)
-            .background(Color(0xFFEAF1FF), RoundedCornerShape(16.dp)),
+            .background(TjiPrimarySoft, RoundedCornerShape(16.dp)),
         contentAlignment = Alignment.Center
     ) {
         when (kind) {
@@ -966,7 +976,7 @@ private fun PlatformMetaCard(
             .clip(RoundedCornerShape(20.dp))
             .background(
                 brush = Brush.verticalGradient(
-                    listOf(Color.White, Color(0xFFF8FAFF))
+                    listOf(Color.White, TjiSurfaceSoft)
                 )
             )
             .padding(horizontal = 16.dp, vertical = 14.dp)
@@ -978,7 +988,7 @@ private fun PlatformMetaCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF475467),
+                color = TjiTextSecondary,
                 fontWeight = FontWeight.Medium
             )
             Row(verticalAlignment = Alignment.Bottom) {
@@ -991,7 +1001,7 @@ private fun PlatformMetaCard(
                 Text(
                     text = " $unit",
                     style = MaterialTheme.typography.titleMedium,
-                    color = Color(0xFF667085),
+                    color = TjiTextSecondary,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(bottom = 5.dp)
                 )
@@ -1012,6 +1022,11 @@ private fun PlatformSettingsSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        FloatingWindowAppearance.load(context)
+    }
+    val floatingWindowBackgroundAlpha by FloatingWindowAppearance.backgroundAlpha.collectAsStateWithLifecycle()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1059,12 +1074,19 @@ private fun PlatformSettingsSheet(
                         }
                     }
                 )
-                HorizontalDivider(color = Color(0xFFE8EDF5))
+                HorizontalDivider(color = TjiBorder)
                 SettingActionRow(
                     title = "悬浮窗权限",
                     value = if (hasFloatingWindowPermission) "已授权" else "未授权",
                     actionText = if (hasFloatingWindowPermission) null else "去授权",
                     onAction = onOpenFloatingWindowPermission
+                )
+                HorizontalDivider(color = TjiBorder)
+                FloatingWindowOpacityRow(
+                    alpha = floatingWindowBackgroundAlpha,
+                    onAlphaChange = { alpha ->
+                        FloatingWindowAppearance.setBackgroundAlpha(context, alpha)
+                    }
                 )
             }
 
@@ -1073,7 +1095,7 @@ private fun PlatformSettingsSheet(
                     title = "当前账号",
                     value = account.ifBlank { "未获取" }
                 )
-                HorizontalDivider(color = Color(0xFFE8EDF5))
+                HorizontalDivider(color = TjiBorder)
                 SettingInfoRow(
                     title = "绑定设备",
                     value = "$deviceCount 台"
@@ -1098,7 +1120,7 @@ private fun SettingsGroup(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
-            .background(Color(0xFFF8FAFF))
+            .background(TjiSurfaceSoft)
             .padding(horizontal = 16.dp, vertical = 4.dp),
         content = content
     )
@@ -1137,6 +1159,30 @@ private fun SettingSwitchRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+private fun FloatingWindowOpacityRow(
+    alpha: Float,
+    onAlphaChange: (Float) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SettingTextPair(
+            title = "悬浮窗透明度",
+            value = "${(alpha * 100).toInt()}%"
+        )
+        Slider(
+            value = alpha,
+            onValueChange = onAlphaChange,
+            valueRange = 0f..1f,
+            steps = 9
         )
     }
 }
@@ -1262,23 +1308,7 @@ private fun DeviceDetailTopBar(
 
 @Composable
 private fun TopBarOnlineStatus(isOnline: Boolean) {
-    val color = if (isOnline) Color(0xFF00B578) else Color(0xFFFF4D4F)
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .background(color, CircleShape)
-        )
-        Text(
-            text = if (isOnline) "在线" else "离线",
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
+    TjiOnlineStatus(isOnline = isOnline, dotSize = 7.dp)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

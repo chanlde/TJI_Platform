@@ -1,9 +1,22 @@
 import org.gradle.kotlin.dsl.implementation
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
 }
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun configString(name: String, defaultValue: String): String =
+    providers.gradleProperty(name)
+        .orElse(localProperties.getProperty(name, defaultValue))
+        .get()
 
 android {
     namespace = "com.tji.network"
@@ -14,6 +27,22 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+
+        buildConfigField(
+            "String",
+            "TJI_API_BASE_URL",
+            "\"${configString("TJI_API_BASE_URL", "https://api.tjinnovations.cloud/")}\""
+        )
+        buildConfigField(
+            "String",
+            "TJI_OTA_BASE_URL",
+            "\"${configString("TJI_OTA_BASE_URL", "https://www.tjinnovations.cloud/")}\""
+        )
+        buildConfigField(
+            "String",
+            "TJI_UPDATE_URL",
+            "\"${configString("TJI_UPDATE_URL", "http://api.tjinnovations.cloud:81/apks/TJI_Platform.apk")}\""
+        )
     }
 
     buildTypes {
@@ -31,6 +60,9 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+    }
+    buildFeatures {
+        buildConfig = true
     }
     // 添加 packaging 配置
     packaging {

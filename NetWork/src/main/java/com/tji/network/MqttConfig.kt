@@ -35,5 +35,29 @@ data class MQTTConfig(
             cleanSession = true,
             qos = 1,
         )
+
+        fun platform(username: String, clientId: String): MQTTConfig =
+            default().copy(
+                username = username,
+                clientId = clientId
+            )
+
+        fun radioDetectionLegacy(clientId: String): MQTTConfig =
+            MQTTConfig(
+                serverHost = "47.121.127.205",
+                serverPort = 1883,
+                clientId = clientId,
+                username = "ruihang",
+                password = "da123456bao",
+                enableTLS = false,
+                keepAliveInterval = 30,
+                cleanSession = true,
+                qos = 1,
+            )
     }
+}
+
+object MqttProfiles {
+    const val PLATFORM = "platform"
+    const val RADIO_DETECTION_LEGACY = "radio_detection_legacy"
 }

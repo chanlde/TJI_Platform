@@ -7,7 +7,9 @@ package com.tji.device.data.model
 data class BoundAccountDevice(
     val serialNumber: String,
     val name: String,
-    val productType: ProductType = ProductType.FireBucket
+    val productType: ProductType = ProductType.FireBucket,
+    /** 后台绑定设备表 id；修改设备显示名时使用，不能用 SN 代替。 */
+    val serverId: Int? = null
 ) {
     companion object {
         /**

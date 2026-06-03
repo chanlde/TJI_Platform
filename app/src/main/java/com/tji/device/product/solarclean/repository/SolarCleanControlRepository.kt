@@ -83,10 +83,11 @@ class SolarCleanControlRepo : SolarCleanControlRepository {
                 }
                 is SolarCleanCommand.StartOta -> {
                     put("target_version", packageInfo.targetVersion)
-                    put("hardware_version", packageInfo.hardwareVersion)
+                    put("download_url", packageInfo.downloadUrl)
                     put("file_size", packageInfo.fileSize)
                     put("sha256", packageInfo.sha256)
-                    put("download_url", packageInfo.downloadUrl)
+                    packageInfo.targetInnerVersion?.let { put("target_inner_version", it) }
+                    packageInfo.hardwareVersion?.let { put("hardware_version", it) }
                     packageInfo.signature?.let { put("signature", it) }
                 }
                 is SolarCleanCommand.RouteList -> {

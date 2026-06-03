@@ -14,6 +14,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tji.device.ui.icon.common.BatteryOutline
+import com.tji.device.ui.theme.TjiError
+import com.tji.device.ui.theme.TjiOnline
+import com.tji.device.ui.theme.TjiTextMuted
+import com.tji.device.ui.theme.TjiWarning
 
 /**
  * 根据电压显示电量图标（使用 Canvas 精确绘制）
@@ -37,7 +41,7 @@ fun BatteryIndicator(
             imageVector = BatteryOutline,
             contentDescription = "电量 ${(batteryLevel * 100).toInt()}%",
             modifier = Modifier.size(iconSize),
-            tint = Color(0xFF757575)
+            tint = TjiTextMuted
         )
 
         // 使用 Canvas 绘制电量填充
@@ -76,13 +80,13 @@ private fun calculateBatteryLevel(voltage: Double): Float {
 
 private fun getBatteryColor(level: Float): Color {
     return when {
-        level <= 0.0f -> Color(0xFFD32F2F)
-        level <= 0.15f -> Color(0xFFFF5722)
-        level <= 0.3f -> Color(0xFFFF9800)
-        level <= 0.45f -> Color(0xFFFFC107)
-        level <= 0.6f -> Color(0xFF8BC34A)
-        level <= 0.75f -> Color(0xFF4CAF50)
-        level <= 0.9f -> Color(0xFF4CAF50)
-        else -> Color(0xFF4CAF50)
+        level <= 0.0f -> TjiError
+        level <= 0.15f -> TjiError
+        level <= 0.3f -> TjiWarning
+        level <= 0.45f -> TjiWarning
+        level <= 0.6f -> TjiOnline.copy(alpha = 0.72f)
+        level <= 0.75f -> TjiOnline
+        level <= 0.9f -> TjiOnline
+        else -> TjiOnline
     }
 }

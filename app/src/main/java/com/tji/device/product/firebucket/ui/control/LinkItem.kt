@@ -18,10 +18,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,7 +33,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.firebucket.model.Switch
+import com.tji.device.ui.components.TjiCardShell
+import com.tji.device.ui.components.TjiOnlineStatus
 import com.tji.device.ui.icon.product.productIconVector
+import com.tji.device.ui.theme.TjiBorder
+import com.tji.device.ui.theme.TjiPrimary
+import com.tji.device.ui.theme.TjiPrimarySoft
+import com.tji.device.ui.theme.TjiTextPrimary
+import com.tji.device.ui.theme.TjiTextSecondary
 
 @Composable
 fun LinkItem(
@@ -47,11 +50,10 @@ fun LinkItem(
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
-    Card(
+    TjiCardShell(
         modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        radius = 22.dp,
+        elevation = 6.dp
     ) {
         Column(
             modifier = Modifier
@@ -70,14 +72,14 @@ fun LinkItem(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .background(Color(0xFFEFF5FF), RoundedCornerShape(16.dp)),
+                        .background(TjiPrimarySoft, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = productIconVector(link.productType),
                         contentDescription = null,
                         modifier = Modifier.size(30.dp),
-                        tint = Color(0xFF3478F6)
+                        tint = TjiPrimary
                     )
                 }
                 Column(
@@ -93,7 +95,7 @@ fun LinkItem(
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF1A1A2E)
+                                color = TjiTextPrimary
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -104,7 +106,7 @@ fun LinkItem(
                         Text(
                             text = it,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF667085),
+                            color = TjiTextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -114,7 +116,7 @@ fun LinkItem(
 
             if (link.subDevices.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = Color(0xFFE4E7EC))
+                HorizontalDivider(color = TjiBorder)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (isPortrait) {
@@ -147,23 +149,7 @@ fun LinkItem(
 
 @Composable
 private fun FireBucketInlineStatus(isOnline: Boolean) {
-    val color = if (isOnline) Color(0xFF00B578) else Color(0xFFFF4D4F)
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(color, CircleShape)
-        )
-        Text(
-            text = if (isOnline) "在线" else "离线",
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
+    TjiOnlineStatus(isOnline = isOnline)
 }
 
 @Preview(showBackground = true)

@@ -1,18 +1,21 @@
 package com.tji.network
 
 import android.util.Log
-import com.tji.network.utils.NetWorkUtils.Companion.BASE_URL
 import com.tji.network.data.ApiResponse
-import com.tji.network.data.ApiService
 import com.tji.network.data.AppVersion
 import com.tji.network.data.LoginResponse
 import com.tji.network.data.OtaLatestResponse
-import kotlinx.coroutines.*
-import okhttp3.*
-import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import java.util.concurrent.TimeUnit
+import com.tji.network.data.mergeWith
+import com.tji.network.http.NetworkHttpClient
+import com.tji.network.http.NetworkResponseHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import okhttp3.OkHttpClient
 
 class DataReportManager private constructor() {
 
@@ -26,127 +29,95 @@ class DataReportManager private constructor() {
             }
         }
         private const val TAG = "DataReportManager"
+        private const val OTA_TYPE_APP = 1
+        private const val OTA_TYPE_FIRMWARE = 2
+        private val LOGIN_PRODUCT_IDS = listOf(2, 3, 4)
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     var authToken: String? = null
+    private val httpClient = NetworkHttpClient(tag = TAG) { authToken }
+    private val responseHandler = NetworkResponseHandler(tag = TAG)
 
-    val okHttpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .addInterceptor(createAuthInterceptor())
-            .addInterceptor(createLoggingInterceptor())
-            .build()
-    }
-
-    private val retrofit: Retrofit by lazy {
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-    }
-
-    private val apiService: ApiService by lazy {
-        retrofit.create(ApiService::class.java)
-    }
-
-    private fun createLoggingInterceptor(): Interceptor {
-        return HttpLoggingInterceptor { message ->
-            Log.d(TAG, message)
-        }.apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-    }
-
-    private fun createAuthInterceptor(): Interceptor {
-        return Interceptor { chain ->
-            var request = chain.request()
-            val path = request.url.encodedPath
-            val isUnauthenticatedLogin =
-                path.contains("/userManager/user/login") || path.endsWith("/login")
-
-            authToken?.let { token ->
-                Log.d(TAG, "🔑 Token 存在: ${token.take(12)}…")
-
-                if (request.header("Authorization") == null) {
-                    request = request.newBuilder()
-                        .addHeader("Authorization", "Bearer $token")
-                        .addHeader("token", token)
-                        .build()
-
-                    Log.d(TAG, "✅ 已添加 Authorization 头")
-                } else {
-                    Log.d(TAG, "⚠️ Authorization 头已存在，跳过")
-                }
-            } ?: run {
-                if (isUnauthenticatedLogin) {
-                    Log.d(TAG, "登录请求（无需预先携带 token）")
-                } else {
-                    Log.w(TAG, "❌ Token 为空，未添加认证头")
-                }
-            }
-
-            Log.d(TAG, "========== 请求头信息 ==========")
-            request.headers.forEach { (name, value) ->
-                Log.d(TAG, "$name: $value")
-            }
-            Log.d(TAG, "================================")
-
-            chain.proceed(request)
-        }
-    }
-
-    private fun handleException(e: Exception): String {
-        Log.d(TAG, "网络异常1111111111111111111111: ")
-        return when (e) {
-            is java.net.UnknownHostException -> "网络连接失败，请检查网络"
-            is java.net.SocketTimeoutException -> "请求超时，请重试"
-            is javax.net.ssl.SSLException -> "安全连接失败"
-            else -> "网络异常"
-        }
-    }
+    val okHttpClient: OkHttpClient
+        get() = httpClient.okHttpClient
 
     suspend fun login(account: String, password: String): ApiResponse<LoginResponse> {
         authToken = null
-        return safeApiCall {
-            apiService.login(account, password)
+        val responses = loginAllProducts(account = account, password = password)
+
+        val successfulResponses = responses.filter { it.code == 200 && it.data != null }
+        val mergedLoginData = successfulResponses
+            .mapNotNull { it.data }
+            .reduceOrNull { accumulator, item -> accumulator.mergeWith(item) }
+
+        return if (mergedLoginData != null) {
+            ApiResponse(
+                code = 200,
+                message = successfulResponses.firstOrNull()?.message ?: "成功",
+                data = mergedLoginData
+            )
+        } else {
+            responses.firstOrNull { it.code != 200 }
+                ?: ApiResponse(code = -1, message = "登录接口未返回可用数据", data = null)
         }
     }
 
-    suspend fun getProductInfo(): ApiResponse<AppVersion> {
-        return safeApiCall {
-            apiService.getProductInfo()
-        }
+    private suspend fun loginAllProducts(
+        account: String,
+        password: String
+    ): List<ApiResponse<LoginResponse>> = coroutineScope {
+        LOGIN_PRODUCT_IDS.map { productId ->
+            async(Dispatchers.IO) {
+                loginProduct(account = account, password = password, productId = productId)
+            }
+        }.awaitAll()
     }
 
-    suspend fun getOtaLatest(productType: String): ApiResponse<OtaLatestResponse> {
-        return safeApiCall {
-            apiService.getOtaLatest(productType = productType)
+    private suspend fun loginProduct(
+        account: String,
+        password: String,
+        productId: Int
+    ): ApiResponse<LoginResponse> {
+        val response = responseHandler.safeApiCall {
+            httpClient.apiService.login(
+                account = account,
+                password = password,
+                productId = productId
+            )
+        }
+        Log.d(
+            TAG,
+            "登录产品线返回: productId=$productId code=${response.code} " +
+                "hasData=${response.data != null}"
+        )
+        return response
+    }
+
+    suspend fun getProductInfo(productId: Int = 2): ApiResponse<AppVersion> {
+        val response = responseHandler.safeApiCall {
+            httpClient.apiService.getProductInfo(productId = productId, type = OTA_TYPE_APP)
+        }
+        return responseHandler.parseVersionResponse(response, AppVersion::class.java)
+    }
+
+    suspend fun getOtaLatest(productId: Int): ApiResponse<OtaLatestResponse> {
+        val response = responseHandler.safeApiCall {
+            httpClient.apiService.getOtaLatest(productId = productId, type = OTA_TYPE_FIRMWARE)
+        }
+        return responseHandler.parseVersionResponse(response, OtaLatestResponse::class.java)
+    }
+
+    suspend fun updateDeviceName(id: Int, productName: String): ApiResponse<Unit> {
+        return responseHandler.safeApiCall {
+            httpClient.apiService.updateDeviceName(id = id, productName = productName)
         }
     }
 
     /** 登出等场景清空会话 token（与 [clearAuthInfo] 一致，对外暴露）。 */
     fun clearAuthToken() {
         clearAuthInfo()
-    }
-
-    private suspend fun <T> safeApiCall(call: suspend () -> ApiResponse<T>): ApiResponse<T> {
-        return try {
-            val response = call.invoke()
-
-            if (response.code == 200) {
-                response
-            } else {
-                ApiResponse(code = response.code, message = "${response.message}", data = null)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "API调用异常", e)
-            ApiResponse(code = -1, message = handleException(e), data = null)
-        }
     }
 
     private fun clearAuthInfo() {

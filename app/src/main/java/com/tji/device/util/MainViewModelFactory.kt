@@ -27,6 +27,7 @@ class MainViewModelFactory(
                 @Suppress("UNCHECKED_CAST")
                 MainViewModel(
                     loginViewModel,
+                    authRepository,
                     productRuntimeRegistry,
                     mqttSubscriptionManager
                 ) as T

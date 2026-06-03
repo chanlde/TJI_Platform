@@ -1,0 +1,170 @@
+package com.tji.device.product.droppersixstage.repository
+
+import android.util.Log
+import com.tji.device.product.droppersixstage.model.DROPPER_STAGE_COUNT
+import com.tji.device.product.droppersixstage.model.DropperSixStageAck
+import com.tji.device.product.droppersixstage.model.DropperSixStageCommand
+import com.tji.device.product.droppersixstage.model.DropperSixStageCommandCode
+import com.tji.device.product.droppersixstage.model.DropperSixStageState
+import com.tji.device.product.droppersixstage.model.DropperStageState
+import com.tji.device.product.droppersixstage.mqtt.DropperSixStageMqttTopics
+import com.tji.network.MqttManager
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import org.json.JSONObject
+
+interface DropperSixStageRepository {
+    val devices: StateFlow<List<DropperSixStageState>>
+    suspend fun updateState(state: DropperSixStageState)
+    suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?)
+    suspend fun updateAck(serialNumber: String, ack: DropperSixStageAck)
+    fun clearDevices()
+}
+
+class DropperSixStageRepo : DropperSixStageRepository {
+    private val _devices = MutableStateFlow<List<DropperSixStageState>>(emptyList())
+    override val devices: StateFlow<List<DropperSixStageState>> = _devices.asStateFlow()
+
+    override suspend fun updateState(state: DropperSixStageState) {
+        _devices.update { current ->
+            current.updateOrCreate(
+                serialNumber = state.serialNumber,
+                create = { state },
+                update = { old ->
+                    state.copy(
+                        name = state.name ?: old.name,
+                        isOnline = state.isOnline || old.isOnline,
+                        lastAck = state.lastAck ?: old.lastAck,
+                        batteryPercent = state.batteryPercent ?: old.batteryPercent,
+                        firmwareVersion = state.firmwareVersion ?: old.firmwareVersion,
+                        timestamp = state.timestamp ?: old.timestamp
+                    )
+                }
+            )
+        }
+    }
+
+    override suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?) {
+        _devices.update { current ->
+            current.updateOrCreate(
+                serialNumber = serialNumber,
+                create = {
+                    DropperSixStageState(
+                        serialNumber = serialNumber,
+                        isOnline = isOnline,
+                        timestamp = timestamp
+                    )
+                },
+                update = { state ->
+                    state.copy(
+                        isOnline = isOnline,
+                        timestamp = timestamp ?: state.timestamp
+                    )
+                }
+            )
+        }
+    }
+
+    override suspend fun updateAck(serialNumber: String, ack: DropperSixStageAck) {
+        _devices.update { current ->
+            current.updateOrCreate(
+                serialNumber = serialNumber,
+                create = { DropperSixStageState(serialNumber = serialNumber, lastAck = ack) },
+                update = { state ->
+                    state.copy(
+                        lastAck = ack,
+                        stages = ack.stage?.let { stage ->
+                            state.stages.map {
+                                if (it.index == stage && ack.ok) it.copy(isOpen = true) else it
+                            }
+                        } ?: state.stages
+                    )
+                }
+            )
+        }
+    }
+
+    override fun clearDevices() {
+        _devices.value = emptyList()
+    }
+
+    private fun List<DropperSixStageState>.updateOrCreate(
+        serialNumber: String,
+        create: () -> DropperSixStageState,
+        update: (DropperSixStageState) -> DropperSixStageState
+    ): List<DropperSixStageState> {
+        var replaced = false
+        val next = map { current ->
+            if (current.serialNumber == serialNumber) {
+                replaced = true
+                update(current)
+            } else {
+                current
+            }
+        }
+        return if (replaced) next else next + create()
+    }
+}
+
+interface DropperSixStageControlRepository {
+    suspend fun sendCommand(serialNumber: String, command: DropperSixStageCommand)
+}
+
+class DropperSixStageControlRepo : DropperSixStageControlRepository {
+    override suspend fun sendCommand(serialNumber: String, command: DropperSixStageCommand) {
+        val topic = DropperSixStageMqttTopics.controlTopic(serialNumber)
+        val payload = command.toJson()
+        val message = payload.toString()
+        val requestAt = System.currentTimeMillis()
+
+        MqttManager.getInstance().publish(
+            topic = topic,
+            message = message,
+            qos = 0,
+            queueWhenDisconnected = false,
+            onSuccess = {
+                Log.d(TAG, "六段抛投控制指令发送成功: topic=$topic message=$message")
+            },
+            onError = { throwable ->
+                Log.e(TAG, "六段抛投控制指令发送失败: cost=${System.currentTimeMillis() - requestAt}ms", throwable)
+            }
+        )
+    }
+
+    private fun DropperSixStageCommand.toJson(): JSONObject =
+        JSONObject().apply {
+            put("v", 1)
+            put("msgId", msgId)
+            put("ts", System.currentTimeMillis())
+            put("cmd", commandCode())
+            put("cmdName", commandName())
+            when (this@toJson) {
+                is DropperSixStageCommand.Ping -> Unit
+                is DropperSixStageCommand.StageSwitch -> {
+                    put("stage", stage.coerceIn(1, DROPPER_STAGE_COUNT))
+                    put("open", open)
+                }
+                is DropperSixStageCommand.AllStages -> {
+                    put("open", open)
+                }
+            }
+        }
+
+    private fun DropperSixStageCommand.commandCode(): Int = when (this) {
+        is DropperSixStageCommand.Ping -> DropperSixStageCommandCode.PING
+        is DropperSixStageCommand.StageSwitch -> DropperSixStageCommandCode.SET_STAGE_SWITCH
+        is DropperSixStageCommand.AllStages -> DropperSixStageCommandCode.SET_ALL_STAGES
+    }
+
+    private fun DropperSixStageCommand.commandName(): String = when (this) {
+        is DropperSixStageCommand.Ping -> "PING"
+        is DropperSixStageCommand.StageSwitch -> "SET_STAGE_SWITCH"
+        is DropperSixStageCommand.AllStages -> "SET_ALL_STAGES"
+    }
+
+    private companion object {
+        const val TAG = "DropperSixControlRepo"
+    }
+}

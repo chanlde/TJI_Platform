@@ -1,8 +1,8 @@
 package com.tji.device.data.repository
 
-import android.util.Log
 import com.tji.network.DataReportManager
-import com.tji.network.data.*
+import com.tji.network.data.ApiResponse
+import com.tji.network.data.LoginResponse
 
 /**
  * 真实的认证仓库实现，基于 DataReportManager。
@@ -12,6 +12,10 @@ class AuthRepo : AuthRepository {
     override suspend fun login(account: String, password: String): ApiResponse<LoginResponse> {
 
         return DataReportManager.getInstance().login(account, password)
+    }
+
+    override suspend fun updateDeviceName(id: Int, productName: String): ApiResponse<Unit> {
+        return DataReportManager.getInstance().updateDeviceName(id = id, productName = productName)
     }
 
     override suspend fun logout() {

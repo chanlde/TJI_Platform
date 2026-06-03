@@ -9,7 +9,6 @@ import com.tji.network.data.LoginResponse
 interface AuthRepository {
 
     suspend fun login(account: String, password: String): ApiResponse<LoginResponse>
-   // suspend fun auth(userId: String): ApiResponse<UserInfo>
-  //  suspend fun getLinksForUser(userId: String): ApiResponse<List<DataItem>>
+    suspend fun updateDeviceName(id: Int, productName: String): ApiResponse<Unit>
     suspend fun logout()
 }
