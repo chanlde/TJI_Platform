@@ -1,8 +1,19 @@
 # TJI Platform
 
-版本：`V2.0.2`
+版本：`V2.0.3`
 
-TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 App。当前项目由原来的消防吊桶控制 App 演进而来，目标是把消防吊桶、光伏清洗等简单设备统一放到同一个平台 App 中管理；大疆 MSDK 这类复杂产品暂不放入本 App。
+TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 App。当前项目由原来的消防吊桶控制 App 演进而来，目标是把消防吊桶、光伏清洗、六段抛投、喊话器、无线电侦测等产品统一放到同一个平台 App 中管理；大疆 MSDK 这类复杂产品暂不放入本 App。
+
+## V2.0.3 更新内容
+
+- 统一 App UI 风格：引入 `PayloadColors` / `PayloadDimens` / `PayloadControls`，主界面、产品控制页、悬浮窗、登录页和通用组件逐步收敛到同一套视觉 token。
+- 重做喊话器 UI：拆分设备状态、按住喊话、录音库、文字喊话、音色调节等 Compose 组件，隐藏客户不应看到的底层包数、原始 ACK 和调试信息。
+- 优化六段抛投交互：从 6 份重复控制卡改为“通道选择 + 单一当前通道控制面板”，保留全局全部开钩/关闭能力。
+- 完善产品模块化：新增 `ProductModuleRegistry`，降低 `AppContainer` 和主界面对具体产品实现的耦合。
+- 拆分大 Compose 页面：主界面、喊话器、太阳能清洗、六段抛投等页面拆出 section、preview、widget 文件，提升代码定位和维护体验。
+- 补齐组件级 Preview：为喊话器、六段抛投、太阳能清洗等关键 UI 增加组件级 Preview，避免只点到整页 Preview。
+- 扩展产品能力：补充六段抛投、无线电侦测、喊话器相关模型、MQTT 入站解析、仓库、ViewModel、悬浮窗与测试覆盖。
+- 增加辅助服务目录：加入 UDP relay 与 Kokoro TTS 服务脚本/说明，用于后续真实设备和语音链路联调。
 
 ## 当前能力
 
@@ -10,9 +21,13 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 - 多产品首页：按产品线进入设备列表。
 - 消防吊桶 `FireBucket`：保留 Link / 桶控制逻辑，一个账号可有多个 Link，一个 Link 下可挂多个桶。
 - 光伏清洗 `SolarClean`：已接入 MQTT 状态、控制、悬浮窗快捷控制、设备设置与 OTA 入口。
+- 六段抛投 `DropperSixStage`：支持 6 路通道状态展示、单通道控制、全部开/关、定时开钩和测试循环。
+- 喊话器 `Speaker`：支持实时喊话、录音保存/播放/删除/改名、文字转语音、音色调节和存储状态展示。
+- 无线电侦测 `RadioDetection`：支持侦测监控界面、目标列表、回放/轨迹/告警等业务页面骨架。
 - MQTT 实时通信：按产品订阅 `status` / `lifecycle`，按设备发布 `control`。
 - 悬浮窗控制：按产品类型显示不同控制面板。
 - Compose 代码图标：公共图标和产品图标已按模块拆分。
+- 组件级 Preview：关键产品控制卡、状态卡、列表项可单独预览和定位代码。
 
 ## 产品架构
 
@@ -20,6 +35,9 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 
 - `FireBucket`：消防吊桶。
 - `SolarClean`：光伏清洗。
+- `DropperSixStage`：六段抛投。
+- `Speaker`：喊话器。
+- `RadioDetection`：无线电侦测。
 
 主要分层：
 
@@ -29,12 +47,16 @@ app/src/main/java/com/tji/device/
   product/
     firebucket/     # 消防吊桶独立模型、MQTT、仓库、UI
     solarclean/     # 光伏清洗独立模型、MQTT、仓库、UI
+    droppersixstage/# 六段抛投独立模型、MQTT、仓库、UI
+    speaker/        # 喊话器音频、MQTT、仓库、UI
+    radiodetection/ # 无线电侦测模型、地图、控制 UI
     runtime/        # 跨产品运行时快照与注册表
   service/          # MQTT 订阅与事件分发
   ui/               # 平台首页、登录页、悬浮窗、公共组件
-  di/               # AppContainer 手动依赖注入
+  di/               # AppContainer 与 ProductModuleRegistry 手动依赖注入
 NetWork/            # 网络、HTTP、MQTT 基础模块
 Doc/                # 项目说明与协议文档
+server/             # 辅助联调服务脚本与部署说明
 ```
 
 新增产品线前先阅读：
