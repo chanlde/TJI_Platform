@@ -2,22 +2,14 @@ package com.tji.device.service
 
 import android.util.Log
 import com.tji.device.data.model.ProductType
-import com.tji.device.product.droppersixstage.mqtt.DropperSixStageMqttInbound
-import com.tji.device.product.firebucket.mqtt.FireBucketMqttInbound
-import com.tji.device.product.radiodetection.mqtt.RadioDetectionMqttInbound
-import com.tji.device.product.speaker.mqtt.SpeakerMqttInbound
-import com.tji.device.product.solarclean.mqtt.SolarCleanMqttInbound
+import com.tji.device.di.ProductModuleRegistry
 import org.json.JSONObject
 
 /**
  * 解析 MQTT 字符串后，按 **订阅时已登记** 的 [ProductType] 转发到对应产品 inbound（不在此做 infer）。
  */
 class MqttEventHandler(
-    private val fireBucketInbound: FireBucketMqttInbound,
-    private val solarCleanInbound: SolarCleanMqttInbound,
-    private val dropperSixStageInbound: DropperSixStageMqttInbound,
-    private val radioDetectionInbound: RadioDetectionMqttInbound,
-    private val speakerInbound: SpeakerMqttInbound
+    private val productModules: ProductModuleRegistry
 ) {
 
     suspend fun handleMessage(
@@ -27,12 +19,12 @@ class MqttEventHandler(
         isRetained: Boolean = false
     ) {
         try {
-            if (productType == ProductType.RadioDetection) {
-                radioDetectionInbound.handleMessage(
-                    serialNumber = serialNumber,
-                    message = message,
-                    isRetained = isRetained
-                )
+            val productHandler = productModules.mqttHandlerFor(productType)
+            if (productHandler == null) {
+                Log.w(TAG, "未注册 MQTT 产品处理器: sn=$serialNumber product=$productType")
+                return
+            }
+            if (productHandler.handleRawMessage(serialNumber, message, isRetained)) {
                 return
             }
 
@@ -68,28 +60,7 @@ class MqttEventHandler(
             }
             Log.d(TAG, "接收到事件: $eventType, sn=$serialNumber, product=$productType, retain=$isRetained")
 
-            when (productType) {
-                ProductType.FireBucket -> fireBucketInbound.handleEvent(serialNumber, eventType, json)
-                ProductType.SolarClean -> solarCleanInbound.handleEvent(
-                    linkSn = serialNumber,
-                    eventType = eventType,
-                    json = json,
-                    isRetained = isRetained
-                )
-                ProductType.DropperSixStage -> dropperSixStageInbound.handleEvent(
-                    serialNumber = serialNumber,
-                    eventType = eventType,
-                    json = json,
-                    isRetained = isRetained
-                )
-                ProductType.RadioDetection -> Unit
-                ProductType.Speaker -> speakerInbound.handleEvent(
-                    serialNumber = serialNumber,
-                    eventType = eventType,
-                    json = json,
-                    isRetained = isRetained
-                )
-            }
+            productHandler.handleJsonEvent(serialNumber, eventType, json, isRetained)
         } catch (e: Exception) {
             Log.e(TAG, "解析 MQTT 消息失败: ${e.message}", e)
         }
@@ -106,36 +77,16 @@ class MqttEventHandler(
             put("ts", System.currentTimeMillis())
         }
         Log.d(TAG, "接收到纯文本生命周期事件: $eventType, sn=$serialNumber, product=$productType, retain=$isRetained")
-        when (productType) {
-            ProductType.FireBucket -> fireBucketInbound.handleEvent(serialNumber, eventType, json)
-            ProductType.SolarClean -> solarCleanInbound.handleEvent(
-                linkSn = serialNumber,
-                eventType = eventType,
-                json = json,
-                isRetained = isRetained
-            )
-            ProductType.DropperSixStage -> dropperSixStageInbound.handleEvent(
-                serialNumber = serialNumber,
-                eventType = eventType,
-                json = json,
-                isRetained = isRetained
-            )
-            ProductType.RadioDetection -> radioDetectionInbound.handleMessage(serialNumber, eventType, isRetained)
-            ProductType.Speaker -> speakerInbound.handleEvent(
-                serialNumber = serialNumber,
-                eventType = eventType,
-                json = json,
-                isRetained = isRetained
-            )
+        val productHandler = productModules.mqttHandlerFor(productType)
+        if (productHandler == null) {
+            Log.w(TAG, "未注册生命周期产品处理器: sn=$serialNumber product=$productType")
+            return
         }
+        productHandler.handleJsonEvent(serialNumber, eventType, json, isRetained)
     }
 
     fun cleanup() {
-        fireBucketInbound.cleanup()
-        solarCleanInbound.cleanup()
-        dropperSixStageInbound.cleanup()
-        radioDetectionInbound.cleanup()
-        speakerInbound.cleanup()
+        productModules.cleanup()
     }
 
     private companion object {

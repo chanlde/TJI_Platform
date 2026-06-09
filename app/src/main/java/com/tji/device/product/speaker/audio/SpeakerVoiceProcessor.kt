@@ -42,13 +42,17 @@ class SpeakerVoiceProcessor {
 
         val inputStats = samples.stats()
 
-        // The speech chain is intentionally lightweight:
-        // DC removal -> high-pass -> noise gate -> presence -> user EQ -> AGC/limiter -> live gate.
-        removeDc(samples)
-        highPass(samples, stateful)
+        // The speech chain is intentionally lightweight. TTS skips mic-oriented cleanup because
+        // clean synthesized speech can click when high-pass/presence/large AGC sharpen its first word.
+        if (profile != VoiceProfile.Playback) {
+            removeDc(samples)
+            highPass(samples, stateful)
+        }
         val pttNoiseGate = if (profile == VoiceProfile.PushToTalk) createPushToTalkNoiseGate(samples) else null
         pttNoiseGate?.applyTo(samples)
-        addPresence(samples, stateful)
+        if (profile != VoiceProfile.Playback) {
+            addPresence(samples, stateful)
+        }
         applyToneEqualizer(samples, toneSettings, stateful)
         normalizeAndCompress(samples, stateful, profile)
         pttNoiseGate?.applyTo(samples)
@@ -285,19 +289,25 @@ class SpeakerVoiceProcessor {
         fun processPushToTalk(
             pcm16le: ByteArray,
             toneSettings: SpeakerToneSettings = SpeakerToneSettings()
-        ): ByteArray =
-            SpeakerVoiceProcessor().processPcm(pcm16le, toneSettings = toneSettings)
+        ): ByteArray {
+            val guardedPcm = pcm16le
+                .dropReleaseGuardTail(SpeakerAudioConfig.Voice.PTT_RELEASE_GUARD_MS)
+                .trimLongPostSpeechSilence()
+            val processed = SpeakerVoiceProcessor().processPcm(guardedPcm, toneSettings = toneSettings)
+            return processed.withPushToTalkTailSmoothing()
+        }
 
         fun applyPlaybackTone(
             pcm16le: ByteArray,
             toneSettings: SpeakerToneSettings = SpeakerToneSettings()
         ): ByteArray {
-            return SpeakerVoiceProcessor().processPcm(
+            val processed = SpeakerVoiceProcessor().processPcm(
                 pcm16le = pcm16le,
                 stateful = false,
                 profile = VoiceProfile.Playback,
                 toneSettings = toneSettings
             )
+            return processed.withTtsEdgeSmoothing()
         }
 
         fun applyToneOnly(
@@ -333,6 +343,129 @@ class SpeakerVoiceProcessor {
         }
     }
 }
+
+private fun ByteArray.dropReleaseGuardTail(guardMs: Int): ByteArray {
+    val guardBytes = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+        guardMs.coerceAtLeast(0) /
+        TAIL_MILLIS_PER_SECOND *
+        TAIL_BYTES_PER_PCM16_SAMPLE
+    if (guardBytes <= 0 || size <= guardBytes) return this
+    return copyOf(size - guardBytes)
+}
+
+private fun ByteArray.trimLongPostSpeechSilence(): ByteArray {
+    val samples = toFloatSamples()
+    if (samples.isEmpty()) return this
+    val windowSamples = (SpeakerAdpcmPacketizer.SAMPLE_RATE *
+        SpeakerAudioConfig.Voice.PTT_END_SILENCE_TRIM_WINDOW_MS /
+        TAIL_MILLIS_PER_SECOND)
+        .coerceAtLeast(1)
+    var lastSpeechEnd = samples.size
+    var offset = 0
+    while (offset < samples.size) {
+        val end = min(offset + windowSamples, samples.size)
+        val stats = samples.windowStats(offset, end)
+        if (stats.rms >= SpeakerAudioConfig.Voice.PTT_END_SILENCE_RMS ||
+            stats.peak >= SpeakerAudioConfig.Voice.PTT_END_SILENCE_PEAK
+        ) {
+            lastSpeechEnd = end
+        }
+        offset = end
+    }
+    val keepSamples = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+        SpeakerAudioConfig.Voice.PTT_END_KEEP_AFTER_SPEECH_MS /
+        TAIL_MILLIS_PER_SECOND
+    val trimmedSamples = min(samples.size, lastSpeechEnd + keepSamples)
+    val trimmedBytes = trimmedSamples * TAIL_BYTES_PER_PCM16_SAMPLE
+    return copyOf(trimmedBytes.coerceIn(0, size))
+}
+
+private fun ByteArray.withTtsEdgeSmoothing(): ByteArray {
+    val samples = toFloatSamples()
+    if (samples.isEmpty()) return this
+    samples.applySpeechHeadFade(
+        fadeMs = SpeakerAudioConfig.Voice.TTS_HEAD_FADE_MS,
+        startPeak = SpeakerAudioConfig.Voice.TTS_HEAD_FADE_START_PEAK
+    )
+    samples.limitSpeechHead(
+        limitMs = SpeakerAudioConfig.Voice.TTS_HEAD_LIMIT_MS,
+        startPeak = SpeakerAudioConfig.Voice.TTS_HEAD_FADE_START_PEAK,
+        ceiling = SpeakerAudioConfig.Voice.TTS_HEAD_LIMIT_CEILING
+    )
+    samples.applyTailFade(SpeakerAudioConfig.Voice.TTS_TAIL_FADE_MS)
+    val tailSilenceSamples = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+        SpeakerAudioConfig.Voice.TTS_TRAILING_SILENCE_MS /
+        TAIL_MILLIS_PER_SECOND
+    return samples.toPcm16le() + ByteArray(tailSilenceSamples * TAIL_BYTES_PER_PCM16_SAMPLE)
+}
+
+private fun ByteArray.withPushToTalkTailSmoothing(): ByteArray {
+    val samples = toFloatSamples()
+    if (samples.isEmpty()) return this
+    samples.applyTailFade(SpeakerAudioConfig.Voice.PTT_TAIL_FADE_MS)
+    val tailSilenceSamples = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+        SpeakerAudioConfig.Voice.PTT_TRAILING_SILENCE_MS /
+        TAIL_MILLIS_PER_SECOND
+    return samples.toPcm16le() + ByteArray(tailSilenceSamples * TAIL_BYTES_PER_PCM16_SAMPLE)
+}
+
+private fun FloatArray.applySpeechHeadFade(fadeMs: Int, startPeak: Float) {
+    val firstSpeech = indexOfFirst { abs(it) >= startPeak }
+    if (firstSpeech < 0) return
+    val fadeSamples = (SpeakerAdpcmPacketizer.SAMPLE_RATE * fadeMs / TAIL_MILLIS_PER_SECOND)
+        .coerceIn(0, size)
+    if (fadeSamples <= 0) return
+    for (i in 0 until fadeSamples) {
+        val sampleIndex = firstSpeech + i
+        if (sampleIndex !in indices) break
+        val gain = i.toFloat() / fadeSamples
+        this[sampleIndex] *= gain.coerceIn(0f, 1f)
+    }
+}
+
+private fun FloatArray.limitSpeechHead(limitMs: Int, startPeak: Float, ceiling: Float) {
+    val firstSpeech = indexOfFirst { abs(it) >= startPeak }
+    if (firstSpeech < 0) return
+    val limitSamples = (SpeakerAdpcmPacketizer.SAMPLE_RATE * limitMs / TAIL_MILLIS_PER_SECOND)
+        .coerceIn(0, size - firstSpeech)
+    if (limitSamples <= 0) return
+    val normalizedCeiling = ceiling.coerceIn(0f, SpeakerAudioConfig.Voice.LIMITER_CEILING)
+    for (i in firstSpeech until firstSpeech + limitSamples) {
+        this[i] = this[i].coerceIn(-normalizedCeiling, normalizedCeiling)
+    }
+}
+
+private fun FloatArray.windowStats(start: Int, end: Int): SpeakerPcmStats {
+    var peak = 0f
+    var sumSq = 0f
+    var count = 0
+    for (i in start until end) {
+        val sample = this[i]
+        peak = maxOf(peak, abs(sample))
+        sumSq += sample * sample
+        count += 1
+    }
+    return SpeakerPcmStats(
+        rms = if (count == 0) 0f else sqrt(sumSq / count),
+        peak = peak,
+        samples = count
+    )
+}
+
+private fun FloatArray.applyTailFade(fadeMs: Int) {
+    val fadeSamples = (SpeakerAdpcmPacketizer.SAMPLE_RATE * fadeMs / TAIL_MILLIS_PER_SECOND)
+        .coerceIn(0, size)
+    if (fadeSamples <= 0) return
+    val start = size - fadeSamples
+    for (i in start until size) {
+        val remaining = size - i - 1
+        val gain = remaining.toFloat() / fadeSamples
+        this[i] *= gain.coerceIn(0f, 1f)
+    }
+}
+
+private const val TAIL_MILLIS_PER_SECOND = 1_000
+private const val TAIL_BYTES_PER_PCM16_SAMPLE = 2
 
 private data class VoiceProcessingParams(
     val targetRms: Float,

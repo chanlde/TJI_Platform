@@ -12,7 +12,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -34,6 +33,7 @@ import com.tji.device.util.ToastUtils
 import com.tji.device.util.ToastUtils.linkUrl
 import com.tji.device.util.ToastUtils.switchUrl
 import com.tji.device.util.OverlayPermissionHelper
+import com.tji.device.ui.theme.BucketTheme
 import com.tji.device.webControl.WebViewScreen
 import com.tji.device.wifi.WifiData
 import kotlinx.coroutines.delay
@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            BucketTheme {
                 CompositionLocalProvider(LocalMainViewModel provides mainViewModel) {
                     Log.d("MainActivity", "setContent -> 渲染 AppNavigation")
                     AppNavigation()

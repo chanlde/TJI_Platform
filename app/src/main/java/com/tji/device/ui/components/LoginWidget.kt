@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.util.Log
 import androidx.collection.emptyLongSet
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,8 +31,8 @@ import androidx.compose.ui.unit.sp
 import com.tji.device.R
 import com.tji.device.data.model.Login
 import com.tji.device.ui.theme.LoginColors
-import com.tji.device.ui.theme.TjiPrimarySoft
-import com.tji.device.ui.theme.TjiSurfaceSoft
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.util.SecurePrefs
 import com.tji.device.util.ToastUtils
 import com.tji.device.ui.main.LocalMainViewModel
@@ -346,8 +347,8 @@ private fun LoginBackground(
                 Brush.verticalGradient(
                     colors = listOf(
                         LoginColors.Background,
-                        TjiSurfaceSoft,
-                        TjiPrimarySoft
+                        PayloadColors.SurfaceSoft,
+                        PayloadColors.PrimarySoft
                     )
                 )
             )
@@ -394,11 +395,12 @@ private fun LoginCard(
                 }
             )
             .then(modifier),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(PayloadDimens.CardRadius),
         colors = CardDefaults.cardColors(
-            containerColor = LoginColors.Surface
+            containerColor = PayloadColors.Surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 18.dp)
+        border = BorderStroke(1.dp, PayloadColors.Border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         content()
     }
@@ -563,11 +565,13 @@ fun LoginButton(
         enabled = !isLoading,
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (isLandscape) 50.dp else 54.dp),
+            .height(if (isLandscape) 48.dp else 50.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = LoginColors.Primary
+            containerColor = PayloadColors.Primary,
+            disabledContainerColor = PayloadColors.Border,
+            disabledContentColor = PayloadColors.TextMuted
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(PayloadDimens.ControlRadius)
     ) {
         if (isLoading) {
             CircularProgressIndicator(

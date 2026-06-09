@@ -37,9 +37,9 @@ object ProductCatalog {
         ),
         ProductDefinition(
             type = ProductType.DropperSixStage,
-            displayName = "六段抛投",
-            shortLabel = "Dropper",
-            description = "六段抛投控制产品线",
+            displayName = "FC100_FireDrop",
+            shortLabel = "FireDrop",
+            description = "FC100_FireDrop 控制产品线",
             platformSubtitle = "无人机六路抛投系统",
             platformValueLine = "六路控制 · 分段抛投"
         ),
@@ -84,6 +84,8 @@ object ProductCatalog {
             "光伏" in fingerprint -> ProductType.SolarClean
             "solar" in fingerprint -> ProductType.SolarClean
             "抛投" in fingerprint -> ProductType.DropperSixStage
+            "fc100_firedrop" in fingerprint -> ProductType.DropperSixStage
+            "firedrop" in fingerprint -> ProductType.DropperSixStage
             "dropper" in fingerprint -> ProductType.DropperSixStage
             "无线电" in fingerprint -> ProductType.RadioDetection
             "频谱" in fingerprint -> ProductType.RadioDetection
@@ -120,6 +122,8 @@ object ProductCatalog {
             "光伏" in fingerprint -> ProductType.SolarClean
             "droppersixstage" in fingerprint -> ProductType.DropperSixStage
             "dropper six" in fingerprint -> ProductType.DropperSixStage
+            "fc100_firedrop" in fingerprint -> ProductType.DropperSixStage
+            "firedrop" in fingerprint -> ProductType.DropperSixStage
             "dropper" in fingerprint -> ProductType.DropperSixStage
             "六段抛投" in fingerprint -> ProductType.DropperSixStage
             "抛投" in fingerprint -> ProductType.DropperSixStage

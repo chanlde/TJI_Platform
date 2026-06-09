@@ -49,7 +49,7 @@ object userData {
         }
 
     fun getLinksForUser(userId: String): List<String> {
-        return snList ?: emptyList()
+        return boundAccountDevices?.map { it.serialNumber } ?: emptyList()
     }
 
     fun clearLinksForUser() {

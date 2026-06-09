@@ -44,11 +44,11 @@ data class MQTTConfig(
 
         fun radioDetectionLegacy(clientId: String): MQTTConfig =
             MQTTConfig(
-                serverHost = "47.121.127.205",
-                serverPort = 1883,
+                serverHost = BuildConfig.TJI_RADIO_LEGACY_MQTT_HOST,
+                serverPort = BuildConfig.TJI_RADIO_LEGACY_MQTT_PORT,
                 clientId = clientId,
-                username = "ruihang",
-                password = "da123456bao",
+                username = BuildConfig.TJI_RADIO_LEGACY_MQTT_USERNAME,
+                password = BuildConfig.TJI_RADIO_LEGACY_MQTT_PASSWORD,
                 enableTLS = false,
                 keepAliveInterval = 30,
                 cleanSession = true,

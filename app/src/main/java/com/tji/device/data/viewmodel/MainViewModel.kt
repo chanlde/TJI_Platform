@@ -135,10 +135,10 @@ class MainViewModel(
                     .filter { it.productType == productType }
                     .map { it.serialNumber }
                     .ifEmpty {
-                        if (productType == ProductType.Speaker) {
-                            listOf(TestDeviceFallbacks.SPEAKER_SERIAL)
-                        } else {
-                            emptyList()
+                        when (productType) {
+                            ProductType.DropperSixStage -> listOf(TestDeviceFallbacks.DROPPER_SIX_STAGE_SERIAL)
+                            ProductType.Speaker -> listOf(TestDeviceFallbacks.SPEAKER_SERIAL)
+                            else -> emptyList()
                         }
                     }
 
@@ -180,6 +180,7 @@ class MainViewModel(
                     .map { SubscriptionTarget(it.serialNumber, it.productType) }
                     .ifEmpty {
                         when (device.productType) {
+                            ProductType.DropperSixStage,
                             ProductType.RadioDetection,
                             ProductType.Speaker -> listOf(SubscriptionTarget(device.serialNumber, device.productType))
                             else -> emptyList()

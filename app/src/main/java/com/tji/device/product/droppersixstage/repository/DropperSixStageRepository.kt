@@ -4,7 +4,6 @@ import android.util.Log
 import com.tji.device.product.droppersixstage.model.DROPPER_STAGE_COUNT
 import com.tji.device.product.droppersixstage.model.DropperSixStageAck
 import com.tji.device.product.droppersixstage.model.DropperSixStageCommand
-import com.tji.device.product.droppersixstage.model.DropperSixStageCommandCode
 import com.tji.device.product.droppersixstage.model.DropperSixStageState
 import com.tji.device.product.droppersixstage.model.DropperStageState
 import com.tji.device.product.droppersixstage.mqtt.DropperSixStageMqttTopics
@@ -137,32 +136,27 @@ class DropperSixStageControlRepo : DropperSixStageControlRepository {
         JSONObject().apply {
             put("v", 1)
             put("msgId", msgId)
-            put("ts", System.currentTimeMillis())
-            put("cmd", commandCode())
-            put("cmdName", commandName())
+            put("module", "firedrop")
             when (this@toJson) {
-                is DropperSixStageCommand.Ping -> Unit
+                is DropperSixStageCommand.Ping -> {
+                    put("action", "query")
+                }
                 is DropperSixStageCommand.StageSwitch -> {
-                    put("stage", stage.coerceIn(1, DROPPER_STAGE_COUNT))
-                    put("open", open)
+                    put("action", "set_hook")
+                    put("hook", stage.coerceIn(1, DROPPER_STAGE_COUNT))
+                    put("state", if (open) "open" else "close")
+                    if (open && durationMs != null) {
+                        put("duration", durationMs)
+                    }
                 }
                 is DropperSixStageCommand.AllStages -> {
-                    put("open", open)
+                    put("action", if (open) "open_all" else "close_all")
+                    if (open && durationMs != null) {
+                        put("duration", durationMs)
+                    }
                 }
             }
         }
-
-    private fun DropperSixStageCommand.commandCode(): Int = when (this) {
-        is DropperSixStageCommand.Ping -> DropperSixStageCommandCode.PING
-        is DropperSixStageCommand.StageSwitch -> DropperSixStageCommandCode.SET_STAGE_SWITCH
-        is DropperSixStageCommand.AllStages -> DropperSixStageCommandCode.SET_ALL_STAGES
-    }
-
-    private fun DropperSixStageCommand.commandName(): String = when (this) {
-        is DropperSixStageCommand.Ping -> "PING"
-        is DropperSixStageCommand.StageSwitch -> "SET_STAGE_SWITCH"
-        is DropperSixStageCommand.AllStages -> "SET_ALL_STAGES"
-    }
 
     private companion object {
         const val TAG = "DropperSixControlRepo"

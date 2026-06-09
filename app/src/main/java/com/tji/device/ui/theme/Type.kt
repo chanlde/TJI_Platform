@@ -14,14 +14,14 @@ val Typography = Typography(
         fontWeight = FontWeight.ExtraBold,
         fontSize = 32.sp,
         lineHeight = 40.sp,
-        letterSpacing = (-0.5).sp
+        letterSpacing = 0.sp
     ),
     headlineSmall = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 24.sp,
         lineHeight = 32.sp,
-        letterSpacing = (-0.2).sp
+        letterSpacing = 0.sp
     ),
     titleLarge = TextStyle(
         fontFamily = AppFontFamily,

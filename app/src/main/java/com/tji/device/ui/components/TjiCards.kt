@@ -1,6 +1,7 @@
 package com.tji.device.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -17,7 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -25,17 +25,16 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Spacer
-import com.tji.device.ui.theme.TjiSurface
-import com.tji.device.ui.theme.TjiSurfaceSoft
-import com.tji.device.ui.theme.TjiTextMuted
-import com.tji.device.ui.theme.TjiTextPrimary
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 fun TjiCardShell(
     modifier: Modifier = Modifier,
-    radius: Dp = 12.dp,
-    elevation: Dp = 2.dp,
-    containerColor: Color = TjiSurface,
+    radius: Dp = PayloadDimens.CardRadius,
+    elevation: Dp = 0.dp,
+    containerColor: Color = PayloadColors.Surface,
+    borderColor: Color = PayloadColors.Border,
     content: @Composable () -> Unit
 ) {
     Card(
@@ -43,6 +42,7 @@ fun TjiCardShell(
         shape = RoundedCornerShape(radius),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = elevation),
+        border = BorderStroke(1.dp, borderColor),
         content = { content() }
     )
 }
@@ -58,9 +58,9 @@ fun TjiSectionCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(TjiSurface, TjiSurfaceSoft)))
-                .padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .background(PayloadColors.Surface)
+                .padding(PayloadDimens.CardPadding),
+            verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -70,7 +70,7 @@ fun TjiSectionCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
-                    color = TjiTextPrimary,
+                    color = PayloadColors.TextPrimary,
                     fontWeight = FontWeight.SemiBold
                 )
                 trailing?.invoke()
@@ -104,21 +104,21 @@ fun TjiMetricTile(
     Column(
         modifier = modifier
             .size(width = 94.dp, height = 68.dp)
-            .background(TjiSurface.copy(alpha = 0.72f), RoundedCornerShape(10.dp))
+            .background(PayloadColors.SurfaceSoft, RoundedCornerShape(PayloadDimens.ControlRadius))
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = TjiTextMuted
+            color = PayloadColors.TextMuted
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = TjiTextPrimary,
+            color = PayloadColors.TextPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

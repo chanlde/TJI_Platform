@@ -22,10 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tji.device.ui.components.TjiMiniSwitch
 import com.tji.device.ui.floating.FloatingLinkSummary
-import com.tji.device.ui.theme.TjiBorder
-import com.tji.device.ui.theme.TjiPrimary
-import com.tji.device.ui.theme.TjiSurface
-import com.tji.device.ui.theme.TjiTextPrimary
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 fun DropperSixStageFloatingPanel(
@@ -62,7 +60,7 @@ private fun DropperStageCompactToggle(
     Row(
         modifier = Modifier
             .width(122.dp)
-            .background(TjiSurface.copy(alpha = 0.72f), RoundedCornerShape(10.dp))
+            .background(PayloadColors.Surface.copy(alpha = 0.82f), RoundedCornerShape(PayloadDimens.ControlRadius))
             .padding(horizontal = 8.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -71,7 +69,7 @@ private fun DropperStageCompactToggle(
             modifier = Modifier
                 .size(18.dp)
                 .background(
-                    color = if (enabled) TjiPrimary.copy(alpha = 0.14f) else TjiBorder,
+                    color = if (enabled) PayloadColors.PrimarySoft else PayloadColors.Border,
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
@@ -79,7 +77,7 @@ private fun DropperStageCompactToggle(
             Text(
                 text = stage.toString(),
                 style = MaterialTheme.typography.labelSmall,
-                color = if (enabled) TjiPrimary else Color.White,
+                color = if (enabled) PayloadColors.Primary else Color.White,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -87,7 +85,7 @@ private fun DropperStageCompactToggle(
             text = "${stage}段",
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            color = TjiTextPrimary,
+            color = PayloadColors.TextPrimary,
             modifier = Modifier.weight(1f)
         )
         TjiMiniSwitch(

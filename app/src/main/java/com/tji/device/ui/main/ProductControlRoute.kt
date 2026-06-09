@@ -44,10 +44,8 @@ import com.tji.device.product.radiodetection.ui.control.RadioDetectionControlScr
 import com.tji.device.product.speaker.ui.control.SpeakerControlScreen
 import com.tji.device.product.solarclean.ui.control.SolarCleanControlScreen
 import com.tji.device.ui.components.TjiSectionCard
-import com.tji.device.ui.theme.TjiBackground
-import com.tji.device.ui.theme.TjiPrimary
-import com.tji.device.ui.theme.TjiTextMuted
-import com.tji.device.ui.theme.TjiTextPrimary
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 fun ProductControlRoute(
@@ -109,15 +107,15 @@ private fun CommonDeviceSettingsScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(TjiBackground)
+            .background(PayloadColors.Background)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
                 focusManager.clearFocus()
             },
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(PayloadDimens.ScreenPadding),
+        verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
     ) {
         item {
             TjiSectionCard(title = "设备信息") {
@@ -172,7 +170,7 @@ private fun CommonDeviceNameLine(
         Text(
             text = "设备名称",
             fontSize = 12.sp,
-            color = TjiTextMuted,
+            color = PayloadColors.TextMuted,
             modifier = Modifier.weight(1f)
         )
         Row(
@@ -189,9 +187,9 @@ private fun CommonDeviceNameLine(
                         textStyle = androidx.compose.ui.text.TextStyle(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = TjiTextPrimary
+                            color = PayloadColors.TextPrimary
                         ),
-                        cursorBrush = SolidColor(TjiPrimary),
+                        cursorBrush = SolidColor(PayloadColors.Primary),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = { commitRename() }),
                         modifier = Modifier
@@ -209,7 +207,7 @@ private fun CommonDeviceNameLine(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(TjiPrimary)
+                            .background(PayloadColors.Primary)
                     )
                 }
             } else {
@@ -217,7 +215,7 @@ private fun CommonDeviceNameLine(
                     text = value,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = TjiTextPrimary,
+                    color = PayloadColors.TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
@@ -231,7 +229,7 @@ private fun CommonDeviceNameLine(
                     text = "修改",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = TjiPrimary,
+                    color = PayloadColors.Primary,
                     modifier = Modifier.clickable {
                         draft = value
                         editing = true
@@ -255,14 +253,14 @@ private fun CommonInfoLine(
         Text(
             text = label,
             fontSize = 12.sp,
-            color = TjiTextMuted,
+            color = PayloadColors.TextMuted,
             modifier = Modifier.weight(1f)
         )
         Text(
             text = value,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = TjiTextPrimary,
+            color = PayloadColors.TextPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1.5f)

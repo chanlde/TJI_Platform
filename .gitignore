@@ -19,6 +19,8 @@ local.properties
 
 # Kotlin / Android Studio caches
 .kotlin/
+.tmp_tts_probe/
+.tmp_sherpa_android/
 
 # Signing and secrets
 *.jks

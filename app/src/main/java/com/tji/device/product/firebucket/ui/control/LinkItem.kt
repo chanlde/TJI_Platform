@@ -36,11 +36,8 @@ import com.tji.device.product.firebucket.model.Switch
 import com.tji.device.ui.components.TjiCardShell
 import com.tji.device.ui.components.TjiOnlineStatus
 import com.tji.device.ui.icon.product.productIconVector
-import com.tji.device.ui.theme.TjiBorder
-import com.tji.device.ui.theme.TjiPrimary
-import com.tji.device.ui.theme.TjiPrimarySoft
-import com.tji.device.ui.theme.TjiTextPrimary
-import com.tji.device.ui.theme.TjiTextSecondary
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 fun LinkItem(
@@ -51,13 +48,11 @@ fun LinkItem(
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
     TjiCardShell(
-        modifier = modifier.fillMaxWidth(),
-        radius = 22.dp,
-        elevation = 6.dp
+        modifier = modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
-                .padding(18.dp)
+                .padding(PayloadDimens.CardPadding)
                 .fillMaxWidth()
         ) {
             val subtitle = link.serial_number.takeUnless {
@@ -72,14 +67,14 @@ fun LinkItem(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
-                        .background(TjiPrimarySoft, RoundedCornerShape(16.dp)),
+                        .background(PayloadColors.PrimarySoft, RoundedCornerShape(PayloadDimens.ControlRadius)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = productIconVector(link.productType),
                         contentDescription = null,
                         modifier = Modifier.size(30.dp),
-                        tint = TjiPrimary
+                        tint = PayloadColors.Primary
                     )
                 }
                 Column(
@@ -95,7 +90,7 @@ fun LinkItem(
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                color = TjiTextPrimary
+                                color = PayloadColors.TextPrimary
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -106,7 +101,7 @@ fun LinkItem(
                         Text(
                             text = it,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = TjiTextSecondary,
+                            color = PayloadColors.TextSecondary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -116,7 +111,7 @@ fun LinkItem(
 
             if (link.subDevices.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = TjiBorder)
+                HorizontalDivider(color = PayloadColors.Border)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (isPortrait) {
@@ -155,48 +150,7 @@ private fun FireBucketInlineStatus(isOnline: Boolean) {
 @Preview(showBackground = true)
 @Composable
 fun LinkItemPreview() {
-    val mockLink = FireBucketLinkDevice(
-        event_type = "device_status",
-        serial_number = "TJI001",
-        deviceName = "客厅控制器",
-        deviceType = "Controller",
-        manufacturer = "TJI",
-        deviceModel = "TJI-C100",
-        isOnline = true,
-        hwVersion = "1.2",
-        swVersion = "2.1.0",
-        uptime = 86400,
-        deviceConfig = "",
-        subDevices = listOf(
-            Switch(
-                serialNumber = "客厅-SWITCH1",
-                deviceName = "客厅 舵机控制器 1",
-                deviceType = "HydroSwitch",
-                isOnline = true,
-                currentAngle = 15.0,
-                currentCurrent = 110.0,
-                inputVoltage = 12.0,
-                servoMinAngle = 0.0,
-                servoMaxAngle = 180.0,
-                uptime = 100
-            ),
-            Switch(
-                serialNumber = "客厅-SWITCH2",
-                deviceName = "客厅 舵机控制器 2",
-                deviceType = "HydroSwitch",
-                isOnline = false,
-                currentAngle = 30.0,
-                currentCurrent = 120.0,
-                inputVoltage = 12.0,
-                servoMinAngle = 0.0,
-                servoMaxAngle = 180.0,
-                uptime = 200
-            )
-        ),
-        timestamp = System.currentTimeMillis().toString()
-    )
-
     MaterialTheme {
-        LinkItem(link = mockLink)
+        LinkItem(link = previewFireBucketLink())
     }
 }

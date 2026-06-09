@@ -31,8 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.tji.device.ui.icon.common.Eye
 import com.tji.device.ui.icon.common.EyeOff
 import com.tji.device.ui.theme.LoginColors
-import com.tji.device.ui.theme.TjiDangerSoft
-import com.tji.device.ui.theme.TjiSurfaceSoft
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 fun InputField(
@@ -82,9 +82,9 @@ fun InputField(
         } else null,
         modifier = Modifier.fillMaxWidth(),
         colors = TextFieldDefaults.colors(
-            focusedContainerColor = TjiSurfaceSoft,
-            unfocusedContainerColor = TjiSurfaceSoft,
-            errorContainerColor = TjiDangerSoft,
+            focusedContainerColor = PayloadColors.SurfaceSoft,
+            unfocusedContainerColor = PayloadColors.SurfaceSoft,
+            errorContainerColor = PayloadColors.DangerSoft,
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent,
             errorIndicatorColor = Color.Transparent,
@@ -94,7 +94,7 @@ fun InputField(
             unfocusedPlaceholderColor = LoginColors.OnSurfaceVariant.copy(alpha = 0.7f),
             cursorColor = LoginColors.Primary,
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(PayloadDimens.ControlRadius)
     )
 }
 

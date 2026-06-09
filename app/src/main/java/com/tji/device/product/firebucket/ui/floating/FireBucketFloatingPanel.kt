@@ -43,12 +43,9 @@ import com.tji.device.ui.components.BatteryIndicator
 import com.tji.device.ui.icon.common.BatteryOutline
 import com.tji.device.ui.floating.FloatingLinkSummary
 import com.tji.device.ui.floating.FloatingSwitchSummary
-import com.tji.device.ui.theme.TjiBorder
-import com.tji.device.ui.theme.TjiError
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.ui.theme.TjiOnline
-import com.tji.device.ui.theme.TjiTextMuted
-import com.tji.device.ui.theme.TjiWarning
-import com.tji.device.ui.theme.TjiWarningSoft
 
 @Composable
 fun FireBucketFloatingPanel(
@@ -85,14 +82,14 @@ fun FireBucketFloatingPanel(
                 modifier = Modifier
                     .size(6.dp)
                     .background(
-                        color = if (switch.isOnline) TjiOnline else TjiTextMuted,
+                        color = if (switch.isOnline) TjiOnline else PayloadColors.TextMuted,
                         shape = RoundedCornerShape(3.dp)
                     )
             )
             Text(
                 text = switch.name,
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                color = TjiTextMuted
+                color = PayloadColors.TextMuted
             )
             Spacer(modifier = Modifier.width(8.dp))
             BatteryIndicator(
@@ -104,7 +101,7 @@ fun FireBucketFloatingPanel(
 
     Spacer(modifier = Modifier.height(5.dp))
     HorizontalDivider(
-        color = TjiBorder.copy(alpha = 0.8f),
+        color = PayloadColors.Border.copy(alpha = 0.8f),
         thickness = 1.dp
     )
 
@@ -153,8 +150,8 @@ fun EmptyProductPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    color = TjiWarningSoft.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(12.dp)
+                    color = PayloadColors.WarningSoft,
+                    shape = RoundedCornerShape(PayloadDimens.ControlRadius)
                 )
                 .padding(vertical = 20.dp, horizontal = 16.dp),
             contentAlignment = Alignment.Center
@@ -166,7 +163,7 @@ fun EmptyProductPanel(
                 Icon(
                     imageVector = Icons.Rounded.Info,
                     contentDescription = null,
-                    tint = TjiWarning,
+                    tint = PayloadColors.Warning,
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
@@ -174,7 +171,7 @@ fun EmptyProductPanel(
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.Medium
                     ),
-                    color = TjiWarning
+                    color = PayloadColors.Warning
                 )
             }
         }
@@ -196,7 +193,7 @@ private fun ControlButtons(
     ) {
         ControlButton(
             onClick = { onSwitchQuickToggle(linkSerial, switch, true) },
-            backgroundColor = TjiError,
+            backgroundColor = PayloadColors.Danger,
             icon = {
                 Icon(
                     imageVector = BatteryOutline,
@@ -211,7 +208,7 @@ private fun ControlButtons(
 
         ControlButton(
             onClick = { onSwitchQuickToggle(linkSerial, switch, false) },
-            backgroundColor = TjiError,
+            backgroundColor = PayloadColors.Danger,
             icon = {
                 Icon(
                     imageVector = BatteryOutline,
@@ -248,7 +245,7 @@ private fun SwitchIndicator(
                 imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
                 contentDescription = "上一个",
                 modifier = Modifier.size(18.dp),
-                tint = TjiTextMuted
+                tint = PayloadColors.TextMuted
             )
         }
 
@@ -265,9 +262,9 @@ private fun SwitchIndicator(
                         .size(if (isSelected) 8.dp else 6.dp)
                         .background(
                             color = if (isSelected) {
-                                if (switch.isOnline) TjiOnline else TjiTextMuted
+                                if (switch.isOnline) TjiOnline else PayloadColors.TextMuted
                             } else {
-                                TjiTextMuted.copy(alpha = 0.5f)
+                                PayloadColors.TextMuted.copy(alpha = 0.5f)
                             },
                             shape = CircleShape
                         )
@@ -293,7 +290,7 @@ private fun SwitchIndicator(
                 imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                 contentDescription = "下一个",
                 modifier = Modifier.size(18.dp),
-                tint = TjiTextMuted
+                tint = PayloadColors.TextMuted
             )
         }
     }
@@ -319,7 +316,7 @@ private fun ControlButton(
             .scale(scale)
             .background(
                 color = backgroundColor,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(PayloadDimens.ControlRadius)
             )
             .clickable(
                 interactionSource = interactionSource,

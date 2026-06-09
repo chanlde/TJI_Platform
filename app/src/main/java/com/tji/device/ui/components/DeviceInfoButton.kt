@@ -1,10 +1,6 @@
 package com.tji.device.ui.components
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -23,8 +19,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.tji.device.ui.icon.common.InfoCircle
-import com.tji.device.R
 import com.tji.device.product.firebucket.model.Switch
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 fun DeviceInfoButton(
@@ -70,11 +67,14 @@ private fun DeviceInfoDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            shape = RoundedCornerShape(PayloadDimens.CardRadius),
+            colors = CardDefaults.cardColors(containerColor = PayloadColors.Surface),
+            border = androidx.compose.foundation.BorderStroke(1.dp, PayloadColors.Border),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp)
+                modifier = Modifier.padding(PayloadDimens.CardPadding),
+                verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
             ) {
                 // 头部
                 Row(
@@ -100,8 +100,6 @@ private fun DeviceInfoDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(5.dp))
-
                 val deviceInfoItems = listOf(
                     "设备ID" to switch.serialNumber,  // 使用 serialNumber
                     "设备名称" to switch.deviceName,  // 使用 deviceName
@@ -117,9 +115,6 @@ private fun DeviceInfoDialog(
                 deviceInfoItems.forEach { (label, value) ->
                     DeviceInfoItem(label = label, value = value)
                 }
-
-                Spacer(modifier = Modifier.height(5.dp))
-
             }
         }
     }
@@ -130,25 +125,7 @@ private fun DeviceInfoItem(
     label: String,
     value: String
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
+    PayloadInfoRow(label = label, value = value)
 }
 
 @Preview(showBackground = true)

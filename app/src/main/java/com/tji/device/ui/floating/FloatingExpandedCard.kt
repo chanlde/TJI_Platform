@@ -24,7 +24,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -49,11 +48,10 @@ import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedbackStat
 import com.tji.device.product.solarclean.viewmodel.SolarCleanControlViewModel
 import com.tji.device.ui.components.TjiFeedbackBadge
 import com.tji.device.ui.components.TjiOnlineStatus
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.ui.theme.TjiError
 import com.tji.device.ui.theme.TjiOnline
-import com.tji.device.ui.theme.TjiPrimarySoft
-import com.tji.device.ui.theme.TjiTextPrimary
-import com.tji.device.ui.theme.TjiTextSecondary
 
 @Composable
 fun ExpandedCard(
@@ -90,23 +88,13 @@ fun ExpandedCard(
             .wrapContentHeight()
             .dragGesture(onMove)
             .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.58f),
-                        TjiPrimarySoft.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.58f)
-                    )
-                ),
-                shape = RoundedCornerShape(12.dp)
+                color = PayloadColors.Surface.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.92f),
+                shape = RoundedCornerShape(PayloadDimens.CardRadius)
             )
             .border(
                 width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.8f),
-                        Color.White.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.3f)
-                    )
-                ),
-                shape = RoundedCornerShape(12.dp)
+                color = PayloadColors.Border.copy(alpha = if (productType == ProductType.SolarClean) solarAlpha else 0.92f),
+                shape = RoundedCornerShape(PayloadDimens.CardRadius)
             )
     ) {
         Column(modifier = Modifier.padding(vertical = if (productType == ProductType.SolarClean) 3.dp else 5.dp)) {
@@ -173,7 +161,7 @@ private fun FloatingWindowHeader(
                     fontWeight = FontWeight.Bold,
                     fontSize = if (productType == ProductType.SolarClean) 13.sp else 14.sp
                 ),
-                color = TjiTextPrimary,
+                color = PayloadColors.TextPrimary,
                 maxLines = 1,
                 modifier = Modifier.weight(1f, fill = false)
             )
@@ -218,7 +206,7 @@ private fun FloatingCommandFeedbackBadge(feedback: SolarCleanCommandFeedback?) {
         SolarCleanCommandFeedbackStatus.Failed,
         SolarCleanCommandFeedbackStatus.Timeout -> TjiError
         SolarCleanCommandFeedbackStatus.Pending,
-        SolarCleanCommandFeedbackStatus.Idle -> TjiTextSecondary
+        SolarCleanCommandFeedbackStatus.Idle -> PayloadColors.TextSecondary
     }
     TjiFeedbackBadge(text = feedback.text, color = color, horizontalPadding = 7.dp, verticalPadding = 4.dp)
 }

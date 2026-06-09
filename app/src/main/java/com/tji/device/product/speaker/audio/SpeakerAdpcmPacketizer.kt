@@ -2,39 +2,93 @@ package com.tji.device.product.speaker.audio
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.text.Charsets
 
-class SpeakerAdpcmPacketizer {
+class SpeakerAdpcmPacketizer(
+    private val streamContext: SpeakerUdpStreamContext? = null
+) {
     private var sequence: Int = 0
-    private var timestamp: Int = 0
+    private var legacyTimestampSamples: Int = 0
+    private var timestampMs: Int = 0
     private var stepIndex: Int = 0
 
     fun reset() {
         sequence = 0
-        timestamp = 0
+        legacyTimestampSamples = 0
+        timestampMs = 0
         stepIndex = 0
     }
 
-    fun packetize(pcm16le: ByteArray): ByteArray? {
+    fun packetize(pcm16le: ByteArray, isLastPacket: Boolean = false): ByteArray? {
         val aligned = pcm16le.size - (pcm16le.size % 2)
         if (aligned < 2) return null
         val encoded = encodeImaAdpcmBlock(pcm16le, aligned, stepIndex)
         stepIndex = encoded.nextStepIndex
-        val header = ByteBuffer.allocate(HEADER_BYTES)
+        val header = streamContext?.let { context ->
+            buildV2Header(context, encoded, isLastPacket)
+        } ?: buildLegacyHeader(encoded)
+        sequence += 1
+        legacyTimestampSamples += encoded.sampleCount
+        timestampMs += PACKET_MS
+        return header + encoded.payload
+    }
+
+    private fun buildLegacyHeader(encoded: EncodedAdpcm): ByteArray =
+        ByteBuffer.allocate(LEGACY_HEADER_BYTES)
             .order(ByteOrder.LITTLE_ENDIAN)
             .putShort(MAGIC.toShort())
-            .put(VERSION.toByte())
+            .put(LEGACY_VERSION.toByte())
             .put(CODEC_IMA_ADPCM.toByte())
             .putInt(sequence)
-            .putInt(timestamp)
+            .putInt(legacyTimestampSamples)
             .putShort(SAMPLE_RATE.toShort())
             .put(CHANNELS.toByte())
             .put(0)
             .putShort(encoded.payload.size.toShort())
             .putShort(encoded.sampleCount.toShort())
             .array()
-        sequence += 1
-        timestamp += encoded.sampleCount
-        return header + encoded.payload
+
+    private fun buildV2Header(
+        context: SpeakerUdpStreamContext,
+        encoded: EncodedAdpcm,
+        isLastPacket: Boolean
+    ): ByteArray {
+        val deviceBytes = context.deviceId.toByteArray(Charsets.UTF_8).take(MAX_ID_BYTES).toByteArray()
+        val taskBytes = context.taskId.toByteArray(Charsets.UTF_8).take(MAX_ID_BYTES).toByteArray()
+        val talkBytes = context.talkId.toByteArray(Charsets.UTF_8).take(MAX_ID_BYTES).toByteArray()
+        val headerLen = V2_FIXED_HEADER_BYTES + deviceBytes.size + taskBytes.size + talkBytes.size
+        val flags = buildFlags(context.type, isLastPacket)
+        return ByteBuffer.allocate(headerLen)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putShort(MAGIC.toShort())
+            .put(V2_VERSION.toByte())
+            .put(CODEC_IMA_ADPCM.toByte())
+            .putShort(headerLen.toShort())
+            .putShort(flags.toShort())
+            .putInt(sequence)
+            .putInt(timestampMs)
+            .putShort(SAMPLE_RATE.toShort())
+            .put(CHANNELS.toByte())
+            .put(PACKET_MS.toByte())
+            .putShort(encoded.payload.size.toShort())
+            .putShort(encoded.sampleCount.toShort())
+            .put(deviceBytes.size.toByte())
+            .put(taskBytes.size.toByte())
+            .put(talkBytes.size.toByte())
+            .put(0)
+            .put(deviceBytes)
+            .put(taskBytes)
+            .put(talkBytes)
+            .array()
+    }
+
+    private fun buildFlags(type: SpeakerUdpStreamType, isLastPacket: Boolean): Int {
+        var flags = if (isLastPacket) FLAG_LAST_PACKET else 0
+        flags = flags or when (type) {
+            SpeakerUdpStreamType.RecordStore -> FLAG_STORE_TO_SD
+            SpeakerUdpStreamType.PlaybackFeedback -> FLAG_PLAYBACK or FLAG_FEEDBACK
+        }
+        return flags
     }
 
     private fun encodeImaAdpcmBlock(pcm: ByteArray, length: Int, initialStepIndex: Int): EncodedAdpcm {
@@ -105,10 +159,17 @@ class SpeakerAdpcmPacketizer {
         const val CHANNELS = 1
         const val PACKET_MS = 40
         const val PCM_FRAME_BYTES = SAMPLE_RATE * PACKET_MS / 1_000 * 2
-        private const val HEADER_BYTES = 20
+        private const val LEGACY_HEADER_BYTES = 20
+        private const val V2_FIXED_HEADER_BYTES = 28
         private const val MAGIC = 0xA55A
-        private const val VERSION = 1
+        private const val LEGACY_VERSION = 1
+        private const val V2_VERSION = 2
         private const val CODEC_IMA_ADPCM = 1
+        private const val FLAG_LAST_PACKET = 0x01
+        private const val FLAG_STORE_TO_SD = 0x02
+        private const val FLAG_PLAYBACK = 0x04
+        private const val FLAG_FEEDBACK = 0x08
+        private const val MAX_ID_BYTES = 255
 
         private val IMA_INDEX_TABLE = intArrayOf(
             -1, -1, -1, -1, 2, 4, 6, 8,
@@ -127,4 +188,16 @@ class SpeakerAdpcmPacketizer {
             15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
         )
     }
+}
+
+data class SpeakerUdpStreamContext(
+    val deviceId: String,
+    val taskId: String,
+    val type: SpeakerUdpStreamType,
+    val talkId: String = ""
+)
+
+enum class SpeakerUdpStreamType(val code: Int) {
+    RecordStore(1),
+    PlaybackFeedback(2)
 }

@@ -12,7 +12,8 @@ import androidx.compose.ui.unit.dp
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.firebucket.model.Switch
 import com.tji.device.ui.theme.BucketTheme
-import com.tji.device.ui.theme.TjiBackground
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 fun FireBucketControlScreen(
@@ -22,9 +23,9 @@ fun FireBucketControlScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(TjiBackground),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(PayloadColors.Background),
+        contentPadding = PaddingValues(PayloadDimens.ScreenPadding),
+        verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
     ) {
         item {
             LinkItem(link = link)
@@ -36,35 +37,43 @@ fun FireBucketControlScreen(
 @Composable
 private fun FireBucketControlScreenPreview() {
     BucketTheme {
-        FireBucketControlScreen(
-            link = FireBucketLinkDevice(
-                event_type = "LinkDeviceStartup",
-                serial_number = "HydroLink_V3-7003DEF5",
-                deviceName = "HydroLink_V3-7003DEF5",
-                deviceType = "HydroLink",
-                manufacturer = "TJI",
-                deviceModel = "HydroLink V3",
-                isOnline = true,
-                hwVersion = "HW-1",
-                swVersion = "1.0.0",
-                uptime = 3600,
-                deviceConfig = "",
-                subDevices = listOf(
-                    Switch(
-                        serialNumber = "Bucket-001",
-                        deviceName = "消防吊桶 01",
-                        deviceType = "HydroSwitch",
-                        isOnline = true,
-                        currentAngle = 42.0,
-                        currentCurrent = 100.0,
-                        inputVoltage = 7.8,
-                        servoMinAngle = 0.0,
-                        servoMaxAngle = 90.0,
-                        uptime = 300
-                    )
-                ),
-                timestamp = "0"
-            )
-        )
+        FireBucketControlScreen(link = previewFireBucketLink())
     }
 }
+
+internal fun previewFireBucketLink() = FireBucketLinkDevice(
+    event_type = "LinkDeviceStartup",
+    serial_number = "HydroLink_V3-7003DEF5",
+    deviceName = "HydroLink_V3-7003DEF5",
+    deviceType = "HydroLink",
+    manufacturer = "TJI",
+    deviceModel = "HydroLink V3",
+    isOnline = true,
+    hwVersion = "HW-1",
+    swVersion = "1.0.0",
+    uptime = 3600,
+    deviceConfig = "",
+    subDevices = listOf(
+        previewFireBucketSwitch(),
+        previewFireBucketSwitch().copy(
+            serialNumber = "Bucket-002",
+            deviceName = "消防吊桶 02",
+            isOnline = false,
+            currentAngle = 12.0
+        )
+    ),
+    timestamp = "0"
+)
+
+internal fun previewFireBucketSwitch() = Switch(
+    serialNumber = "Bucket-001",
+    deviceName = "消防吊桶 01",
+    deviceType = "HydroSwitch",
+    isOnline = true,
+    currentAngle = 42.0,
+    currentCurrent = 100.0,
+    inputVoltage = 7.8,
+    servoMinAngle = 0.0,
+    servoMaxAngle = 90.0,
+    uptime = 300
+)

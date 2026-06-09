@@ -3,9 +3,6 @@ package com.tji.device.product.firebucket.ui.control
 import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,11 +20,9 @@ import com.tji.device.ui.components.CustomSlider
 import com.tji.device.ui.components.DeviceInfoButton
 import com.tji.device.ui.components.StatusChip
 import com.tji.device.ui.components.TjiActionButton
-import com.tji.device.ui.theme.TjiBorder
-import com.tji.device.ui.theme.TjiPrimary
-import com.tji.device.ui.theme.TjiSurface
-import com.tji.device.ui.theme.TjiTextPrimary
-import com.tji.device.ui.theme.TjiTextSecondary
+import com.tji.device.ui.components.TjiCardShell
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.ui.theme.TjiWarning
 
 @Composable
@@ -47,18 +42,12 @@ fun SwitchItem(
         onControl(scParms)
     }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = TjiSurface,
-            contentColor = TjiTextPrimary
-        )
+    TjiCardShell(
+        modifier = modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
-                .padding(14.dp)
+                .padding(PayloadDimens.CardPadding)
                 .fillMaxWidth()
         ) {
             Row(
@@ -74,7 +63,7 @@ fun SwitchItem(
                     Text(
                         text = switch.deviceName,
                         style = MaterialTheme.typography.titleSmall,
-                        color = TjiTextPrimary,
+                        color = PayloadColors.TextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
@@ -91,7 +80,7 @@ fun SwitchItem(
 
             HorizontalDivider(
                 modifier = Modifier.fillMaxWidth(),
-                color = TjiBorder,
+                color = PayloadColors.Border,
                 thickness = 1.dp
             )
 
@@ -120,7 +109,7 @@ fun SwitchItem(
             TjiActionButton(
                 text = "打开",
                 enabled = true,
-                color = TjiPrimary,
+                color = PayloadColors.Primary,
                 onClick = { updateAngleAndControl(90f) },
                 modifier = Modifier
                     .weight(1f)
@@ -155,12 +144,12 @@ fun AngleSlider(
             Text(
                 text = "阀门角度",
                 style = MaterialTheme.typography.bodyMedium,
-                color = TjiTextPrimary
+                color = PayloadColors.TextPrimary
             )
             Text(
                 text = "${value.toInt()}°",
                 style = MaterialTheme.typography.titleMedium,
-                color = TjiTextPrimary
+                color = PayloadColors.TextPrimary
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -172,7 +161,7 @@ fun AngleSlider(
             Text(
                 text = "${minValue.toInt()}°",
                 style = MaterialTheme.typography.bodySmall,
-                color = TjiTextSecondary
+                color = PayloadColors.TextSecondary
             )
 
             CustomSlider(
@@ -186,7 +175,7 @@ fun AngleSlider(
             Text(
                 text = "${maxValue.toInt()}°",
                 style = MaterialTheme.typography.bodySmall,
-                color = TjiTextSecondary
+                color = PayloadColors.TextSecondary
             )
         }
     }
@@ -197,24 +186,13 @@ fun AngleSlider(
 @Composable
 fun SwitchItemPreview() {
     MaterialTheme {
-        val switch = Switch(
-            serialNumber = "HD20240101002",
-            deviceName = "Servo-Controller-01",
-            deviceType = "HydroSwitch",
-            isOnline = true,
-            currentAngle = 45.0,
-            currentCurrent = 120.5,
-            inputVoltage = 12.0,
-            servoMinAngle = 0.0,
-            servoMaxAngle = 180.0,
-            uptime = 118
-        )
+        val switch = previewFireBucketSwitch()
         SwitchItem(
             linkSn = "dddddddddddddddd",
             switch = switch,
             scParms = SwitchControlParms(
                 sn = switch.serialNumber,
-                angle = switch.currentAngle.toInt(), // 转换为 Int
+                angle = switch.currentAngle.toInt(),
                 speed = 10,
                 mode = ControlMode.ABSOLUTE
             ),

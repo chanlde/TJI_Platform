@@ -22,13 +22,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -62,19 +59,22 @@ import com.tji.device.product.radiodetection.model.RadioRgbMode
 import com.tji.device.product.radiodetection.model.RadioSignalLevel
 import com.tji.device.product.radiodetection.repository.RadioDetectionDeviceState
 import com.tji.device.product.radiodetection.viewmodel.RadioDetectionControlViewModel
+import com.tji.device.ui.components.PayloadActionButton
 import com.tji.device.ui.theme.BucketTheme
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 
 internal val AppBlack = Color(0xFF1F1F1F)
-internal val PageBg = Color(0xFFF7F7F8)
-internal val CardBg = Color.White
+internal val PageBg = PayloadColors.Background
+internal val CardBg = PayloadColors.Surface
 internal val MapBg = Color(0xFF242424)
-internal val Border = Color(0xFFE8EAEE)
-internal val TextPrimary = Color(0xFF202634)
-internal val TextMuted = Color(0xFF8A909C)
-internal val Blue = Color(0xFF3B82F6)
-internal val Green = Color(0xFF22C55E)
-internal val Red = Color(0xFFEF4444)
-internal val Amber = Color(0xFFF5B51B)
+internal val Border = PayloadColors.Border
+internal val TextPrimary = PayloadColors.TextPrimary
+internal val TextMuted = PayloadColors.TextMuted
+internal val Blue = PayloadColors.Primary
+internal val Green = PayloadColors.Success
+internal val Red = PayloadColors.Danger
+internal val Amber = PayloadColors.Warning
 
 @Composable
 fun RadioDetectionControlScreen(
@@ -401,7 +401,7 @@ private fun MonitorStatusStrip(state: RadioDetectionUiState) {
         modifier = Modifier
             .fillMaxWidth()
             .height(58.dp)
-            .background(Color.White)
+            .background(CardBg)
             .border(1.dp, Border),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
@@ -445,49 +445,25 @@ internal fun StatusChip(text: String, active: Boolean, color: Color) {
 
 @Composable
 internal fun OutlineAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier = modifier
-            .defaultMinSize(minWidth = 68.dp)
-            .height(34.dp)
-            .clip(RoundedCornerShape(7.dp))
-            .background(Color.White)
-            .border(1.dp, Blue.copy(alpha = 0.45f), RoundedCornerShape(7.dp))
-            .noRippleClickable(onClick)
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = Blue,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    PayloadActionButton(
+        text = text,
+        enabled = true,
+        color = Blue,
+        soft = true,
+        onClick = onClick,
+        modifier = modifier.defaultMinSize(minWidth = 68.dp)
+    )
 }
 
 @Composable
 internal fun SolidAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier = modifier
-            .defaultMinSize(minWidth = 68.dp)
-            .height(34.dp)
-            .clip(RoundedCornerShape(7.dp))
-            .background(Blue)
-            .noRippleClickable(onClick)
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = Color.White,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+    PayloadActionButton(
+        text = text,
+        enabled = true,
+        color = Blue,
+        onClick = onClick,
+        modifier = modifier.defaultMinSize(minWidth = 68.dp)
+    )
 }
 
 @Composable
@@ -555,7 +531,7 @@ private fun RadioRgbControlSheet(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .background(Color.White)
+            .background(CardBg)
             .noRippleClickable { }
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -721,7 +697,7 @@ private fun RadioRgbValueStepper(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFFF7F8FA))
+            .background(PageBg)
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -748,7 +724,7 @@ private fun FilterSheet(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .background(Color.White)
+            .background(CardBg)
             .noRippleClickable { }
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -770,12 +746,21 @@ private fun FilterSheet(
         FilterGroup("信号状态", RadioSignalLevel.values().map { it.label })
         FilterGroup("在线状态", listOf("在线", "离线"))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = onReset, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp)) {
-                Text("重置")
-            }
-            Button(onClick = onDismiss, modifier = Modifier.weight(1f), shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Blue)) {
-                Text("确认筛选")
-            }
+            PayloadActionButton(
+                text = "重置",
+                enabled = true,
+                color = Blue,
+                soft = true,
+                onClick = onReset,
+                modifier = Modifier.weight(1f)
+            )
+            PayloadActionButton(
+                text = "确认筛选",
+                enabled = true,
+                color = Blue,
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -804,7 +789,7 @@ private fun TargetDetailSheet(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            .background(Color.White)
+            .background(CardBg)
             .noRippleClickable { }
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -819,7 +804,7 @@ private fun TargetDetailSheet(
         Column(
             modifier = Modifier
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFF7F8FA))
+                .background(PageBg)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -867,8 +852,8 @@ private fun ConfirmDialog(
 ) {
     Card(
         modifier = modifier.fillMaxWidth().padding(horizontal = 28.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        shape = RoundedCornerShape(PayloadDimens.CardRadius),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
         border = androidx.compose.foundation.BorderStroke(1.dp, Border)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

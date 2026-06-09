@@ -32,7 +32,7 @@ class MqttSubscriptionManager(
 ) {
     private val subscribedTopics = ConcurrentHashMap.newKeySet<String>()
     private val subscribedDevices = ConcurrentHashMap.newKeySet<SubscriptionTarget>()
-    private val messageScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var messageScope = newMessageScope()
     /** 订阅时登记的「此 SN 当前属于哪条产品线」 */
     private val subscriptionProductBySerial = ConcurrentHashMap<String, ProductType>()
     /** 同一 SN 上串行「退订 / 强制重订」，避免与 `async`、重连叠加以致 unsubscribe/subscribe 交错重复。 */
@@ -238,7 +238,16 @@ class MqttSubscriptionManager(
 
     fun cleanup() {
         messageScope.cancel()
+        messageScope = newMessageScope()
+        subscribedTopics.clear()
+        subscribedDevices.clear()
+        subscriptionProductBySerial.clear()
+        subscriptionTargetLocks.clear()
+        mqttEventHandler.cleanup()
     }
+
+    private fun newMessageScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private fun subscriptionTopicsFor(serialNumber: String, productType: ProductType): List<Pair<String, Int>> {
         val layout = mqttTopicsFor(productType)

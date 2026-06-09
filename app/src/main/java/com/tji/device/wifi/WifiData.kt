@@ -3,8 +3,11 @@ package com.tji.device.wifi
 import android.Manifest
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiInfo as AndroidWifiInfo
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.util.Log
 import androidx.annotation.RequiresPermission
 import com.tji.device.data.model.WifiInfo
 import java.net.Inet4Address
@@ -30,20 +33,18 @@ class WifiData(private val context: Context) {
             return WifiInfo(isConnected = false)
         }
 
-        val wifiInfo = wifiManager.connectionInfo
+        val wifiInfo = currentAndroidWifiInfo()
         val isConnected = isWifiConnected()
 
         return WifiInfo(
-            ssid = cleanSSID(wifiInfo.ssid),
-            bssid = wifiInfo.bssid,
+            ssid = cleanSSID(wifiInfo?.ssid),
+            bssid = wifiInfo?.bssid,
             ipAddress = getIPAddress(),
             macAddress = getMacAddress(),
-            rssi = wifiInfo.rssi,
-            signalLevel = WifiManager.calculateSignalLevel(wifiInfo.rssi, 5),
-            linkSpeed = wifiInfo.linkSpeed,
-            frequency = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                wifiInfo.frequency
-            } else 0,
+            rssi = wifiInfo?.rssi ?: 0,
+            signalLevel = calculateSignalLevel(wifiInfo?.rssi ?: Int.MIN_VALUE),
+            linkSpeed = wifiInfo?.linkSpeed ?: 0,
+            frequency = wifiInfo?.frequency ?: 0,
             isConnected = isConnected
         )
     }
@@ -52,8 +53,19 @@ class WifiData(private val context: Context) {
      * 检查 WiFi 是否已连接
      */
     private fun isWifiConnected(): Boolean {
-        val networkInfo = connectivityManager.activeNetworkInfo
-        return networkInfo?.isConnected == true && networkInfo.type == ConnectivityManager.TYPE_WIFI
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun currentAndroidWifiInfo(): AndroidWifiInfo? {
+        val activeNetwork = connectivityManager.activeNetwork
+        val capabilities = activeNetwork?.let(connectivityManager::getNetworkCapabilities)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return capabilities?.transportInfo as? AndroidWifiInfo
+        }
+        return wifiManager.connectionInfo
     }
 
     /**
@@ -82,7 +94,7 @@ class WifiData(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w(TAG, "获取 WiFi IP 地址失败", e)
         }
         return null
     }
@@ -126,7 +138,7 @@ class WifiData(private val context: Context) {
      * 获取信号强度描述
      */
     fun getSignalLevelDescription(rssi: Int): String {
-        return when (WifiManager.calculateSignalLevel(rssi, 5)) {
+        return when (calculateSignalLevel(rssi)) {
             0 -> "很弱"
             1 -> "弱"
             2 -> "一般"
@@ -134,5 +146,14 @@ class WifiData(private val context: Context) {
             4 -> "很强"
             else -> "未知"
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun calculateSignalLevel(rssi: Int): Int {
+        return WifiManager.calculateSignalLevel(rssi, 5)
+    }
+
+    private companion object {
+        const val TAG = "WifiData"
     }
 }

@@ -1,9 +1,4 @@
-import com.android.build.gradle.api.ApkVariantOutput
-import com.android.build.gradle.internal.api.ApkVariantOutputImpl
 import java.util.Properties
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 plugins {
     alias(libs.plugins.android.application)
@@ -23,6 +18,11 @@ val amapApiKey: String = providers.gradleProperty("AMAP_API_KEY")
     .orElse(localProperties.getProperty("AMAP_API_KEY", ""))
     .get()
 
+fun configString(name: String, defaultValue: String): String =
+    providers.gradleProperty(name)
+        .orElse(localProperties.getProperty(name, defaultValue))
+        .get()
+
 android {
     namespace = "com.tji.device"
     compileSdk = 35
@@ -37,11 +37,27 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
+        buildConfigField(
+            "String",
+            "TJI_SPEAKER_RELAY_HOST",
+            "\"${configString("TJI_SPEAKER_RELAY_HOST", "146.56.250.203")}\""
+        )
+        buildConfigField(
+            "int",
+            "TJI_SPEAKER_RELAY_PORT",
+            configString("TJI_SPEAKER_RELAY_PORT", "7000")
+        )
+        buildConfigField(
+            "String",
+            "TJI_SPEAKER_REMOTE_BASE_URL",
+            "\"${configString("TJI_SPEAKER_REMOTE_BASE_URL", "http://146.56.250.203:8008")}\""
+        )
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -91,15 +107,15 @@ android {
 dependencies {
 
     implementation(project(":NetWork"))
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.5.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.6")
-    implementation("androidx.lifecycle:lifecycle-service:2.8.6")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("com.amap.api:3dmap:10.0.600")
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.livedata.ktx)
+    implementation(libs.androidx.lifecycle.service)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.amap3dmap)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -113,7 +129,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.animation)
     testImplementation(libs.junit)
-    testImplementation("org.json:json:20240303")
+    testImplementation(libs.json)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -50,11 +50,13 @@ sealed interface DropperSixStageCommand {
     data class StageSwitch(
         override val msgId: String,
         val stage: Int,
-        val open: Boolean
+        val open: Boolean,
+        val durationMs: Int? = null
     ) : DropperSixStageCommand
 
     data class AllStages(
         override val msgId: String,
-        val open: Boolean
+        val open: Boolean,
+        val durationMs: Int? = null
     ) : DropperSixStageCommand
 }

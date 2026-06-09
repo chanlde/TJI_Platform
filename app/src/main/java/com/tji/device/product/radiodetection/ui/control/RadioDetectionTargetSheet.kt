@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.tji.device.product.radiodetection.model.RadioDetectionTarget
 import com.tji.device.product.radiodetection.model.RadioDetectionUiState
 import com.tji.device.product.radiodetection.model.RadioListStatus
+import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 internal fun TargetSheet(
@@ -240,8 +241,8 @@ private fun TargetCard(
 internal fun MiniMetric(label: String, value: String, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(androidx.compose.ui.graphics.Color(0xFFF7F8FA))
+            .clip(RoundedCornerShape(PayloadDimens.CompactRadius))
+            .background(PageBg)
             .padding(horizontal = 8.dp, vertical = 7.dp)
     ) {
         Text(label, color = TextMuted, style = MaterialTheme.typography.labelSmall)

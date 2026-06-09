@@ -14,9 +14,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tji.device.ui.icon.common.BatteryOutline
+import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.TjiError
 import com.tji.device.ui.theme.TjiOnline
-import com.tji.device.ui.theme.TjiTextMuted
 import com.tji.device.ui.theme.TjiWarning
 
 /**
@@ -41,7 +41,7 @@ fun BatteryIndicator(
             imageVector = BatteryOutline,
             contentDescription = "电量 ${(batteryLevel * 100).toInt()}%",
             modifier = Modifier.size(iconSize),
-            tint = TjiTextMuted
+            tint = PayloadColors.TextMuted
         )
 
         // 使用 Canvas 绘制电量填充

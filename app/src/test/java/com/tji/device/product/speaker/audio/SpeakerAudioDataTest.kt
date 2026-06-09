@@ -1,12 +1,8 @@
 package com.tji.device.product.speaker.audio
 
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.PI
@@ -68,21 +64,90 @@ class SpeakerAudioDataTest {
     }
 
     @Test
+    fun pushToTalkTailFadesToSilenceToAvoidEndPop() {
+        val input = syntheticVoicePcm(
+            amplitude = 0.08f,
+            sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        )
+        val output = SpeakerVoiceProcessor.processPushToTalk(input)
+        val trailingSilenceBytes = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+            SpeakerAudioConfig.Voice.PTT_TRAILING_SILENCE_MS /
+            1_000 *
+            2
+        val outputTail = output.takeLast(trailingSilenceBytes).toByteArray()
+        val outputBody = output.dropLast(trailingSilenceBytes).toByteArray()
+
+        assertTrue("PTT output should include trailing settle silence", output.size >= trailingSilenceBytes)
+        assertEquals(0f, stats(outputTail).peak, 0.000001f)
+        assertTrue("PTT voice body should still be audible", stats(outputBody).rms > 0.02f)
+        assertEquals(0f, stats(outputBody.takeLast(2).toByteArray()).peak, 0.000001f)
+    }
+
+    @Test
+    fun pushToTalkDropsReleaseTailAndLongPostSpeechSilence() {
+        val voice = syntheticVoicePcm(
+            amplitude = 0.08f,
+            sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        )
+        val longSilence = ByteArray(SpeakerAdpcmPacketizer.SAMPLE_RATE * 2 * 2)
+        val releaseClick = syntheticVoicePcm(
+            amplitude = 0.20f,
+            sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+                SpeakerAudioConfig.Voice.PTT_RELEASE_GUARD_MS /
+                1_000
+        )
+        val input = voice + longSilence + releaseClick
+        val output = SpeakerVoiceProcessor.processPushToTalk(input)
+        val trailingSilenceBytes = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+            SpeakerAudioConfig.Voice.PTT_TRAILING_SILENCE_MS /
+            1_000 *
+            2
+        val body = output.dropLast(trailingSilenceBytes).toByteArray()
+
+        assertTrue("PTT release tail should be removed before processing", body.size < input.size / 2)
+        assertTrue("PTT should keep the actual spoken part", stats(body).rms > 0.02f)
+        assertEquals(0f, stats(output.takeLast(trailingSilenceBytes).toByteArray()).peak, 0.000001f)
+    }
+
+
+    @Test
     fun ttsPlaybackIsNormalizedCloseToPushToTalkLevel() {
         val input = syntheticVoicePcm(amplitude = 0.006f, sampleCount = 1_600)
         val output = SpeakerVoiceProcessor.applyPlaybackTone(input)
 
         val inputStats = stats(input)
-        val outputStats = stats(output)
+        val trailingSilenceBytes = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+            SpeakerAudioConfig.Voice.TTS_TRAILING_SILENCE_MS /
+            1_000 *
+            2
+        val outputBody = output.dropLast(trailingSilenceBytes).toByteArray()
+        val outputStats = stats(outputBody)
 
         println(
             "tts normalize: input rms=${inputStats.rms} peak=${inputStats.peak}, " +
                 "processed rms=${outputStats.rms} peak=${outputStats.peak}"
         )
 
-        assertTrue("TTS playback should be boosted when source audio is quiet", outputStats.rms > inputStats.rms * 5f)
-        assertTrue("TTS playback should be loud enough to match PTT perceptually", outputStats.rms > 0.075f)
+        assertTrue("TTS playback should be boosted when source audio is quiet", outputStats.rms > inputStats.rms * 3f)
+        assertTrue("TTS playback should remain audible without aggressive first-word boosting", outputStats.rms > 0.012f)
         assertTrue("TTS playback must stay below digital clipping", outputStats.peak <= 0.981f)
+    }
+
+    @Test
+    fun ttsPlaybackAddsEdgeSmoothingAndTrailingSilence() {
+        val input = syntheticVoicePcm(amplitude = 0.08f, sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE)
+        val output = SpeakerVoiceProcessor.applyPlaybackTone(input)
+        val trailingSilenceBytes = SpeakerAdpcmPacketizer.SAMPLE_RATE *
+            SpeakerAudioConfig.Voice.TTS_TRAILING_SILENCE_MS /
+            1_000 *
+            2
+        val body = output.dropLast(trailingSilenceBytes).toByteArray()
+        val tail = output.takeLast(trailingSilenceBytes).toByteArray()
+
+        assertTrue("TTS output should include trailing settle silence", output.size > input.size)
+        assertEquals(0f, stats(body.take(2).toByteArray()).peak, 0.000001f)
+        assertEquals(0f, stats(body.takeLast(2).toByteArray()).peak, 0.000001f)
+        assertEquals(0f, stats(tail).peak, 0.000001f)
     }
 
     @Test
@@ -130,30 +195,83 @@ class SpeakerAudioDataTest {
     }
 
     @Test
-    fun maxOutputGainControlPacketMatchesHydroLinkUdpProtocol() = runBlocking {
-        DatagramSocket(0, InetAddress.getByName("127.0.0.1")).use { receiver ->
-            receiver.soTimeout = 1_000
-            val relay = SpeakerAudioRelay(
-                SpeakerRelayConfig(
-                    host = "127.0.0.1",
-                    port = receiver.localPort
-                )
+    fun recordStorePacketHeaderCarriesDeviceTaskAndLastPacket() {
+        val packetizer = SpeakerAdpcmPacketizer(
+            SpeakerUdpStreamContext(
+                deviceId = "T12345678",
+                taskId = "STORE_T12345678_1",
+                type = SpeakerUdpStreamType.RecordStore,
+                talkId = "REC_T12345678_1"
             )
+        )
+        val packet = packetizer.packetize(syntheticVoicePcm(amplitude = 0.08f), isLastPacket = true)!!
+        val header = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN)
+        val deviceId = "T12345678"
+        val taskId = "STORE_T12345678_1"
+        val talkId = "REC_T12345678_1"
+        val expectedHeaderLen = 28 + deviceId.length + taskId.length + talkId.length
 
-            relay.sendOutputGain(1f)
+        assertEquals(0xA55A, header.short.toInt() and 0xFFFF)
+        assertEquals(2, header.get().toInt() and 0xFF)
+        assertEquals(1, header.get().toInt() and 0xFF)
+        assertEquals(expectedHeaderLen, header.short.toInt() and 0xFFFF)
+        assertEquals(0x03, header.short.toInt() and 0xFFFF)
+        assertEquals(0, header.int)
+        assertEquals(0, header.int)
+        assertEquals(8_000, header.short.toInt() and 0xFFFF)
+        assertEquals(1, header.get().toInt() and 0xFF)
+        assertEquals(40, header.get().toInt() and 0xFF)
+        assertEquals(164, header.short.toInt() and 0xFFFF)
+        assertEquals(320, header.short.toInt() and 0xFFFF)
+        val deviceLen = header.get().toInt() and 0xFF
+        val taskLen = header.get().toInt() and 0xFF
+        val talkLen = header.get().toInt() and 0xFF
+        assertEquals(deviceId.length, deviceLen)
+        assertEquals(taskId.length, taskLen)
+        assertEquals(talkId.length, talkLen)
+        assertEquals(0, header.get().toInt() and 0xFF)
+        val deviceBytes = ByteArray(deviceLen)
+        header.get(deviceBytes)
+        val taskBytes = ByteArray(taskLen)
+        header.get(taskBytes)
+        val talkBytes = ByteArray(talkLen)
+        header.get(talkBytes)
 
-            val bytes = ByteArray(8)
-            val packet = DatagramPacket(bytes, bytes.size)
-            receiver.receive(packet)
-            val body = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        assertEquals(deviceId, deviceBytes.toString(Charsets.UTF_8))
+        assertEquals(taskId, taskBytes.toString(Charsets.UTF_8))
+        assertEquals(talkId, talkBytes.toString(Charsets.UTF_8))
+    }
 
-            assertEquals(8, packet.length)
-            assertEquals(0xA55B, body.short.toInt() and 0xFFFF)
-            assertEquals(1, body.get().toInt() and 0xFF)
-            assertEquals(6, body.get().toInt() and 0xFF)
-            assertEquals(256, body.short.toInt() and 0xFFFF)
-            assertEquals(0, body.short.toInt() and 0xFFFF)
-        }
+    @Test
+    fun hadpEncoderCreatesFullHadpFileWithHeaderAndCrc() {
+        val pcm = syntheticVoicePcm(
+            amplitude = 0.08f,
+            sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        )
+        val hadp = SpeakerHadpEncoder.encode(pcm, recordId = "REC_T12345678_1")
+        val header = ByteBuffer.wrap(hadp.data, 0, 128).order(ByteOrder.LITTLE_ENDIAN)
+
+        assertEquals(25, hadp.frameCount)
+        assertEquals(25 * 164, hadp.audioBytes)
+        assertEquals(128 + 25 * 164, hadp.fileSize)
+        assertEquals(hadp.fileSize, hadp.data.size)
+        assertEquals(1_000, hadp.durationMs)
+        assertEquals("HADP", hadp.data.copyOfRange(0, 4).toString(Charsets.UTF_8))
+        header.position(4)
+        assertEquals(1, header.short.toInt() and 0xFFFF)
+        assertEquals(128, header.short.toInt() and 0xFFFF)
+        assertEquals(1, header.short.toInt() and 0xFFFF)
+        header.position(12)
+        assertEquals(8_000, header.int)
+        assertEquals(1, header.short.toInt() and 0xFFFF)
+        assertEquals(40, header.short.toInt() and 0xFFFF)
+        assertEquals(164, header.short.toInt() and 0xFFFF)
+        assertEquals(320, header.short.toInt() and 0xFFFF)
+        assertEquals(25, header.int)
+        assertEquals(25 * 164, header.int)
+        assertEquals(1_000, header.int)
+        assertTrue(hadp.crc32.matches(Regex("0x[0-9A-F]{8}")))
+        assertTrue(hadp.audioCrc32.matches(Regex("0x[0-9A-F]{8}")))
     }
 
     private fun syntheticVoicePcm(

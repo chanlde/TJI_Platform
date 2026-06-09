@@ -22,9 +22,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.TjiControlDisabled
 import com.tji.device.ui.theme.TjiControlInactive
-import com.tji.device.ui.theme.TjiPrimary
 
 @Composable
 fun TjiMiniSwitch(
@@ -41,7 +41,7 @@ fun TjiMiniSwitch(
     val trackColor by animateColorAsState(
         targetValue = when {
             !enabled -> TjiControlDisabled
-            checked -> TjiPrimary
+            checked -> PayloadColors.Primary
             else -> TjiControlInactive
         },
         animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),

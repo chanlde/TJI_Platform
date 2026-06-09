@@ -18,7 +18,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.tji.device.ui.theme.TjiPrimarySoft
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.ui.theme.TjiWarning
 
 val SolarPanelClean: ImageVector
@@ -111,7 +112,7 @@ private fun ProductIconPreviewBox(
     Box(
         modifier = Modifier
             .size(56.dp)
-            .background(TjiPrimarySoft, RoundedCornerShape(18.dp)),
+            .background(PayloadColors.PrimarySoft, RoundedCornerShape(PayloadDimens.ControlRadius)),
         contentAlignment = Alignment.Center
     ) {
         Icon(

@@ -1,8 +1,8 @@
-# 六段抛投产品线
+# FC100_FireDrop 产品线
 
 ## 产品定位
 
-六段抛投用于无人机挂载的 6 路抛投控制。App 侧先完成产品入口、设备详情页和 6 路开关控制 UI，协议字段后续以 MCU 和服务端最终协议为准。
+FC100_FireDrop 用于无人机挂载的 6 路抛投控制。App 侧先完成产品入口、设备详情页和 6 路开关控制 UI，协议字段后续以 MCU 和服务端最终协议为准。
 
 ## 当前 App 控制项
 
@@ -18,9 +18,9 @@
 沿用平台统一 topic 布局：
 
 ```text
-DropperSixStage/devices/{deviceSn}/lifecycle
-DropperSixStage/devices/{deviceSn}/status
-DropperSixStage/devices/{deviceSn}/control
+FC100_FireDrop/devices/{deviceSn}/lifecycle
+FC100_FireDrop/devices/{deviceSn}/status
+FC100_FireDrop/devices/{deviceSn}/control
 ```
 
 ## 暂定控制 Payload

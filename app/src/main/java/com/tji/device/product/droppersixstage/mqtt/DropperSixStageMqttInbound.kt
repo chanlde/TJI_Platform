@@ -23,6 +23,7 @@ class DropperSixStageMqttInbound(
                     repository.updateOnlineStatus(serialNumber, isOnline = true, timestamp = json.optNullableLong("ts"))
                 }
             }
+            "identity" -> repository.updateState(parseIdentity(serialNumber, json))
             "offline" -> repository.updateOnlineStatus(
                 serialNumber = serialNumber,
                 isOnline = false,
@@ -35,6 +36,22 @@ class DropperSixStageMqttInbound(
     }
 
     fun cleanup() = Unit
+
+    private fun parseIdentity(
+        serialNumber: String,
+        json: JSONObject
+    ): DropperSixStageState {
+        val payloadDeviceId = json.optString("deviceId").ifBlank { serialNumber }
+        return DropperSixStageState(
+            serialNumber = payloadDeviceId,
+            name = json.optString("name").ifBlank { json.optString("product").ifBlank { null } },
+            isOnline = json.optBoolean("online", true),
+            firmwareVersion = json.optString("fw").ifBlank {
+                json.optString("firmware_version").ifBlank { null }
+            },
+            timestamp = json.optNullableLong("ts") ?: System.currentTimeMillis()
+        )
+    }
 
     private fun parseState(
         serialNumber: String,

@@ -2,20 +2,12 @@ package com.tji.device.ui.components
 
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.tji.device.ui.theme.TjiControlDisabled
-import com.tji.device.ui.theme.TjiPrimary
-import com.tji.device.ui.theme.TjiTextMuted
+import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.TjiWarning
 
 @Composable
@@ -26,26 +18,15 @@ fun TjiActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Button(
+    PayloadActionButton(
+        text = text,
         enabled = enabled,
+        color = color,
         onClick = onClick,
         modifier = modifier
-            .height(46.dp)
-            .defaultMinSize(minWidth = 96.dp),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = color,
-            contentColor = Color.White,
-            disabledContainerColor = TjiControlDisabled,
-            disabledContentColor = TjiTextMuted
-        )
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
+            .height(44.dp)
+            .defaultMinSize(minWidth = 96.dp)
+    )
 }
 
 @Preview(showBackground = true, name = "TJI Action Buttons")
@@ -60,7 +41,7 @@ private fun TjiActionButtonPreview() {
         TjiActionButton(
             text = "开启",
             enabled = true,
-            color = TjiPrimary,
+            color = PayloadColors.Primary,
             onClick = {}
         )
         TjiActionButton(

@@ -47,7 +47,20 @@ class DropperSixStageViewModel(
         send(
             serialNumber = serialNumber,
             command = DropperSixStageCommand.StageSwitch(newMsgId("stage-$stage"), stage, open),
-            label = "${stage}段抛投"
+            label = if (open) "${stage}段开钩" else "${stage}段关钩"
+        )
+    }
+
+    fun timedOpenStage(serialNumber: String, stage: Int, durationMs: Int) {
+        send(
+            serialNumber = serialNumber,
+            command = DropperSixStageCommand.StageSwitch(
+                msgId = newMsgId("stage-$stage-timed"),
+                stage = stage,
+                open = true,
+                durationMs = durationMs.coerceAtLeast(MIN_OPEN_DURATION_MS)
+            ),
+            label = "${stage}段自动开钩"
         )
     }
 
@@ -99,6 +112,7 @@ class DropperSixStageViewModel(
     private companion object {
         const val COMMAND_ACK_TIMEOUT_MS = 3_000L
         const val COMMAND_FEEDBACK_VISIBLE_MS = 2_000L
+        const val MIN_OPEN_DURATION_MS = 100
     }
 }
 

@@ -104,8 +104,8 @@ App 当前负责：
 当前版本配置在 `gradle.properties`：
 
 ```properties
-APP_VERSION_CODE=202
-APP_VERSION_NAME=V2.0.2
+APP_VERSION_CODE=203
+APP_VERSION_NAME=V2.0.3
 ```
 
 ## 当前重点

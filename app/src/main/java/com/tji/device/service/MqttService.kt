@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
+import com.tji.device.di.AppContainer
 import com.tji.network.MqttManager
 
 class MqttService : Service() {
@@ -17,6 +18,7 @@ class MqttService : Service() {
         super.onDestroy()
         Log.d("MqttService", "Service onDestroy")
 
+        AppContainer.mqttSubscriptionManager.cleanup()
         MqttManager.disconnectAll()
     }
 

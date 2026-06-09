@@ -1,5 +1,6 @@
 package com.tji.device.product.speaker.audio
 
+import com.tji.device.BuildConfig
 import java.util.Locale
 
 object SpeakerAudioConfig {
@@ -19,13 +20,14 @@ object SpeakerAudioConfig {
 
     object Relay {
         // UDP relay server used by the 4G speaker audio path.
-        const val HOST = "146.56.250.203"
+        val HOST: String = BuildConfig.TJI_SPEAKER_RELAY_HOST
 
         // MCU/relay UDP audio and control port.
-        const val PORT = 7000
+        val PORT: Int = BuildConfig.TJI_SPEAKER_RELAY_PORT
 
-        // Send each UDP packet this many times to reduce packet-loss clicks.
-        const val REDUNDANCY = 2
+        // Current PTT send/save flows send each UDP packet once; record-store reliability
+        // depends on seq/lastPacket validation instead of blind duplicate packets.
+        const val REDUNDANCY = 1
     }
 
     object Gain {
@@ -88,10 +90,10 @@ object SpeakerAudioConfig {
         // Push-to-talk peak activity floor. Avoids amplifying complete silence.
         const val PTT_MIN_ACTIVE_PEAK = 0.0008f
 
-        // TTS playback target RMS. Kept close to PTT so text broadcast and recorded speech feel similar.
+        // TTS playback target RMS. Keep max loudness aligned with PTT; only the first edge is softened.
         const val TTS_TARGET_RMS = 0.28f
 
-        // TTS playback maximum gain. Match PTT gain headroom because TTS is clean and has no mic noise.
+        // TTS playback maximum gain. Keep full headroom so max volume stays unchanged.
         const val TTS_MAX_GAIN = 28f
 
         // TTS activity floor. Prevents normalizing generated leading silence or empty WAV data.
@@ -99,6 +101,24 @@ object SpeakerAudioConfig {
 
         // TTS peak floor. Used with RMS to avoid boosting digital silence.
         const val TTS_MIN_ACTIVE_PEAK = 0.0008f
+
+        // Fade in from the first detected speech sample, not from generated leading silence.
+        const val TTS_HEAD_FADE_MS = 40
+
+        // First-speech detector used before applying TTS fade-in.
+        const val TTS_HEAD_FADE_START_PEAK = 0.002f
+
+        // Limit only the first speech edge; later TTS body keeps the configured max volume.
+        const val TTS_HEAD_LIMIT_MS = 140
+
+        // Soft ceiling for the first speech edge to suppress clicks without lowering the whole clip.
+        const val TTS_HEAD_LIMIT_CEILING = 0.50f
+
+        // Fade out synthesized speech so playback does not end at a non-zero waveform.
+        const val TTS_TAIL_FADE_MS = 40
+
+        // Extra silence after TTS playback to let the MCU/audio output settle cleanly.
+        const val TTS_TRAILING_SILENCE_MS = 500
 
         // Estimate PTT noise from the quietest windows in the whole clip, so instant speech is not treated as noise.
         const val PTT_NOISE_LOW_PERCENT = 0.20f
@@ -120,6 +140,27 @@ object SpeakerAudioConfig {
 
         // Smooth gate changes between windows to avoid zipper noise.
         const val PTT_NOISE_GATE_SMOOTHING = 0.55f
+
+        // Drop the very end of push-to-talk recordings because button release/AudioRecord stop can create a click.
+        const val PTT_RELEASE_GUARD_MS = 250
+
+        // Trim long silence after the last detected speech before applying fade-out.
+        const val PTT_END_SILENCE_TRIM_WINDOW_MS = 20
+
+        // Tail windows quieter than this RMS are treated as post-speech silence.
+        const val PTT_END_SILENCE_RMS = 0.010f
+
+        // Tail windows below this peak are treated as post-speech silence.
+        const val PTT_END_SILENCE_PEAK = 0.045f
+
+        // Keep this much natural room tail after the last detected speech window.
+        const val PTT_END_KEEP_AFTER_SPEECH_MS = 120
+
+        // Fade the end of recorded push-to-talk clips so the amplifier does not snap from voice to zero.
+        const val PTT_TAIL_FADE_MS = 40
+
+        // Extra silence after push-to-talk playback to let ADPCM/MCU/audio output settle cleanly.
+        const val PTT_TRAILING_SILENCE_MS = 100
 
         // Live gate closes fully below this RMS when peak is also low.
         const val LIVE_GATE_MUTE_RMS = 0.006f
@@ -199,6 +240,39 @@ object SpeakerAudioConfig {
 
         // Optional voice-name keywords. Empty means use the phone system's default TTS voice.
         val PREFERRED_VOICE_NAME_KEYWORDS: List<String> = emptyList()
+
+        // Default TTS engine. System TTS is the only engine wired to playback today.
+        val DEFAULT_ENGINE: SpeakerTtsEngine = SpeakerTtsEngine.System
+
+        // Default Kokoro speaker for the offline TTS prototype.
+        val DEFAULT_KOKORO_VOICE: SpeakerKokoroVoice = SpeakerKokoroVoice.ZmYunxi
+
+        // Kokoro speed lower bound. 1.0 is the model default.
+        const val KOKORO_MIN_SPEED = 0.75f
+
+        // Kokoro speed upper bound. Higher values speak faster.
+        const val KOKORO_MAX_SPEED = 1.25f
+
+        // Kokoro default speed. Used when switching to the offline prototype.
+        const val KOKORO_DEFAULT_SPEED = 1.0f
+
+        // Remote Kokoro TTS service. The App receives 8 kHz mono PCM16 and still owns UDP sending.
+        val REMOTE_KOKORO_BASE_URL: String = BuildConfig.TJI_SPEAKER_REMOTE_BASE_URL
+
+        // Remote endpoint path for Kokoro synthesis.
+        const val REMOTE_KOKORO_SYNTHESIZE_PATH = "/api/tts/kokoro"
+
+        // Number of synthesized TTS PCM clips kept in memory to avoid repeated cloud/system synthesis.
+        const val PCM_CACHE_MAX_ITEMS = 8
+    }
+
+    object RecordStore {
+        // Temporary record file service. It stores uploaded .hadp files without a database
+        // and returns short-lived download URLs for the MCU.
+        val REMOTE_BASE_URL: String = BuildConfig.TJI_SPEAKER_REMOTE_BASE_URL
+
+        // Multipart upload endpoint for temporary record files.
+        const val UPLOAD_TEMP_PATH = "/api/speaker/records/upload-temp"
     }
 
     object Tone {
@@ -317,4 +391,44 @@ enum class SpeakerTtsVoicePreset(
         pitch = 1.04f,
         voiceNameKeywords = listOf("clear", "bright", "assistant", "default", "警示")
     )
+}
+
+enum class SpeakerTtsEngine(val label: String) {
+    System(label = "系统"),
+    KokoroOffline(label = "云端")
+}
+
+enum class SpeakerKokoroVoice(
+    val speakerId: Int,
+    val serverName: String,
+    val label: String,
+    val gender: String
+) {
+    ZfXiaobei(speakerId = 45, serverName = "zf_xiaobei", label = "小北", gender = "女声"),
+    ZfXiaoni(speakerId = 46, serverName = "zf_xiaoni", label = "小妮", gender = "女声"),
+    ZfXiaoxiao(speakerId = 47, serverName = "zf_xiaoxiao", label = "小小", gender = "女声"),
+    ZfXiaoyi(speakerId = 48, serverName = "zf_xiaoyi", label = "小艺", gender = "女声"),
+    ZmYunjian(speakerId = 49, serverName = "zm_yunjian", label = "云健", gender = "男声"),
+    ZmYunxi(speakerId = 50, serverName = "zm_yunxi", label = "云希", gender = "男声"),
+    ZmYunxia(speakerId = 51, serverName = "zm_yunxia", label = "云夏", gender = "男声"),
+    ZmYunyang(speakerId = 52, serverName = "zm_yunyang", label = "云扬", gender = "男声")
+}
+
+fun SpeakerKokoroVoice.customerLabel(): String {
+    val sameGenderVoices = SpeakerKokoroVoice.entries.filter { it.gender == gender }
+    val index = sameGenderVoices.indexOf(this).coerceAtLeast(0) + 1
+    return index.toString()
+}
+
+data class SpeakerKokoroTtsSettings(
+    val voice: SpeakerKokoroVoice = SpeakerAudioConfig.Tts.DEFAULT_KOKORO_VOICE,
+    val speed: Float = SpeakerAudioConfig.Tts.KOKORO_DEFAULT_SPEED
+) {
+    fun normalized(): SpeakerKokoroTtsSettings =
+        copy(
+            speed = speed.coerceIn(
+                SpeakerAudioConfig.Tts.KOKORO_MIN_SPEED,
+                SpeakerAudioConfig.Tts.KOKORO_MAX_SPEED
+            )
+        )
 }

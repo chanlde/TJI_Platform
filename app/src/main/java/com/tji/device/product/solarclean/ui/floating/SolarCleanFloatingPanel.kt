@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -45,8 +44,8 @@ import com.tji.device.ui.components.TjiControlSlider
 import com.tji.device.product.solarclean.ui.icon.PumpPressure
 import com.tji.device.product.solarclean.ui.icon.SprayAngle
 import com.tji.device.product.solarclean.ui.icon.SwingSpeed
-import com.tji.device.ui.theme.TjiPrimary
-import com.tji.device.ui.theme.TjiTextMuted
+import com.tji.device.ui.theme.PayloadColors
+import com.tji.device.ui.theme.PayloadDimens
 import kotlin.math.roundToInt
 
 @Composable
@@ -117,7 +116,7 @@ private fun SolarCleanFloatingPanelContent(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White.copy(alpha = backgroundAlpha), RoundedCornerShape(10.dp))
+                .background(PayloadColors.Surface.copy(alpha = backgroundAlpha), RoundedCornerShape(PayloadDimens.ControlRadius))
                 .padding(horizontal = 10.dp, vertical = 7.dp),
             verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
@@ -204,14 +203,14 @@ private fun FloatingControlSlider(
                 text = title,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = TjiTextMuted,
+                color = PayloadColors.TextMuted,
                 maxLines = 1
             )
             Text(
                 text = "${value.roundToInt()}$unit",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                color = TjiPrimary,
+                color = PayloadColors.Primary,
                 maxLines = 1
             )
         }
@@ -233,7 +232,7 @@ private fun SliderGlyph(kind: SliderKind) {
             },
             contentDescription = null,
             modifier = Modifier.size(18.dp),
-            tint = TjiPrimary
+            tint = PayloadColors.Primary
         )
     }
 }
@@ -251,7 +250,7 @@ private fun CompactToggleBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(36.dp)
-            .background(Color.White.copy(alpha = backgroundAlpha), RoundedCornerShape(9.dp)),
+            .background(PayloadColors.SurfaceSoft.copy(alpha = backgroundAlpha), RoundedCornerShape(PayloadDimens.CompactRadius)),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -266,7 +265,7 @@ private fun CompactToggleBar(
             modifier = Modifier
                 .width(1.dp)
                 .height(24.dp)
-                .background(Color.White.copy(alpha = 0.55f), RoundedCornerShape(99.dp))
+                .background(PayloadColors.Border, RoundedCornerShape(99.dp))
         )
         CompactSwitchCell(
             iconKind = SliderKind.Speed,
@@ -306,13 +305,13 @@ private fun CompactSwitchCell(
             },
             contentDescription = null,
             modifier = Modifier.size(18.dp),
-            tint = if (enabled) TjiPrimary else TjiTextMuted
+            tint = if (enabled) PayloadColors.Primary else PayloadColors.TextMuted
         )
         Text(
             text = title,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) TjiTextMuted else TjiTextMuted.copy(alpha = 0.6f),
+            color = if (enabled) PayloadColors.TextMuted else PayloadColors.TextMuted.copy(alpha = 0.6f),
             maxLines = 1
         )
         TjiMiniSwitch(
