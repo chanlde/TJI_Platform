@@ -18,7 +18,7 @@ if [[ ! -f "$SSH_KEY" ]]; then
   exit 1
 fi
 
-echo "Syncing Kokoro TTS service to $SERVER_USER@$SERVER_HOST:$REMOTE_SERVER_DIR ..."
+echo "Syncing speaker record transfer service to $SERVER_USER@$SERVER_HOST:$REMOTE_SERVER_DIR ..."
 rsync -az --delete \
   --exclude '__pycache__/' \
   --exclude '.pytest_cache/' \
@@ -44,7 +44,7 @@ for attempt in \$(seq 1 30); do
   fi
   sleep 1
 done
-echo 'TTS service did not become healthy in time' >&2
+echo 'Speaker record transfer service did not become healthy in time' >&2
 systemctl status --no-pager -l '$SERVICE_NAME' >&2
 exit 1
 "

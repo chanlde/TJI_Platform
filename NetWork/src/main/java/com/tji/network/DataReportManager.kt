@@ -31,7 +31,7 @@ class DataReportManager private constructor() {
         private const val TAG = "DataReportManager"
         private const val OTA_TYPE_APP = 1
         private const val OTA_TYPE_FIRMWARE = 2
-        private val LOGIN_PRODUCT_IDS = listOf(2, 3, 4)
+        private val LOGIN_PRODUCT_IDS = listOf(2, 3, 4, 5, 6, 7, 8)
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())

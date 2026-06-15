@@ -3,13 +3,16 @@ package com.tji.device.service
 import android.util.Log
 import com.tji.device.data.model.ProductType
 import com.tji.device.di.ProductModuleRegistry
+import com.tji.device.product.ota.ProductOtaMqttParser
+import com.tji.device.product.ota.ProductOtaRuntimeRepository
 import org.json.JSONObject
 
 /**
  * 解析 MQTT 字符串后，按 **订阅时已登记** 的 [ProductType] 转发到对应产品 inbound（不在此做 infer）。
  */
 class MqttEventHandler(
-    private val productModules: ProductModuleRegistry
+    private val productModules: ProductModuleRegistry,
+    private val productOtaRuntimeRepository: ProductOtaRuntimeRepository? = null
 ) {
 
     suspend fun handleMessage(
@@ -42,27 +45,34 @@ class MqttEventHandler(
             }
 
             val json = JSONObject(message)
-            val eventType = json.optString("event_type").ifBlank {
-                // SolarClean 入站使用 type 表示 ack/state/event；App 下发 control 才使用数字 cmd。
-                json.optString("type")
-            }.ifBlank {
-                json.optString("cmdName")
-            }.ifBlank {
-                when {
-                    json.has("ota_status") || json.has("status") -> "otaStatus"
-                    json.has("firmware_version") || json.has("hardware_version") || json.has("hardware") -> "deviceInfo"
-                    else -> ""
-                }
-            }
+            val eventType = ProductOtaMqttParser.resolveEventType(json)
             if (eventType.isBlank()) {
                 Log.w(TAG, "MQTT 消息缺少 event_type/type: sn=$serialNumber product=$productType")
                 return
             }
             Log.d(TAG, "接收到事件: $eventType, sn=$serialNumber, product=$productType, retain=$isRetained")
 
+            cacheCommonOtaRuntime(productType, serialNumber, eventType, json)
             productHandler.handleJsonEvent(serialNumber, eventType, json, isRetained)
         } catch (e: Exception) {
             Log.e(TAG, "解析 MQTT 消息失败: ${e.message}", e)
+        }
+    }
+
+    private fun cacheCommonOtaRuntime(
+        productType: ProductType,
+        serialNumber: String,
+        eventType: String,
+        json: JSONObject
+    ) {
+        val repository = productOtaRuntimeRepository ?: return
+        when (eventType) {
+            "deviceInfo" -> ProductOtaMqttParser.parseDeviceInfo(json)?.let {
+                repository.updateDeviceInfo(productType, serialNumber, it)
+            }
+            "otaStatus" -> ProductOtaMqttParser.parseOtaStatus(json)?.let {
+                repository.updateOtaStatus(productType, serialNumber, it)
+            }
         }
     }
 

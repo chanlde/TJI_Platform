@@ -2,9 +2,8 @@
 """Public UDP relay for 4G PPP speaker audio forwarding.
 
 The STM32 device sends heartbeat packets to this server so the server can learn
-the carrier-NAT public endpoint. App audio packets that carry the formal v2
-speaker header are routed to the matching deviceId. Simplified v2 packets are
-kept only as a temporary field-test fallback.
+the carrier-NAT public endpoint. App audio packets must carry a speaker UDP v2
+header with deviceId, and are routed only to the matching online device.
 """
 
 from __future__ import annotations
@@ -214,27 +213,12 @@ def format_status_response(
     return text.encode("utf-8")
 
 
-def choose_legacy_target(
-    devices: dict[str, DeviceState],
-    latest_device_id: str,
-    now: float,
-    timeout_s: float,
-) -> DeviceState | None:
-    if latest_device_id:
-        latest = devices.get(latest_device_id)
-        if latest is not None and latest.online(now, timeout_s):
-            return latest
-    online_devices = [state for state in devices.values() if state.online(now, timeout_s)]
-    return online_devices[0] if len(online_devices) == 1 else None
-
-
 def forward_packet(
     sock: socket.socket,
     packet: bytes,
     state: DeviceState,
     now: float,
     started: float,
-    routed: bool,
 ) -> None:
     assert state.addr is not None
     sock.sendto(packet, state.addr)
@@ -242,11 +226,9 @@ def forward_packet(
     if (state.forwarded_packets % 100) == 0:
         age = now - state.last_seen
         uptime = now - started
-        mode = "routed" if routed else "legacy"
         print(
-            "%s forwarded=%d dropped=%d id=%s device=%s:%d age=%.1fs uptime=%.0fs"
+            "routed forwarded=%d dropped=%d id=%s device=%s:%d age=%.1fs uptime=%.0fs"
             % (
-                mode,
                 state.forwarded_packets,
                 state.dropped_packets,
                 state.device_id,
@@ -295,7 +277,7 @@ def serve(listen_host: str, listen_port: int, token: str, timeout_s: float) -> N
             if target_device_id:
                 state = devices.get(target_device_id)
                 if state is not None and state.online(now, timeout_s):
-                    forward_packet(sock, packet, state, now, started, routed=True)
+                    forward_packet(sock, packet, state, now, started)
                 else:
                     if state is not None:
                         state.dropped_packets += 1
@@ -303,17 +285,13 @@ def serve(listen_host: str, listen_port: int, token: str, timeout_s: float) -> N
                         print(f"drop routed packet: target offline id={target_device_id}")
                 continue
 
-            legacy_target = choose_legacy_target(devices, latest_device_id, now, timeout_s)
-            if legacy_target is not None:
-                forward_packet(sock, packet, legacy_target, now, started, routed=False)
+            if latest_device_id and latest_device_id in devices:
+                devices[latest_device_id].dropped_packets += 1
+                dropped = devices[latest_device_id].dropped_packets
             else:
-                if latest_device_id and latest_device_id in devices:
-                    devices[latest_device_id].dropped_packets += 1
-                    dropped = devices[latest_device_id].dropped_packets
-                else:
-                    dropped = 1
-                if (dropped % 50) == 1:
-                    print("drop audio/control packet: no unambiguous online device")
+                dropped = 1
+            if (dropped % 50) == 1:
+                print("drop packet: missing or invalid target deviceId")
 
 
 def main() -> None:

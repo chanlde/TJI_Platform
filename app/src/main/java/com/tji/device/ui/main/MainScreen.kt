@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.model.TestDeviceFallbacks
@@ -50,11 +51,8 @@ fun MainScreen(
     val selectedBoundDevice = remember(selectedLinkSerial, boundAccountDevices) {
         val sn = selectedLinkSerial ?: return@remember null
         boundAccountDevices.firstOrNull { it.serialNumber == sn }
-            ?: TestDeviceFallbacks.dropperSixStage.takeIf {
-                activeProductPage == ProductType.DropperSixStage && it.serialNumber == sn
-            }
-            ?: TestDeviceFallbacks.speaker.takeIf {
-                activeProductPage == ProductType.Speaker && it.serialNumber == sn
+            ?: TestDeviceFallbacks.demoDeviceFor(activeProductPage ?: return@remember null).takeIf {
+                BuildConfig.TJI_ENABLE_LOCAL_DEMO_DEVICES && it?.serialNumber == sn
             }
             ?: radioDetectionDemoDevice().takeIf {
                 activeProductPage == ProductType.RadioDetection && it.serialNumber == sn
@@ -119,6 +117,7 @@ fun MainScreen(
             activeProductPage = activeProductPage,
             selectedBoundDevice = selectedBoundDevice,
             selectedFireBucketLink = selectedFireBucketLink,
+            selectedRuntimeDevice = selectedRuntimeDevice,
             onProductSelected = {
                 selectedLinkSerial = null
                 userData.selectedLinkSerial = null
@@ -189,6 +188,7 @@ internal fun MainScreenContent(
     activeProductPage: ProductType?,
     selectedBoundDevice: BoundAccountDevice?,
     selectedFireBucketLink: FireBucketLinkDevice?,
+    selectedRuntimeDevice: ProductDeviceRuntimeSnapshot? = null,
     onProductSelected: (ProductType) -> Unit,
     onLinkSelected: (BoundAccountDevice) -> Unit,
     onSelectedDeviceBack: () -> Unit = {},
@@ -206,6 +206,7 @@ internal fun MainScreenContent(
         selectedBoundDevice != null -> ProductControlRoute(
             device = selectedBoundDevice,
             fireBucketLink = selectedFireBucketLink,
+            runtimeDevice = selectedRuntimeDevice,
             showSettings = showDeviceSettings,
             onRenameDevice = onRenameDevice,
             onBack = onSelectedDeviceBack,

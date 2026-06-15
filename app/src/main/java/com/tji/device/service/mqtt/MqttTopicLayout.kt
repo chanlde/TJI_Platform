@@ -1,6 +1,7 @@
 package com.tji.device.service.mqtt
 
 import com.tji.device.data.model.ProductType
+import com.tji.device.data.model.ProductCatalog
 import com.tji.device.product.droppersixstage.mqtt.DropperSixStageMqttTopics
 import com.tji.device.product.firebucket.mqtt.FireBucketMqttTopics
 import com.tji.device.product.radiodetection.mqtt.RadioDetectionMqttTopics
@@ -22,4 +23,14 @@ fun mqttTopicsFor(productType: ProductType): MqttTopicLayout = when (productType
     ProductType.DropperSixStage -> DropperSixStageMqttTopics
     ProductType.RadioDetection -> RadioDetectionMqttTopics
     ProductType.Speaker -> SpeakerMqttTopics
+    ProductType.BreakWindowProjectile -> PlaceholderProductMqttTopics(ProductCatalog.productCodeOf(productType))
+    ProductType.Searchlight -> PlaceholderProductMqttTopics(ProductCatalog.productCodeOf(productType))
+}
+
+private class PlaceholderProductMqttTopics(
+    private val productCode: String
+) : MqttTopicLayout {
+    override fun lifecycleTopic(serialNumber: String): String = "$productCode/devices/$serialNumber/lifecycle"
+    override fun statusTopic(serialNumber: String): String = "$productCode/devices/$serialNumber/status"
+    override fun controlTopic(serialNumber: String): String = "$productCode/devices/$serialNumber/control"
 }

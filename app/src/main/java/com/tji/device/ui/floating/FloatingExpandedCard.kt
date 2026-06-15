@@ -119,6 +119,8 @@ fun ExpandedCard(
                 ProductType.DropperSixStage -> DropperSixStageFloatingPanel(link = link)
                 ProductType.RadioDetection -> EmptyProductPanel(message = "无线电检测暂不提供悬浮窗快捷控制")
                 ProductType.Speaker -> EmptyProductPanel(message = "喊话器请在 App 内使用实时喊话")
+                ProductType.BreakWindowProjectile -> EmptyProductPanel(message = "破窗弹暂不提供悬浮窗快捷控制")
+                ProductType.Searchlight -> EmptyProductPanel(message = "探照灯暂不提供悬浮窗快捷控制")
             }
         }
     }

@@ -15,5 +15,7 @@ fun productIconVector(productType: ProductType): ImageVector {
         ProductType.DropperSixStage -> SixStageDropper
         ProductType.RadioDetection -> RadioDetectionRadar
         ProductType.Speaker -> SpeakerHorn
+        ProductType.BreakWindowProjectile -> SixStageDropper
+        ProductType.Searchlight -> RadioDetectionRadar
     }
 }

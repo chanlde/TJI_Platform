@@ -32,15 +32,28 @@ class SpeakerMqttInbound(
             )
             "state", "status" -> repository.updateState(parseState(serialNumber, json, allowOnline = !isRetained))
             "ack" -> repository.updateAck(serialNumber, parseAck(json))
-            "record_list" -> repository.updateRecords(
-                serialNumber = serialNumber,
-                records = parseRecords(json.optJSONArray("items") ?: json.optJSONArray("records")),
-                offset = json.optInt("offset", 0),
-                limit = json.optInt("limit", 8).coerceIn(1, 8),
-                total = json.optInt("total", json.optInt("count", 0)),
-                hasMore = json.optBoolean("hasMore", false),
-                timestamp = json.optNullableLong("ts")
-            )
+            "record_list" -> {
+                val records = parseRecords(json.optJSONArray("items") ?: json.optJSONArray("records"))
+                Log.d(
+                    TAG,
+                    "Speaker record list parsed sn=$serialNumber offset=${json.optInt("offset", 0)} " +
+                        "limit=${json.optInt("limit", 8)} total=${json.optInt("total", json.optInt("count", records.size))} " +
+                        "count=${records.size} first=${records.firstOrNull()?.recordId.orEmpty()} " +
+                        "last=${records.lastOrNull()?.recordId.orEmpty()}"
+                )
+                if (records.isEmpty() && json.optInt("total", 0) > 0) {
+                    Log.w(TAG, "Speaker record list has total but parsed empty: ${json.toString().take(600)}")
+                }
+                repository.updateRecords(
+                    serialNumber = serialNumber,
+                    records = records,
+                    offset = json.optInt("offset", 0),
+                    limit = json.optInt("limit", 8).coerceIn(1, 8),
+                    total = json.optInt("total", json.optInt("count", records.size)),
+                    hasMore = json.optBoolean("hasMore", false),
+                    timestamp = json.optNullableLong("ts")
+                )
+            }
             "storage_status" -> {
                 val status = parseStorageStatus(json)
                 Log.d(
@@ -53,6 +66,8 @@ class SpeakerMqttInbound(
             }
             "record_saved",
             "record_failed",
+            "record_progress",
+            "record_verify",
             "record_updated",
             "record_deleted",
             "record_playback" -> {
@@ -60,7 +75,7 @@ class SpeakerMqttInbound(
                 Log.d(
                     TAG,
                     "Speaker record event sn=$serialNumber type=${event.type} ok=${event.ok} " +
-                        "code=${event.code} recordId=${event.recordId} msg=${event.message}"
+                        "code=${event.code} recordId=${event.recordId} progress=${event.progress} msg=${event.message}"
                 )
                 repository.updateRecordEvent(serialNumber, event)
             }
@@ -85,6 +100,10 @@ class SpeakerMqttInbound(
             servoAngle = json.optNullableInt("servoAngle"),
             lastError = json.optString("lastError").ifBlank { null },
             network = json.optString("network").ifBlank { null },
+            outputQuality = json.optString("outputQuality")
+                .ifBlank { json.optString("audioQuality") }
+                .ifBlank { json.optString("quality") }
+                .ifBlank { null },
             timestamp = json.optNullableLong("ts")
         )
 
@@ -146,6 +165,27 @@ class SpeakerMqttInbound(
             ok = json.optBoolean("ok", eventType != "record_failed"),
             code = json.optInt("code", 0),
             message = json.optString("msg"),
+            progress = json.optInt("progress", 0),
+            downloadedBytes = json.optLong("downloadedBytes", 0L),
+            totalBytes = json.optLong("totalBytes", 0L),
+            headerSize = json.optInt("headerSize", json.optInt("headerBytes", 0)),
+            frameBytes = json.optInt("frameBytes", 0),
+            samplesPerFrame = json.optInt("samplesPerFrame", 0),
+            frameCount = json.optInt("frameCount", 0),
+            audioBytes = json.optLong("audioBytes", 0L),
+            audioCrc32 = json.optString("audioCrc32").ifBlank { null },
+            fileCrc32 = json.optString("fileCrc32").ifBlank { json.optString("crc32").ifBlank { null } },
+            firstSamples = json.optJSONArray("firstSamples").toIntList(),
+            name = json.optString("name").ifBlank { null },
+            fileSize = json.optLong("fileSize", 0L),
+            durationMs = json.optLong("durationMs", 0L),
+            codec = json.optString("codec").ifBlank { "pcm16" },
+            sampleRate = json.optInt("sampleRate", 8_000),
+            channels = json.optInt("channels", 1),
+            packetMs = json.optInt("packetMs", 40),
+            crc32 = json.optString("crc32").ifBlank { null },
+            createdAt = json.optString("createdAt").ifBlank { null },
+            storeTaskId = json.optString("storeTaskId").ifBlank { null },
             timestamp = json.optNullableLong("ts")
         )
 
@@ -159,3 +199,12 @@ private fun JSONObject.optNullableLong(name: String): Long? =
 
 private fun JSONObject.optNullableInt(name: String): Int? =
     if (has(name) && !isNull(name)) optInt(name) else null
+
+private fun JSONArray?.toIntList(): List<Int> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            add(optInt(index))
+        }
+    }
+}

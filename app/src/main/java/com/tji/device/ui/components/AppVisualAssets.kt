@@ -12,6 +12,8 @@ fun productEmptyIllustrationRes(productType: ProductType): Int {
         ProductType.DropperSixStage -> R.drawable.img_empty_fire_bucket
         ProductType.RadioDetection -> R.drawable.img_empty_fire_bucket
         ProductType.Speaker -> R.drawable.img_empty_fire_bucket
+        ProductType.BreakWindowProjectile -> R.drawable.img_empty_fire_bucket
+        ProductType.Searchlight -> R.drawable.img_empty_fire_bucket
     }
 }
 
@@ -23,5 +25,7 @@ fun productSceneRes(productType: ProductType): Int {
         ProductType.DropperSixStage -> R.drawable.img_scene_fire_bucket
         ProductType.RadioDetection -> R.drawable.img_scene_radio_detection
         ProductType.Speaker -> R.drawable.img_scene_fire_bucket
+        ProductType.BreakWindowProjectile -> R.drawable.img_scene_fire_bucket
+        ProductType.Searchlight -> R.drawable.img_scene_radio_detection
     }
 }

@@ -21,15 +21,17 @@ import kotlin.math.roundToInt
 class SpeakerTtsSynthesizer(context: Context) {
     private val appContext = context.applicationContext
 
-    suspend fun synthesizeToPcm8k(
+    suspend fun synthesizeToPcm(
         text: String,
-        voicePreset: SpeakerTtsVoicePreset = SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET
+        voicePreset: SpeakerTtsVoicePreset = SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET,
+        targetSampleRate: Int = SpeakerAudioConfig.Tts.DEFAULT_TTS_QUALITY.sampleRate
     ): ByteArray {
+        require(targetSampleRate > 0) { "系统 TTS 目标采样率无效: $targetSampleRate" }
         val wavFile = File(appContext.cacheDir, "speaker-tts-${UUID.randomUUID()}.wav")
         return try {
             synthesizeToWav(text, voicePreset, wavFile)
             withContext(Dispatchers.IO) {
-                wavFile.readPcm16Mono8k()
+                wavFile.readPcm16Mono(targetSampleRate)
             }
         } finally {
             wavFile.delete()
@@ -211,7 +213,8 @@ private fun TextToSpeech.applyConfiguredVoice(locale: Locale, voicePreset: Speak
     }
 }
 
-private fun File.readPcm16Mono8k(): ByteArray {
+private fun File.readPcm16Mono(targetRate: Int): ByteArray {
+    require(targetRate > 0) { "TTS 目标采样率无效: $targetRate" }
     val bytes = readBytes()
     require(bytes.size >= 44) { "TTS 音频为空" }
     require(String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF") { "TTS 音频格式不是 WAV" }
@@ -260,7 +263,6 @@ private fun File.readPcm16Mono8k(): ByteArray {
         samples[frame] = (mixed / channels).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
     }
 
-    val targetRate = SpeakerAdpcmPacketizer.SAMPLE_RATE
     val outFrames = (inputFrames.toLong() * targetRate / sampleRate)
         .toInt()
         .coerceAtLeast(1)

@@ -302,7 +302,21 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
             .mapNotNull { it.toBoundAccountDevice() }
         val radioDetectionDevices = radioDetectionDevicesResolved()
             .mapNotNull { it.toBoundAccountDevice() }
+        val dropperSixStageDevices = sixStageDropperDevicesResolved()
+            .mapNotNull { it.toBoundAccountDevice() }
+        val speakerDevices = speakerDevicesResolved()
+            .mapNotNull { it.toBoundAccountDevice() }
+        val breakWindowDevices = breakWindowDevicesResolved()
+            .mapNotNull { it.toBoundAccountDevice() }
+        val searchlightDevices = searchlightDevicesResolved()
+            .mapNotNull { it.toBoundAccountDevice() }
 
-        return legacyDevices + solarCleanDevices + radioDetectionDevices
+        return legacyDevices +
+            solarCleanDevices +
+            radioDetectionDevices +
+            dropperSixStageDevices +
+            speakerDevices +
+            breakWindowDevices +
+            searchlightDevices
     }
 }

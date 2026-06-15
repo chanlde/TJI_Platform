@@ -1,8 +1,17 @@
 # TJI Platform
 
-版本：`V2.0.3`
+版本：`V2.0.4`
 
 TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 App。当前项目由原来的消防吊桶控制 App 演进而来，目标是把消防吊桶、光伏清洗、六段抛投、喊话器、无线电侦测等产品统一放到同一个平台 App 中管理；大疆 MSDK 这类复杂产品暂不放入本 App。
+
+## V2.0.4 更新内容
+
+- 收口喊话器音频链路：移除 App 云端 TTS 分支，文字转语音统一由 App 本地/系统生成音频，再通过 `.hadp` 临时文件上传下载链路给 MCU 播放或保存。
+- 精简服务器服务：`server/kokoro_tts_service` 已改为喊话器临时音频文件传输服务，仅保留 `.hadp` 上传和短期下载 URL，不再加载 Kokoro 模型或提供 `/api/tts/*` 接口。
+- 清理客户界面测试入口：设置页只保留正式“播放蜂鸣”，移除静音文件、数据校验、本机旧格式、音质测试等调试按钮和对应 ViewModel 死代码。
+- 完善喊话器输出音质：支持低/中/高三档输出配置，TTS 与录音文件上传按当前音质写入对应 `.hadp` 元数据。
+- 优化录音库链路：保存、删除、改名后刷新录音库和容量状态，分页加载按每页 4 条处理，减少一次性拉取压力。
+- 补充本地 TTS 运行组件：App 接入 sherpa-onnx JNI wrapper 和 Android native libs；大模型资源不直接提交普通 Git，需本地放入 `app/src/main/assets/kokoro-multi-lang-v1_0/` 或后续改用 Git LFS/外部分发。
 
 ## V2.0.3 更新内容
 
@@ -13,7 +22,7 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 - 拆分大 Compose 页面：主界面、喊话器、太阳能清洗、六段抛投等页面拆出 section、preview、widget 文件，提升代码定位和维护体验。
 - 补齐组件级 Preview：为喊话器、六段抛投、太阳能清洗等关键 UI 增加组件级 Preview，避免只点到整页 Preview。
 - 扩展产品能力：补充六段抛投、无线电侦测、喊话器相关模型、MQTT 入站解析、仓库、ViewModel、悬浮窗与测试覆盖。
-- 增加辅助服务目录：加入 UDP relay 与 Kokoro TTS 服务脚本/说明，用于后续真实设备和语音链路联调。
+- 增加辅助服务目录：加入 UDP relay 与喊话器临时音频文件传输服务脚本/说明，用于后续真实设备和语音链路联调。
 
 ## 当前能力
 
@@ -126,9 +135,17 @@ App 当前负责：
 当前版本配置在 `gradle.properties`：
 
 ```properties
-APP_VERSION_CODE=203
-APP_VERSION_NAME=V2.0.3
+APP_VERSION_CODE=204
+APP_VERSION_NAME=V2.0.4
 ```
+
+本地 Kokoro TTS 需要额外准备模型资源：
+
+```text
+app/src/main/assets/kokoro-multi-lang-v1_0/
+```
+
+其中 `model.onnx` 超过 GitHub 普通 Git 单文件限制，当前不提交到仓库；正式分发前应走 Git LFS、制品下载或安装包内置资源流程。
 
 ## 当前重点
 

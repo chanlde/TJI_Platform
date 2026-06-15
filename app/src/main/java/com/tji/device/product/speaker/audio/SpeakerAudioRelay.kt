@@ -66,15 +66,18 @@ class SpeakerAudioRelay(
         streamContext: SpeakerUdpStreamContext? = null,
         onPacketSent: (Int) -> Unit
     ) {
+        val frameBytes = SpeakerAdpcmPacketizer.PCM_FRAME_BYTES
         val packetizer = SpeakerAdpcmPacketizer(streamContext)
-        val streamPcm = pcm.withLeadingSilence(leadingSilenceMs)
+        val streamPcm = pcm
+            .withLeadingSilence(leadingSilenceMs)
+            .withTrailingFramePadding(frameBytes)
         DatagramSocket().use { socket ->
             val address = InetAddress.getByName(config.host)
             var offset = 0
             var sentFrames = 0
             var nextPacedSendAtMs = 0L
             while (offset < streamPcm.size && currentCoroutineContext().isActive) {
-                val end = minOf(offset + SpeakerAdpcmPacketizer.PCM_FRAME_BYTES, streamPcm.size)
+                val end = minOf(offset + frameBytes, streamPcm.size)
                 val frame = streamPcm.copyOfRange(offset, end)
                 packetizer.packetize(frame, isLastPacket = end >= streamPcm.size)?.let { packet ->
                     sendPacket(socket, address, packet)
@@ -155,6 +158,12 @@ class SpeakerAudioRelay(
             BYTES_PER_PCM16_SAMPLE
         if (silenceBytes <= 0) return this
         return ByteArray(silenceBytes) + this
+    }
+
+    private fun ByteArray.withTrailingFramePadding(frameBytes: Int): ByteArray {
+        val remainder = size % frameBytes
+        if (remainder == 0) return this
+        return copyOf(size + frameBytes - remainder)
     }
 
     private fun logAudioStats(label: String, raw: ByteArray, processed: ByteArray) {

@@ -14,6 +14,12 @@ import com.tji.device.product.firebucket.repository.FireBucketLinkRepository
 import com.tji.device.product.firebucket.repository.FireBucketSwitchRepository
 import com.tji.device.product.firebucket.repository.SwitchRepo
 import com.tji.device.product.firebucket.viewmodel.FireBucketSwitchViewModelFactory
+import com.tji.device.product.ota.ProductOtaMqttCommandPublisher
+import com.tji.device.product.ota.ProductOtaRepo
+import com.tji.device.product.ota.ProductOtaRepository
+import com.tji.device.product.ota.ProductOtaRuntimeRepo
+import com.tji.device.product.ota.ProductOtaRuntimeRepository
+import com.tji.device.product.ota.ProductOtaViewModelFactory
 import com.tji.device.product.radiodetection.repository.RadioDetectionControlRepo
 import com.tji.device.product.radiodetection.repository.RadioDetectionControlRepository
 import com.tji.device.product.radiodetection.repository.RadioDetectionRepo
@@ -22,8 +28,8 @@ import com.tji.device.product.radiodetection.replay.RadioDetectionReplayStore
 import com.tji.device.product.radiodetection.viewmodel.RadioDetectionControlViewModelFactory
 import com.tji.device.product.runtime.ProductRuntimeRegistry
 import com.tji.device.product.speaker.audio.SpeakerAudioRelay
+import com.tji.device.product.speaker.audio.SpeakerLocalKokoroTtsClient
 import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
-import com.tji.device.product.speaker.audio.SpeakerRemoteTtsClient
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
 import com.tji.device.product.speaker.repository.SpeakerControlRepo
 import com.tji.device.product.speaker.repository.SpeakerControlRepository
@@ -32,8 +38,6 @@ import com.tji.device.product.speaker.repository.SpeakerRepository
 import com.tji.device.product.speaker.viewmodel.SpeakerControlViewModelFactory
 import com.tji.device.product.solarclean.repository.SolarCleanControlRepo
 import com.tji.device.product.solarclean.repository.SolarCleanControlRepository
-import com.tji.device.product.solarclean.repository.SolarCleanOtaRepo
-import com.tji.device.product.solarclean.repository.SolarCleanOtaRepository
 import com.tji.device.product.solarclean.repository.SolarCleanRepo
 import com.tji.device.product.solarclean.repository.SolarCleanRepository
 import com.tji.device.product.solarclean.viewmodel.SolarCleanControlViewModelFactory
@@ -64,8 +68,12 @@ object AppContainer {
         SolarCleanControlRepo()
     }
 
-    val solarCleanOtaRepository: SolarCleanOtaRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        SolarCleanOtaRepo()
+    val productOtaRepository: ProductOtaRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProductOtaRepo()
+    }
+
+    val productOtaRuntimeRepository: ProductOtaRuntimeRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProductOtaRuntimeRepo()
     }
 
     val dropperSixStageRepository: DropperSixStageRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -101,8 +109,9 @@ object AppContainer {
         SpeakerTtsSynthesizer(appContext)
     }
 
-    val speakerRemoteTtsClient: SpeakerRemoteTtsClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        SpeakerRemoteTtsClient()
+    val speakerLocalKokoroTtsClient: SpeakerLocalKokoroTtsClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        check(::appContext.isInitialized) { "AppContainer.initialize(context) must be called before using local Kokoro TTS" }
+        SpeakerLocalKokoroTtsClient(appContext)
     }
 
     val speakerRecordUploadClient: SpeakerRecordUploadClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -137,7 +146,10 @@ object AppContainer {
     }
 
     private val mqttEventHandler: MqttEventHandler by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        MqttEventHandler(productModules = productModules)
+        MqttEventHandler(
+            productModules = productModules,
+            productOtaRuntimeRepository = productOtaRuntimeRepository
+        )
     }
 
     val mqttSubscriptionManager: MqttSubscriptionManager by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -151,8 +163,14 @@ object AppContainer {
     val solarCleanControlViewModelFactory: SolarCleanControlViewModelFactory by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         SolarCleanControlViewModelFactory(
             stateRepository = solarCleanRepository,
-            controlRepository = solarCleanControlRepository,
-            otaRepository = solarCleanOtaRepository
+            controlRepository = solarCleanControlRepository
+        )
+    }
+
+    val productOtaViewModelFactory: ProductOtaViewModelFactory by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        ProductOtaViewModelFactory(
+            repository = productOtaRepository,
+            commandPublisher = ProductOtaMqttCommandPublisher()
         )
     }
 
@@ -177,7 +195,7 @@ object AppContainer {
             controlRepository = speakerControlRepository,
             audioRelay = speakerAudioRelay,
             ttsSynthesizer = speakerTtsSynthesizer,
-            remoteTtsClient = speakerRemoteTtsClient,
+            localKokoroTtsClient = speakerLocalKokoroTtsClient,
             recordUploadClient = speakerRecordUploadClient
         )
     }

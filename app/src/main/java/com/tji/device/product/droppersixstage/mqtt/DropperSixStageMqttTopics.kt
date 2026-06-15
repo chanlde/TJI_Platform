@@ -3,7 +3,7 @@ package com.tji.device.product.droppersixstage.mqtt
 import com.tji.device.service.mqtt.MqttTopicLayout
 
 object DropperSixStageMqttTopics : MqttTopicLayout {
-    private const val PREFIX = "FC100_FireDrop/devices/"
+    private const val PREFIX = "SixStageDropper/devices/"
 
     override fun lifecycleTopic(serialNumber: String): String =
         "${PREFIX}$serialNumber/lifecycle"

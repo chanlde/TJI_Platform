@@ -1,20 +1,8 @@
-# Kokoro TTS Service
+# Speaker Record Transfer Service
 
-离线 Kokoro TTS HTTP 服务，用于喊话器 App 的远程文字转语音。
+喊话器临时音频文件传输服务。App 上传完整 `.hadp` 文件，服务生成短期下载链接，MCU 通过链接下载后播放或保存。
 
-## 模型
-
-推荐使用 sherpa-onnx 官方 Kokoro 模型：
-
-```bash
-mkdir -p /opt/tji/kokoro-tts
-cd /opt/tji/kokoro-tts
-curl -L -o kokoro-multi-lang-v1_0.tar.bz2 \
-  https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2
-tar xf kokoro-multi-lang-v1_0.tar.bz2
-```
-
-模型目录约 394MB。
+这个服务不再负责 TTS 合成。文字转语音由 App 本地生成音频，再走同一套 `.hadp` 上传下载链路。
 
 ## 安装
 
@@ -26,37 +14,23 @@ python3 -m venv venv
 
 ## 本地调试
 
-本地先调好音色、语速、停顿、接口格式，再上传服务器：
-
 ```bash
 server/kokoro_tts_service/run_local.sh
 ```
 
-默认读取本地模型目录：
+默认监听：
 
 ```text
-.tmp_tts_probe/kokoro-multi-lang-v1_0
+http://127.0.0.1:8008
 ```
 
-如果模型放在其他地方：
+健康检查：
 
 ```bash
-KOKORO_MODEL_DIR=/path/to/kokoro-multi-lang-v1_0 \
-  server/kokoro_tts_service/run_local.sh
-```
-
-本地验证：
-
-```bash
-curl -X POST http://127.0.0.1:8008/api/tts/kokoro \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"前方危险，请立即撤离","voice":"zm_yunxi","speed":1.0,"sampleRate":8000,"format":"pcm16"}' \
-  --output local-test.pcm
+curl http://127.0.0.1:8008/health
 ```
 
 ## 上传服务器
-
-本地验证没问题后，直接同步服务代码、安装依赖并重启服务器服务：
 
 ```bash
 server/kokoro_tts_service/deploy_server.sh
@@ -72,43 +46,38 @@ remote dir: /opt/tji/kokoro-tts/server
 service: tji-kokoro-tts.service
 ```
 
-需要覆盖时用环境变量：
+## 接口
 
-```bash
-KOKORO_SERVER_HOST=146.56.250.203 \
-KOKORO_SSH_KEY=~/.ssh/tji_kokoro_deploy \
-  server/kokoro_tts_service/deploy_server.sh
+### 上传临时 HADP
+
+```text
+POST /api/speaker/records/upload-temp
 ```
 
-## 启动
+Multipart 字段：
 
-```bash
-export KOKORO_MODEL_DIR=/opt/tji/kokoro-tts/kokoro-multi-lang-v1_0
-export KOKORO_TTS_HOST=0.0.0.0
-export KOKORO_TTS_PORT=8008
-./venv/bin/uvicorn app:app --host "$KOKORO_TTS_HOST" --port "$KOKORO_TTS_PORT"
+```text
+file              .hadp 文件
+deviceId          设备 SN
+recordId          录音 ID
+name              显示名称
+fileSize          文件字节数
+crc32             文件 CRC32
+durationMs        音频时长
+codec             pcm16 或 ima_adpcm
+sampleRate        8000 / 16000 / 24000
+channels          1
+packetMs          40
+frameBytes        每帧字节数
+samplesPerFrame   每帧采样数
 ```
 
-## 调用
+返回 `downloadUrl`，供 MCU 下载。
 
-```bash
-curl -X POST http://146.56.250.203:8008/api/tts/kokoro \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"前方危险，请立即撤离","voice":"zm_yunxi","speed":1.0,"sampleRate":8000,"format":"pcm16"}' \
-  --output test.pcm
+### 下载临时 HADP
+
+```text
+GET /api/speaker/records/temp/{token}/{filename}
 ```
 
-返回格式：`audio/L16`，8 kHz mono PCM16 little-endian。
-
-## 音色
-
-| voice | sid | 类型 |
-| --- | ---: | --- |
-| zf_xiaobei | 45 | 女声 |
-| zf_xiaoni | 46 | 女声 |
-| zf_xiaoxiao | 47 | 女声 |
-| zf_xiaoyi | 48 | 女声 |
-| zm_yunjian | 49 | 男声 |
-| zm_yunxi | 50 | 男声 |
-| zm_yunxia | 51 | 男声 |
-| zm_yunyang | 52 | 男声 |
+临时文件默认保留 30 分钟，不写数据库。

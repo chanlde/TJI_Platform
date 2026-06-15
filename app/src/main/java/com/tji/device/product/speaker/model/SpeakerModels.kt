@@ -20,6 +20,7 @@ data class SpeakerDeviceState(
     val recordHasMore: Boolean = false,
     val storageStatus: SpeakerStorageStatus? = null,
     val lastRecordEvent: SpeakerRecordEvent? = null,
+    val outputQuality: String? = null,
     val timestamp: Long? = null
 ) : ProductRuntimePayload
 
@@ -62,6 +63,15 @@ sealed class SpeakerCommand(
         val volume: Int
     ) : SpeakerCommand(msgId, 105, "SET_VOLUME")
 
+    class SetAudioQuality(
+        msgId: String,
+        val quality: String,
+        val sampleRate: Int,
+        val packetMs: Int,
+        val frameBytes: Int,
+        val samplesPerFrame: Int
+    ) : SpeakerCommand(msgId, 123, "SET_AUDIO_QUALITY")
+
     class GetStatus(msgId: String) : SpeakerCommand(msgId, 106, "GET_STATUS")
 
     class SetServoAngle(
@@ -82,11 +92,27 @@ sealed class SpeakerCommand(
     class RecordDownload(
         msgId: String,
         val recordId: String,
+        val storeTaskId: String,
+        val createdAt: String,
         val name: String,
         val downloadUrl: String,
         val fileSize: Long,
         val crc32: String,
-        val durationMs: Int
+        val durationMs: Int,
+        val codec: String = "pcm16",
+        val sampleRate: Int = 8_000,
+        val channels: Int = 1,
+        val packetMs: Int = 40,
+        val frameBytes: Int = 640,
+        val samplesPerFrame: Int = 320,
+        val verifyOnly: Boolean = false,
+        val verifyKind: String? = null,
+        val expectedAudioCrc32: String? = null,
+        val expectedFirstSamples: List<Int> = emptyList(),
+        val temporary: Boolean = false,
+        val visible: Boolean = true,
+        val autoPlay: Boolean = false,
+        val playbackVolume: Int? = null
     ) : SpeakerCommand(msgId, 114, "RECORD_DOWNLOAD")
 
     class PlayRecord(
@@ -98,7 +124,8 @@ sealed class SpeakerCommand(
     class ListRecords(
         msgId: String,
         val offset: Int = 0,
-        val limit: Int = 8
+        val limit: Int = 4,
+        val order: String = "desc"
     ) : SpeakerCommand(msgId, 119, "LIST_RECORDS")
 
     class DeleteRecord(
@@ -150,5 +177,26 @@ data class SpeakerRecordEvent(
     val ok: Boolean = true,
     val code: Int = 0,
     val message: String = "",
+    val progress: Int = 0,
+    val downloadedBytes: Long = 0L,
+    val totalBytes: Long = 0L,
+    val headerSize: Int = 0,
+    val frameBytes: Int = 0,
+    val samplesPerFrame: Int = 0,
+    val frameCount: Int = 0,
+    val audioBytes: Long = 0L,
+    val audioCrc32: String? = null,
+    val fileCrc32: String? = null,
+    val firstSamples: List<Int> = emptyList(),
+    val name: String? = null,
+    val fileSize: Long = 0L,
+    val durationMs: Long = 0L,
+    val codec: String = "pcm16",
+    val sampleRate: Int = 8_000,
+    val channels: Int = 1,
+    val packetMs: Int = 40,
+    val crc32: String? = null,
+    val createdAt: String? = null,
+    val storeTaskId: String? = null,
     val timestamp: Long? = null
 )

@@ -39,6 +39,18 @@ data class LoginResponse(
      */
     @SerializedName("radiodetectionsns")
     val radiodetectionsns: List<JsonElement>? = null,
+    /** 六段抛投绑定设备；兼容旧版字符串和新版对象。 */
+    @SerializedName("sixsns")
+    val sixsns: List<JsonElement>? = null,
+    /** 喊话器绑定设备；服务器返回字段名为 megaphonesns。 */
+    @SerializedName("megaphonesns")
+    val megaphonesns: List<JsonElement>? = null,
+    /** 破窗弹绑定设备；兼容旧版字符串和新版对象。 */
+    @SerializedName("windowsbreakingsns")
+    val windowsbreakingsns: List<JsonElement>? = null,
+    /** 探照灯绑定设备；兼容旧版字符串和新版对象。 */
+    @SerializedName("searchlightsns")
+    val searchlightsns: List<JsonElement>? = null,
     /** 多产品推荐结构化字段；优先级高于字符串行，避免客户端靠名称推断产品类型。 */
     @SerializedName("boundDevices")
     val boundDevices: List<BoundDeviceRow>? = null,
@@ -58,6 +70,34 @@ data class LoginResponse(
         return radiodetectionsns.toDeviceRows(
             productType = "RadioDetection",
             productCode = "RadioDetection"
+        )
+    }
+
+    fun sixStageDropperDevicesResolved(): List<BoundDeviceRow> {
+        return sixsns.toDeviceRows(
+            productType = "DropperSixStage",
+            productCode = "SixStageDropper"
+        )
+    }
+
+    fun speakerDevicesResolved(): List<BoundDeviceRow> {
+        return megaphonesns.toDeviceRows(
+            productType = "Speaker",
+            productCode = "Speaker"
+        )
+    }
+
+    fun breakWindowDevicesResolved(): List<BoundDeviceRow> {
+        return windowsbreakingsns.toDeviceRows(
+            productType = "BreakWindowProjectile",
+            productCode = "GlassBreaker"
+        )
+    }
+
+    fun searchlightDevicesResolved(): List<BoundDeviceRow> {
+        return searchlightsns.toDeviceRows(
+            productType = "Searchlight",
+            productCode = "Searchlight"
         )
     }
 
@@ -112,6 +152,14 @@ fun LoginResponse.mergeWith(other: LoginResponse): LoginResponse {
         cleansns = (cleansns.orEmpty() + other.cleansns.orEmpty())
             .distinctBy { it.toString() },
         radiodetectionsns = (radiodetectionsns.orEmpty() + other.radiodetectionsns.orEmpty())
+            .distinctBy { it.toString() },
+        sixsns = (sixsns.orEmpty() + other.sixsns.orEmpty())
+            .distinctBy { it.toString() },
+        megaphonesns = (megaphonesns.orEmpty() + other.megaphonesns.orEmpty())
+            .distinctBy { it.toString() },
+        windowsbreakingsns = (windowsbreakingsns.orEmpty() + other.windowsbreakingsns.orEmpty())
+            .distinctBy { it.toString() },
+        searchlightsns = (searchlightsns.orEmpty() + other.searchlightsns.orEmpty())
             .distinctBy { it.toString() },
         boundDevices = (boundDevices.orEmpty() + other.boundDevices.orEmpty())
             .distinctBy { row ->

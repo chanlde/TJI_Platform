@@ -205,15 +205,16 @@ internal fun OutputVolumeCard(
 
 @Composable
 internal fun TalkStatus(state: SpeakerTalkState) {
-    val (text, color) = when (state.mode) {
-        SpeakerTalkMode.Idle -> (state.error ?: "待命") to if (state.error == null) SpeakerMuted else TjiError
-        SpeakerTalkMode.Live -> "正在实时喊话" to SpeakerAccent
-        SpeakerTalkMode.Recording -> "正在录音，松开发送" to SpeakerWarning
-        SpeakerTalkMode.Sending -> "正在发送到扬声器" to SpeakerAccent
-        SpeakerTalkMode.RecordingToStore -> "正在录音，松开保存" to SpeakerWarning
-        SpeakerTalkMode.SavingRecord -> "正在保存录音 ${(state.progress.coerceIn(0f, 1f) * 100).toInt()}%" to SpeakerAccent
-        SpeakerTalkMode.Tts -> "文字语音发送中" to SpeakerAccent
-        SpeakerTalkMode.Tone -> "正在测试音色" to SpeakerWarning
+    val text = speakerTalkStatusText(state)
+    val color = when (state.mode) {
+        SpeakerTalkMode.Idle -> if (state.error == null) SpeakerMuted else TjiError
+        SpeakerTalkMode.Live,
+        SpeakerTalkMode.Sending,
+        SpeakerTalkMode.SavingRecord,
+        SpeakerTalkMode.Tts -> SpeakerAccent
+        SpeakerTalkMode.Recording,
+        SpeakerTalkMode.RecordingToStore,
+        SpeakerTalkMode.Tone -> SpeakerWarning
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
         SpeakerStatusBadge(text = text, color = color, showDot = state.mode != SpeakerTalkMode.Idle)
@@ -230,6 +231,18 @@ internal fun TalkStatus(state: SpeakerTalkState) {
         }
     }
 }
+
+internal fun speakerTalkStatusText(state: SpeakerTalkState): String =
+    when (state.mode) {
+        SpeakerTalkMode.Idle -> state.error ?: "待命"
+        SpeakerTalkMode.Live -> "正在实时喊话"
+        SpeakerTalkMode.Recording -> "正在录音，松开发送"
+        SpeakerTalkMode.Sending -> "正在发送到扬声器"
+        SpeakerTalkMode.RecordingToStore -> "正在录音，松开保存"
+        SpeakerTalkMode.SavingRecord -> "正在保存录音 ${(state.progress.coerceIn(0f, 1f) * 100).toInt()}%"
+        SpeakerTalkMode.Tts -> "文字语音发送中"
+        SpeakerTalkMode.Tone -> "正在播放蜂鸣"
+    }
 
 @Composable
 internal fun PushToTalkButton(

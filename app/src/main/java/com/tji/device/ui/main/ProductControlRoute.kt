@@ -34,13 +34,20 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
+import com.tji.device.di.AppContainer
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.firebucket.ui.control.FireBucketControlScreen
 import com.tji.device.product.droppersixstage.ui.control.DropperSixStageControlScreen
+import com.tji.device.product.ota.toProductDeviceInfo
+import com.tji.device.product.ota.toProductOtaStatus
 import com.tji.device.product.radiodetection.ui.control.RadioDetectionControlScreen
+import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.product.speaker.ui.control.SpeakerControlScreen
 import com.tji.device.product.solarclean.ui.control.SolarCleanControlScreen
 import com.tji.device.ui.components.TjiSectionCard
@@ -51,14 +58,16 @@ import com.tji.device.ui.theme.PayloadDimens
 fun ProductControlRoute(
     device: BoundAccountDevice,
     fireBucketLink: FireBucketLinkDevice?,
+    runtimeDevice: ProductDeviceRuntimeSnapshot? = null,
     showSettings: Boolean = false,
     onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> },
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    if (showSettings && device.productType != ProductType.SolarClean) {
+    if (showSettings) {
         CommonDeviceSettingsScreen(
             device = device,
+            runtimeDevice = runtimeDevice,
             onRenameDevice = { newName -> onRenameDevice(device, newName) },
             modifier = modifier
         )
@@ -73,7 +82,6 @@ fun ProductControlRoute(
 
         ProductType.SolarClean -> SolarCleanControlScreen(
             device = device,
-            showSettings = showSettings,
             onRenameDevice = onRenameDevice,
             modifier = modifier
         )
@@ -94,16 +102,61 @@ fun ProductControlRoute(
             onBack = onBack,
             modifier = modifier
         )
+
+        ProductType.BreakWindowProjectile,
+        ProductType.Searchlight -> UnsupportedProductControlScreen(
+            device = device,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun UnsupportedProductControlScreen(
+    device: BoundAccountDevice,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .background(PayloadColors.Background),
+        contentPadding = PaddingValues(PayloadDimens.ScreenPadding),
+        verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
+    ) {
+        item {
+            TjiSectionCard(title = ProductCatalog.definitionOf(device.productType).displayName) {
+                CommonInfoLine(label = "设备名称", value = device.name)
+                CommonInfoLine(label = "设备 SN", value = device.serialNumber)
+                CommonInfoLine(label = "控制状态", value = "等待设备协议接入")
+            }
+        }
     }
 }
 
 @Composable
 private fun CommonDeviceSettingsScreen(
     device: BoundAccountDevice,
+    runtimeDevice: ProductDeviceRuntimeSnapshot?,
     onRenameDevice: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val focusManager = LocalFocusManager.current
+    val otaViewModel: com.tji.device.product.ota.ProductOtaViewModel =
+        viewModel(factory = AppContainer.productOtaViewModelFactory)
+    val otaCheckState by otaViewModel.otaCheckState.collectAsStateWithLifecycle()
+    val commandFeedback by otaViewModel.commandFeedback.collectAsStateWithLifecycle()
+    val otaRuntimeStates by AppContainer.productOtaRuntimeRepository.states.collectAsStateWithLifecycle()
+    val commonOtaRuntime = otaRuntimeStates.firstOrNull {
+        it.productType == device.productType && it.serialNumber == device.serialNumber
+    }
+    val deviceInfo = commonOtaRuntime?.deviceInfo ?: runtimeDevice?.payload.toProductDeviceInfo()
+    val otaStatus = commonOtaRuntime?.otaStatus ?: runtimeDevice?.payload.toProductOtaStatus()
+
+    LaunchedEffect(device.serialNumber, device.productType) {
+        otaViewModel.resetForDevice()
+        otaViewModel.requestDeviceInfo(device.serialNumber, device.productType)
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -128,7 +181,38 @@ private fun CommonDeviceSettingsScreen(
                     label = "产品类型",
                     value = ProductCatalog.definitionOf(device.productType).displayName
                 )
+                CommonInfoLine(label = "在线状态", value = if (runtimeDevice?.isOnline == true) "在线" else "离线")
+                CommonInfoLine(label = "固件版本", value = deviceInfo?.firmwareVersion ?: "--")
+                CommonInfoLine(label = "内部版本", value = deviceInfo?.firmwareInnerVersion?.toString() ?: "--")
+                CommonInfoLine(label = "硬件版本", value = deviceInfo?.hardwareVersion ?: "--")
             }
+        }
+        item {
+            com.tji.device.product.ota.ui.ProductOtaCard(
+                deviceInfo = deviceInfo,
+                otaStatus = otaStatus,
+                otaCheckState = otaCheckState,
+                commandFeedback = commandFeedback,
+                enabled = true,
+                showOtaTestEntry = BuildConfig.TJI_ENABLE_OTA_TEST_ENTRY,
+                onRefreshDeviceInfo = {
+                    otaViewModel.requestDeviceInfo(device.serialNumber, device.productType)
+                },
+                onCheckUpdate = {
+                    otaViewModel.checkOta(device.productType, deviceInfo)
+                },
+                onStartOta = {
+                    otaViewModel.startOta(device.serialNumber, device.productType, deviceInfo)
+                },
+                onStartOtaTest = {
+                    otaViewModel.startOta(
+                        serialNumber = device.serialNumber,
+                        productType = device.productType,
+                        deviceInfo = deviceInfo,
+                        isDownloadTest = true
+                    )
+                }
+            )
         }
     }
 }

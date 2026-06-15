@@ -81,15 +81,6 @@ class SolarCleanControlRepo : SolarCleanControlRepository {
                 is SolarCleanCommand.GetDeviceInfo -> {
                     // No extra payload.
                 }
-                is SolarCleanCommand.StartOta -> {
-                    put("target_version", packageInfo.targetVersion)
-                    put("download_url", packageInfo.downloadUrl)
-                    put("file_size", packageInfo.fileSize)
-                    put("sha256", packageInfo.sha256)
-                    packageInfo.targetInnerVersion?.let { put("target_inner_version", it) }
-                    packageInfo.hardwareVersion?.let { put("hardware_version", it) }
-                    packageInfo.signature?.let { put("signature", it) }
-                }
                 is SolarCleanCommand.RouteList -> {
                     // No extra payload.
                 }
@@ -120,7 +111,6 @@ class SolarCleanControlRepo : SolarCleanControlRepository {
         is SolarCleanCommand.SprayAngle -> SolarCleanCommandCode.SET_SPRAY_ANGLE
         is SolarCleanCommand.SwingSpeed -> SolarCleanCommandCode.SET_SWING_SPEED
         is SolarCleanCommand.ServoSwing -> SolarCleanCommandCode.SET_SERVO_SWING
-        is SolarCleanCommand.StartOta -> SolarCleanCommandCode.START_OTA
         is SolarCleanCommand.RouteList -> SolarCleanCommandCode.ROUTE_LIST
         is SolarCleanCommand.RouteDelete -> SolarCleanCommandCode.ROUTE_DELETE
         is SolarCleanCommand.RouteDownload -> SolarCleanCommandCode.ROUTE_DOWNLOAD
@@ -136,7 +126,6 @@ class SolarCleanControlRepo : SolarCleanControlRepository {
         is SolarCleanCommand.SprayAngle -> "SET_SPRAY_ANGLE"
         is SolarCleanCommand.SwingSpeed -> "SET_SWING_SPEED"
         is SolarCleanCommand.ServoSwing -> "SET_SERVO_SWING"
-        is SolarCleanCommand.StartOta -> "START_OTA"
         is SolarCleanCommand.RouteList -> "ROUTE_LIST"
         is SolarCleanCommand.RouteDelete -> "ROUTE_DELETE"
         is SolarCleanCommand.RouteDownload -> "ROUTE_DOWNLOAD"

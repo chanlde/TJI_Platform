@@ -63,6 +63,8 @@ fun ProductFloatingGlyph(
         ProductType.DropperSixStage -> PayloadColors.Primary
         ProductType.RadioDetection -> PayloadColors.Primary
         ProductType.Speaker -> PayloadColors.Warning
+        ProductType.BreakWindowProjectile -> PayloadColors.Primary
+        ProductType.Searchlight -> PayloadColors.Primary
     }
     val size = if (compact) 24.dp else 44.dp
 

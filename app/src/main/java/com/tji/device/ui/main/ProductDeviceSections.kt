@@ -29,6 +29,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
@@ -56,8 +57,7 @@ internal fun ProductDevicesScreen(
     val accountDevices = knownLinks.filter { it.productType == productType }
     val displayAccountDevices = when {
         accountDevices.isNotEmpty() -> accountDevices
-        productType == ProductType.DropperSixStage -> listOf(TestDeviceFallbacks.dropperSixStage)
-        productType == ProductType.Speaker -> listOf(TestDeviceFallbacks.speaker)
+        BuildConfig.TJI_ENABLE_LOCAL_DEMO_DEVICES -> listOfNotNull(TestDeviceFallbacks.demoDeviceFor(productType))
         else -> emptyList()
     }
     LazyColumn(
@@ -162,6 +162,8 @@ private fun PlatformDeviceCard(
         ProductType.DropperSixStage -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
         ProductType.RadioDetection -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
         ProductType.Speaker -> listOf(PayloadColors.Surface, PayloadColors.WarningSoft)
+        ProductType.BreakWindowProjectile -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
+        ProductType.Searchlight -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
     }
     val subDeviceCount = live?.childCount
     val isOnline = live?.isOnline == true

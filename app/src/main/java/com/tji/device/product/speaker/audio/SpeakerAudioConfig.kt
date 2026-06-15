@@ -4,6 +4,15 @@ import com.tji.device.BuildConfig
 import java.util.Locale
 
 object SpeakerAudioConfig {
+    object Codec {
+        // Keep the IMA ADPCM step index continuous across 40 ms frames.
+        // Resetting it every frame creates an audible periodic "tuk-tuk" artifact.
+        const val RESET_ADPCM_STEP_INDEX_EACH_FRAME = false
+
+        // Current non-realtime playback/storage format. PCM16 trades a little bandwidth for stable audio.
+        val DEFAULT_HADP_CODEC: SpeakerHadpCodec = SpeakerHadpCodec.Pcm16
+    }
+
     object Pcm {
         // PCM sample scale for signed 16-bit audio. Negative full-scale is -32768.
         const val PCM_I16_NEGATIVE_SCALE = 32_768f
@@ -102,14 +111,22 @@ object SpeakerAudioConfig {
         // TTS peak floor. Used with RMS to avoid boosting digital silence.
         const val TTS_MIN_ACTIVE_PEAK = 0.0008f
 
-        // Fade in from the first detected speech sample, not from generated leading silence.
-        const val TTS_HEAD_FADE_MS = 40
+        // TTS low-pass cutoff before 8 kHz ADPCM playback. Text speech has wideband
+        // consonants that can become "zizi" artifacts on the speaker path.
+        const val TTS_LOW_PASS_CUTOFF_HZ = 3_000f
+
+        // Apply the low-pass more than once for TTS because a one-pole filter is gentle.
+        const val TTS_LOW_PASS_PASSES = 2
+
+        // TTS now uses the stable HADP file path; do not fade from the first speech
+        // sample, otherwise the first Chinese syllable can sound swallowed.
+        const val TTS_HEAD_FADE_MS = 0
 
         // First-speech detector used before applying TTS fade-in.
         const val TTS_HEAD_FADE_START_PEAK = 0.002f
 
-        // Limit only the first speech edge; later TTS body keeps the configured max volume.
-        const val TTS_HEAD_LIMIT_MS = 140
+        // Kept disabled for file-based TTS playback; leading silence handles output settling.
+        const val TTS_HEAD_LIMIT_MS = 0
 
         // Soft ceiling for the first speech edge to suppress clicks without lowering the whole clip.
         const val TTS_HEAD_LIMIT_CEILING = 0.50f
@@ -119,6 +136,11 @@ object SpeakerAudioConfig {
 
         // Extra silence after TTS playback to let the MCU/audio output settle cleanly.
         const val TTS_TRAILING_SILENCE_MS = 500
+
+        // Silence before TTS in the file-based playback path. This gives the MCU
+        // playback buffer and amplifier a short settle period without lowering
+        // the first spoken syllable.
+        const val TTS_FILE_LEADING_SILENCE_MS = 200
 
         // Estimate PTT noise from the quietest windows in the whole clip, so instant speech is not treated as noise.
         const val PTT_NOISE_LOW_PERCENT = 0.20f
@@ -244,6 +266,31 @@ object SpeakerAudioConfig {
         // Default TTS engine. System TTS is the only engine wired to playback today.
         val DEFAULT_ENGINE: SpeakerTtsEngine = SpeakerTtsEngine.System
 
+        // Asset directory for the offline Kokoro model. Put model.onnx, voices.bin,
+        // tokens.txt, lexicons, rule FSTs, and espeak-ng-data under this folder.
+        const val LOCAL_KOKORO_MODEL_DIR = "kokoro-multi-lang-v1_0"
+
+        // Kokoro multi-language model file name inside LOCAL_KOKORO_MODEL_DIR.
+        const val LOCAL_KOKORO_MODEL_NAME = "model.onnx"
+
+        // Kokoro speaker embedding file name inside LOCAL_KOKORO_MODEL_DIR.
+        const val LOCAL_KOKORO_VOICES = "voices.bin"
+
+        // Chinese and English lexicons used by Kokoro multi-language.
+        const val LOCAL_KOKORO_LEXICON =
+            "kokoro-multi-lang-v1_0/lexicon-us-en.txt,kokoro-multi-lang-v1_0/lexicon-zh.txt"
+
+        // Chinese text normalization rules used by Kokoro multi-language.
+        const val LOCAL_KOKORO_RULE_FSTS =
+            "kokoro-multi-lang-v1_0/phone-zh.fst,kokoro-multi-lang-v1_0/date-zh.fst,kokoro-multi-lang-v1_0/number-zh.fst"
+
+        // Customer-facing default voice quality. UI labels are intentionally simple:
+        // low/medium/high instead of sample-rate jargon.
+        val DEFAULT_TTS_QUALITY: SpeakerAudioQuality = SpeakerAudioQuality.Medium
+
+        // Legacy default used by older local Kokoro calls; normal playback should use DEFAULT_TTS_QUALITY.
+        const val LOCAL_KOKORO_TARGET_SAMPLE_RATE = 8_000
+
         // Default Kokoro speaker for the offline TTS prototype.
         val DEFAULT_KOKORO_VOICE: SpeakerKokoroVoice = SpeakerKokoroVoice.ZmYunxi
 
@@ -255,12 +302,6 @@ object SpeakerAudioConfig {
 
         // Kokoro default speed. Used when switching to the offline prototype.
         const val KOKORO_DEFAULT_SPEED = 1.0f
-
-        // Remote Kokoro TTS service. The App receives 8 kHz mono PCM16 and still owns UDP sending.
-        val REMOTE_KOKORO_BASE_URL: String = BuildConfig.TJI_SPEAKER_REMOTE_BASE_URL
-
-        // Remote endpoint path for Kokoro synthesis.
-        const val REMOTE_KOKORO_SYNTHESIZE_PATH = "/api/tts/kokoro"
 
         // Number of synthesized TTS PCM clips kept in memory to avoid repeated cloud/system synthesis.
         const val PCM_CACHE_MAX_ITEMS = 8
@@ -279,8 +320,20 @@ object SpeakerAudioConfig {
         // Local speaker buzzer test frequency in Hz.
         const val FREQUENCY_HZ = 1_000
 
+        // Local speaker buzzer test duration in milliseconds, aligned to the 40 ms ADPCM packet period.
+        const val DURATION_MS = 640
+
         // Buzzer test amplitude, 0.0 to 1.0.
         const val AMPLITUDE = 0.35f
+
+        // Short fade-in/out to avoid a click at tone boundaries.
+        const val FADE_MS = 12
+
+        // Prefill the MCU playback buffer before pacing tone packets.
+        const val PREBUFFER_PACKETS = 2
+
+        // Small leading silence to let the playback path settle before tone starts.
+        const val LEADING_SILENCE_MS = 80
     }
 
     object Timing {
@@ -313,11 +366,15 @@ object SpeakerAudioConfig {
 
         // PTT sends the first packets quickly to prefill the MCU buffer.
         const val RECORDED_PREBUFFER_PACKETS = 4
+
     }
 
     object Debug {
         // Logcat tag for speaker audio RMS/peak diagnostics.
         const val AUDIO_DEBUG_TAG = "SpeakerAudioData"
+
+        // Diagnostic silent HADP duration. If this plays with clicks, the issue is in frame playback/decoding.
+        const val SILENCE_TEST_DURATION_MS = 1_200
 
         // Number of live mic frames logged at stream start.
         const val AUDIO_DEBUG_FRAME_LIMIT = 12
@@ -395,7 +452,24 @@ enum class SpeakerTtsVoicePreset(
 
 enum class SpeakerTtsEngine(val label: String) {
     System(label = "系统"),
-    KokoroOffline(label = "云端")
+    LocalKokoro(label = "本地")
+}
+
+enum class SpeakerAudioQuality(
+    val label: String,
+    val wireName: String,
+    val sampleRate: Int,
+    val packetMs: Int
+) {
+    Low(label = "低", wireName = "low", sampleRate = 8_000, packetMs = 40),
+    Medium(label = "中", wireName = "medium", sampleRate = 16_000, packetMs = 40),
+    High(label = "高", wireName = "high", sampleRate = 24_000, packetMs = 40);
+
+    val samplesPerFrame: Int
+        get() = sampleRate * packetMs / 1_000
+
+    val frameBytes: Int
+        get() = samplesPerFrame * SpeakerAdpcmPacketizer.CHANNELS * 2
 }
 
 enum class SpeakerKokoroVoice(

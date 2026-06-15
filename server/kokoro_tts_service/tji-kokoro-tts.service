@@ -1,14 +1,11 @@
 [Unit]
-Description=TJI Kokoro TTS Service
+Description=TJI Speaker Record Transfer Service
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/tji/kokoro-tts/server
-Environment=KOKORO_MODEL_DIR=/opt/tji/kokoro-tts/kokoro-multi-lang-v1_0
-Environment=KOKORO_NUM_THREADS=4
-Environment=KOKORO_CACHE_MAX_ITEMS=64
 ExecStart=/opt/tji/kokoro-tts/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8008
 Restart=always
 RestartSec=3

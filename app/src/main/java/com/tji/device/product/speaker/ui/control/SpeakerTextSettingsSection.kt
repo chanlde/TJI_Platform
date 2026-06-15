@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
+import com.tji.device.product.speaker.audio.SpeakerAudioQuality
 import com.tji.device.product.speaker.audio.SpeakerKokoroTtsSettings
 import com.tji.device.product.speaker.audio.SpeakerKokoroVoice
 import com.tji.device.product.speaker.audio.SpeakerToneSettings
@@ -21,6 +22,21 @@ import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
 import com.tji.device.product.speaker.audio.customerLabel
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
+
+@Composable
+internal fun SpeakerOutputQualityCard(
+    selected: SpeakerAudioQuality,
+    enabled: Boolean,
+    onSelect: (SpeakerAudioQuality) -> Unit
+) {
+    SpeakerCard(title = "输出音质") {
+        AudioQualitySelector(
+            selected = selected,
+            enabled = enabled,
+            onSelect = onSelect
+        )
+    }
+}
 
 @Composable
 internal fun SpeakerToneSettingsCard(
@@ -73,18 +89,18 @@ internal fun SpeakerToneSettingsCard(
 }
 
 @Composable
-internal fun SpeakerToneTestCard(
+internal fun SpeakerBuzzerCard(
     talkState: SpeakerTalkState,
     enabled: Boolean,
-    onPlayToneTest: () -> Unit
+    onPlayBuzzer: () -> Unit
 ) {
-    SpeakerCard(title = "测试") {
+    SpeakerCard(title = "蜂鸣器") {
         TalkStatus(talkState)
         SpeakerActionButton(
-            text = "蜂鸣测试",
+            text = "播放蜂鸣",
             enabled = enabled && talkState.mode != SpeakerTalkMode.Tone,
             color = SpeakerWarning,
-            onClick = onPlayToneTest,
+            onClick = onPlayBuzzer,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -119,7 +135,7 @@ internal fun SpeakerTextSpeechCard(
             enabled = enabled && talkState.mode != SpeakerTalkMode.Tts,
             onSelect = onTtsEngineSelect
         )
-        if (ttsEngine == SpeakerTtsEngine.KokoroOffline) {
+        if (ttsEngine == SpeakerTtsEngine.LocalKokoro) {
             KokoroVoiceSelector(
                 selected = kokoroTtsSettings.voice,
                 enabled = enabled && talkState.mode != SpeakerTalkMode.Tts,
@@ -145,6 +161,31 @@ internal fun SpeakerTextSpeechCard(
             onClick = onSpeak,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+@Composable
+private fun AudioQualitySelector(
+    selected: SpeakerAudioQuality,
+    enabled: Boolean,
+    onSelect: (SpeakerAudioQuality) -> Unit
+) {
+    Text(
+        text = "音质",
+        style = MaterialTheme.typography.bodyMedium,
+        color = SpeakerMuted
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        SpeakerAudioQuality.entries.forEach { quality ->
+            SpeakerActionButton(
+                text = quality.label,
+                enabled = enabled,
+                color = if (quality == selected) SpeakerWarning else SpeakerAccent,
+                soft = quality != selected,
+                onClick = { onSelect(quality) },
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 

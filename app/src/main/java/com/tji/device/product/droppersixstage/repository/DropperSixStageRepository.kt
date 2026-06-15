@@ -70,15 +70,17 @@ class DropperSixStageRepo : DropperSixStageRepository {
         _devices.update { current ->
             current.updateOrCreate(
                 serialNumber = serialNumber,
-                create = { DropperSixStageState(serialNumber = serialNumber, lastAck = ack) },
+                create = {
+                    DropperSixStageState(
+                        serialNumber = serialNumber,
+                        lastAck = ack,
+                        stages = DropperStageState.defaults().applyAck(ack)
+                    )
+                },
                 update = { state ->
                     state.copy(
                         lastAck = ack,
-                        stages = ack.stage?.let { stage ->
-                            state.stages.map {
-                                if (it.index == stage && ack.ok) it.copy(isOpen = true) else it
-                            }
-                        } ?: state.stages
+                        stages = state.stages.applyAck(ack)
                     )
                 }
             )
@@ -104,6 +106,14 @@ class DropperSixStageRepo : DropperSixStageRepository {
             }
         }
         return if (replaced) next else next + create()
+    }
+
+    private fun List<DropperStageState>.applyAck(ack: DropperSixStageAck): List<DropperStageState> {
+        val stage = ack.stage ?: return this
+        if (!ack.ok) return this
+        return map {
+            if (it.index == stage) it.copy(isOpen = true) else it
+        }
     }
 }
 

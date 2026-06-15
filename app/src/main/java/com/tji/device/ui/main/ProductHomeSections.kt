@@ -92,17 +92,24 @@ internal fun ProductHome(
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val products = ProductCatalog.allTypes
                 if (maxWidth >= 620.dp) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
-                    ) {
-                        products.forEach { productType ->
-                            ProductEntryCard(
-                                productType = productType,
-                                selected = false,
-                                onClick = { onProductSelected(productType) },
-                                modifier = Modifier.weight(1f)
-                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
+                        products.chunked(2).forEach { rowProducts ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
+                            ) {
+                                rowProducts.forEach { productType ->
+                                    ProductEntryCard(
+                                        productType = productType,
+                                        selected = false,
+                                        onClick = { onProductSelected(productType) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                if (rowProducts.size == 1) {
+                                    Box(modifier = Modifier.weight(1f))
+                                }
+                            }
                         }
                     }
                 } else {
@@ -181,6 +188,8 @@ private fun ProductEntryCard(
                                 ProductType.DropperSixStage -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
                                 ProductType.RadioDetection -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
                                 ProductType.Speaker -> listOf(PayloadColors.Surface, PayloadColors.WarningSoft)
+                                ProductType.BreakWindowProjectile -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
+                                ProductType.Searchlight -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
                             }
                         ),
                         shape = shape
@@ -273,6 +282,8 @@ internal fun productAccentColor(productType: ProductType): Color {
         ProductType.DropperSixStage -> PlatformBlue
         ProductType.RadioDetection -> PlatformBlue
         ProductType.Speaker -> PayloadColors.Warning
+        ProductType.BreakWindowProjectile -> PlatformBlue
+        ProductType.Searchlight -> PlatformBlue
     }
 }
 

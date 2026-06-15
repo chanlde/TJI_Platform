@@ -177,6 +177,8 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
                 ProductType.DropperSixStage -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
                 ProductType.RadioDetection -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
                 ProductType.Speaker -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
+                ProductType.BreakWindowProjectile -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
+                ProductType.Searchlight -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
             }
         }
 

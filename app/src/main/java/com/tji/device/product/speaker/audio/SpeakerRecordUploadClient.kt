@@ -32,10 +32,12 @@ class SpeakerRecordUploadClient(
             .addFormDataPart("fileSize", hadp.fileSize.toString())
             .addFormDataPart("crc32", hadp.crc32)
             .addFormDataPart("durationMs", hadp.durationMs.toString())
-            .addFormDataPart("codec", "ima_adpcm")
-            .addFormDataPart("sampleRate", SpeakerAdpcmPacketizer.SAMPLE_RATE.toString())
-            .addFormDataPart("channels", SpeakerAdpcmPacketizer.CHANNELS.toString())
-            .addFormDataPart("packetMs", SpeakerAdpcmPacketizer.PACKET_MS.toString())
+            .addFormDataPart("codec", hadp.codec.wireName)
+            .addFormDataPart("sampleRate", hadp.sampleRate.toString())
+            .addFormDataPart("channels", hadp.channels.toString())
+            .addFormDataPart("packetMs", hadp.packetMs.toString())
+            .addFormDataPart("frameBytes", hadp.frameBytes.toString())
+            .addFormDataPart("samplesPerFrame", hadp.samplesPerFrame.toString())
             .addFormDataPart(
                 "file",
                 "$recordId.hadp",
@@ -63,6 +65,12 @@ class SpeakerRecordUploadClient(
                 fileSize = json.optLong("fileSize", hadp.fileSize.toLong()),
                 crc32 = json.optString("crc32", hadp.crc32),
                 durationMs = json.optInt("durationMs", hadp.durationMs),
+                codec = json.optString("codec", hadp.codec.wireName),
+                sampleRate = json.optInt("sampleRate", hadp.sampleRate),
+                channels = json.optInt("channels", hadp.channels),
+                packetMs = json.optInt("packetMs", hadp.packetMs),
+                frameBytes = json.optInt("frameBytes", hadp.frameBytes),
+                samplesPerFrame = json.optInt("samplesPerFrame", hadp.samplesPerFrame),
                 expiresAt = json.optLong("expiresAt", 0L)
             ).also {
                 require(it.downloadUrl.isNotBlank()) { "服务器未返回下载链接" }
@@ -81,6 +89,11 @@ data class SpeakerRecordUploadResult(
     val fileSize: Long,
     val crc32: String,
     val durationMs: Int,
+    val codec: String,
+    val sampleRate: Int,
+    val channels: Int,
+    val packetMs: Int,
+    val frameBytes: Int,
+    val samplesPerFrame: Int,
     val expiresAt: Long
 )
-

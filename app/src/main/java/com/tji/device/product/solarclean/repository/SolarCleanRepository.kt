@@ -117,7 +117,8 @@ class SolarCleanRepo : SolarCleanRepository {
                 create = {
                     SolarCleanDeviceState(
                         serialNumber = serialNumber,
-                        lastAck = ack
+                        lastAck = ack,
+                        routeSlots = ack.routeSlots
                     )
                 },
                 update = { state ->
@@ -137,7 +138,8 @@ class SolarCleanRepo : SolarCleanRepository {
                 create = {
                     SolarCleanDeviceState(
                         serialNumber = serialNumber,
-                        lastEvent = event
+                        lastEvent = event,
+                        download = event.toDownloadState()
                     )
                 },
                 update = { state ->

@@ -1,5 +1,6 @@
 package com.tji.device.product.speaker.audio
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -252,26 +253,80 @@ class SpeakerAudioDataTest {
         val header = ByteBuffer.wrap(hadp.data, 0, 128).order(ByteOrder.LITTLE_ENDIAN)
 
         assertEquals(25, hadp.frameCount)
-        assertEquals(25 * 164, hadp.audioBytes)
-        assertEquals(128 + 25 * 164, hadp.fileSize)
+        assertEquals(SpeakerHadpCodec.Pcm16, hadp.codec)
+        assertEquals(25 * 640, hadp.audioBytes)
+        assertEquals(128 + 25 * 640, hadp.fileSize)
         assertEquals(hadp.fileSize, hadp.data.size)
         assertEquals(1_000, hadp.durationMs)
         assertEquals("HADP", hadp.data.copyOfRange(0, 4).toString(Charsets.UTF_8))
         header.position(4)
         assertEquals(1, header.short.toInt() and 0xFFFF)
         assertEquals(128, header.short.toInt() and 0xFFFF)
-        assertEquals(1, header.short.toInt() and 0xFFFF)
+        assertEquals(2, header.short.toInt() and 0xFFFF)
         header.position(12)
         assertEquals(8_000, header.int)
         assertEquals(1, header.short.toInt() and 0xFFFF)
         assertEquals(40, header.short.toInt() and 0xFFFF)
-        assertEquals(164, header.short.toInt() and 0xFFFF)
+        assertEquals(640, header.short.toInt() and 0xFFFF)
         assertEquals(320, header.short.toInt() and 0xFFFF)
         assertEquals(25, header.int)
-        assertEquals(25 * 164, header.int)
+        assertEquals(25 * 640, header.int)
         assertEquals(1_000, header.int)
         assertTrue(hadp.crc32.matches(Regex("0x[0-9A-F]{8}")))
         assertTrue(hadp.audioCrc32.matches(Regex("0x[0-9A-F]{8}")))
+    }
+
+    @Test
+    fun hadpDecoderReturnsOriginalPcmForPcm16Hadp() {
+        val pcm = syntheticVoicePcm(
+            amplitude = 0.08f,
+            sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        )
+        val hadp = SpeakerHadpEncoder.encode(pcm, recordId = "REC_PCM16_TEST")
+        val decoded = SpeakerHadpDecoder.decodePcm16le(hadp)
+
+        assertEquals(SpeakerHadpCodec.Pcm16, hadp.codec)
+        assertArrayEquals(pcm, decoded)
+    }
+
+    @Test
+    fun hadpEncoderStillSupportsImaAdpcm() {
+        val pcm = syntheticVoicePcm(
+            amplitude = 0.08f,
+            sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        )
+        val hadp = SpeakerHadpEncoder.encode(
+            pcm = pcm,
+            recordId = "REC_T12345678_1",
+            codec = SpeakerHadpCodec.ImaAdpcm
+        )
+        val header = ByteBuffer.wrap(hadp.data, 0, 128).order(ByteOrder.LITTLE_ENDIAN)
+
+        assertEquals(SpeakerHadpCodec.ImaAdpcm, hadp.codec)
+        assertEquals(25 * 164, hadp.audioBytes)
+        header.position(8)
+        assertEquals(1, header.short.toInt() and 0xFFFF)
+        header.position(20)
+        assertEquals(164, header.short.toInt() and 0xFFFF)
+        assertEquals(320, header.short.toInt() and 0xFFFF)
+    }
+
+    @Test
+    fun hadpDecoderStillSupportsImaAdpcmHadp() {
+        val pcm = syntheticVoicePcm(
+            amplitude = 0.08f,
+            sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        )
+        val hadp = SpeakerHadpEncoder.encode(
+            pcm = pcm,
+            recordId = "REC_ADPCM_TEST",
+            codec = SpeakerHadpCodec.ImaAdpcm
+        )
+        val decoded = SpeakerHadpDecoder.decodePcm16le(hadp)
+
+        assertEquals(SpeakerHadpCodec.ImaAdpcm, hadp.codec)
+        assertEquals(pcm.size, decoded.size)
+        assertTrue(stats(decoded).rms > 0.01f)
     }
 
     private fun syntheticVoicePcm(

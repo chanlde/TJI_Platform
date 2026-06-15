@@ -21,6 +21,11 @@ local.properties
 .kotlin/
 .tmp_tts_probe/
 .tmp_sherpa_android/
+third_party/
+
+# Large local TTS model assets. Keep them on developer machines or distribute
+# them outside ordinary Git unless Git LFS is enabled for the repository.
+app/src/main/assets/kokoro-multi-lang-v1_0/
 
 # Signing and secrets
 *.jks

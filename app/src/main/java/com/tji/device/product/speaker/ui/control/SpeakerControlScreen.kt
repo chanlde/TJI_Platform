@@ -74,6 +74,9 @@ fun SpeakerControlScreen(
     val ttsEngine by viewModel?.ttsEngine?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerAudioConfig.Tts.DEFAULT_ENGINE) }
     }
+    val outputQuality by viewModel?.outputQuality?.collectAsStateWithLifecycle().let {
+        it ?: remember { mutableStateOf(SpeakerAudioConfig.Tts.DEFAULT_TTS_QUALITY) }
+    }
     val kokoroTtsSettings by viewModel?.kokoroTtsSettings?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerKokoroTtsSettings()) }
     }
@@ -134,7 +137,7 @@ fun SpeakerControlScreen(
                     hasMicPermission = hasMicPermission,
                     requestPermission = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                     onPress = { viewModel?.startPushToTalkRecord() },
-                    onRelease = { viewModel?.finishPushToTalkRecord() },
+                    onRelease = { viewModel?.finishPushToTalkRecord(device.serialNumber) },
                     onCancel = { viewModel?.cancelPushToTalkRecord() }
                 )
             }
@@ -176,9 +179,23 @@ fun SpeakerControlScreen(
                         viewModel?.refreshRecords(device.serialNumber)
                         viewModel?.refreshStorageStatus(device.serialNumber)
                     },
+                    onLoadMore = {
+                        viewModel?.refreshRecords(
+                            serialNumber = device.serialNumber,
+                            offset = state?.records.orEmpty().size,
+                            limit = 4
+                        )
+                    },
                     onPlay = { viewModel?.playRecord(device.serialNumber, it, (volumeGain * 100f).toInt()) },
                     onRename = { recordId, name -> viewModel?.updateRecordName(device.serialNumber, recordId, name) },
                     onDelete = { viewModel?.deleteRecord(device.serialNumber, it) }
+                )
+            }
+            if (selectedPanel == SpeakerPanel.Settings) item {
+                SpeakerOutputQualityCard(
+                    selected = outputQuality,
+                    enabled = viewModel != null,
+                    onSelect = { viewModel?.setOutputQuality(device.serialNumber, it) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Settings) item {
@@ -192,10 +209,10 @@ fun SpeakerControlScreen(
                 )
             }
             if (selectedPanel == SpeakerPanel.Settings) item {
-                SpeakerToneTestCard(
+                SpeakerBuzzerCard(
                     talkState = talkState,
                     enabled = viewModel != null,
-                    onPlayToneTest = { viewModel?.playToneTest() }
+                    onPlayBuzzer = { viewModel?.playToneTest(device.serialNumber) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Text) item {

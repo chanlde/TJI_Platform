@@ -9,9 +9,7 @@ import com.tji.device.product.solarclean.model.SolarCleanDeviceState
 import com.tji.device.product.solarclean.model.SolarCleanOtaStatus
 import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedback
 import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedbackStatus
-import com.tji.device.product.solarclean.viewmodel.SolarCleanOtaCheckState
 import com.tji.device.ui.theme.BucketTheme
-import com.tji.network.data.OtaLatestResponse
 
 internal fun previewSolarCleanState(serialNumber: String): SolarCleanDeviceState {
     return SolarCleanDeviceState(
@@ -49,21 +47,6 @@ internal fun previewSolarCleanState(serialNumber: String): SolarCleanDeviceState
     )
 }
 
-internal fun previewOtaCheckState(): SolarCleanOtaCheckState {
-    return SolarCleanOtaCheckState(
-        latest = OtaLatestResponse(
-            hasUpdate = true,
-            latestVersion = "1.0.4",
-            hardwareVersion = "HW-A",
-            fileSize = 245760,
-            sha256 = "xxxxxxxx",
-            downloadUrl = "https://example.com/firmware/HW-A/v1.0.4/app.bin",
-            releaseNote = "修复电机保护逻辑"
-        ),
-        hasUpdate = true
-    )
-}
-
 @Preview(showBackground = true, widthDp = 393, heightDp = 852)
 @Composable
 private fun PreviewSolarCleanControlScreen() {
@@ -84,8 +67,7 @@ private fun PreviewSolarCleanSettingsScreen() {
             serialNumber = "T36393932",
             name = "光伏清洗 01",
             productType = ProductType.SolarClean
-        ),
-        showSettings = true
+        )
     )
 }
 

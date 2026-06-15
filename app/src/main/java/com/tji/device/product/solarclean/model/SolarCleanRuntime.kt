@@ -66,16 +66,6 @@ data class SolarCleanOtaStatus(
     val timestamp: Long? = null
 )
 
-data class SolarCleanOtaPackage(
-    val targetVersion: String,
-    val downloadUrl: String,
-    val fileSize: Long,
-    val sha256: String,
-    val targetInnerVersion: Int? = null,
-    val hardwareVersion: String? = null,
-    val signature: String? = null
-)
-
 data class SolarCleanAck(
     val msgId: String,
     val ofType: String,
@@ -99,7 +89,6 @@ object SolarCleanCommandCode {
     const val SET_SPRAY_ANGLE = 4
     const val SET_SWING_SPEED = 5
     const val SET_SERVO_SWING = 6
-    const val START_OTA = 20
     const val ROUTE_LIST = 30
     const val ROUTE_DELETE = 31
     const val ROUTE_DOWNLOAD = 32
@@ -171,11 +160,6 @@ sealed interface SolarCleanCommand {
     ) : SolarCleanCommand
 
     data class GetDeviceInfo(override val msgId: String) : SolarCleanCommand
-
-    data class StartOta(
-        override val msgId: String,
-        val packageInfo: SolarCleanOtaPackage
-    ) : SolarCleanCommand
 
     data class RouteList(override val msgId: String) : SolarCleanCommand
 

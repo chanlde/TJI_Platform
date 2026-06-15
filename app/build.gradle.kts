@@ -37,6 +37,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
+        ndk {
+            // 本地 Kokoro TTS 只面向真实 Android 手机测试；现代小米/华为等设备基本都是 arm64。
+            // 这样不会把 x86/armeabi-v7a 的 sherpa/onnxruntime so 一起打进 APK。
+            abiFilters += listOf("arm64-v8a")
+        }
         buildConfigField(
             "String",
             "TJI_SPEAKER_RELAY_HOST",
@@ -55,9 +60,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("boolean", "TJI_ENABLE_OTA_TEST_ENTRY", "true")
+            buildConfigField("boolean", "TJI_ENABLE_LOCAL_DEMO_DEVICES", "true")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            buildConfigField("boolean", "TJI_ENABLE_OTA_TEST_ENTRY", "false")
+            buildConfigField("boolean", "TJI_ENABLE_LOCAL_DEMO_DEVICES", "false")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -77,6 +88,12 @@ android {
 
     }
 
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
+
     androidComponents.onVariants { variant ->
         variant.outputs.forEach { output ->
             if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
@@ -91,6 +108,13 @@ android {
 
     // 添加 packaging 配置
     packaging {
+        jniLibs {
+            // App 通过 libsherpa-onnx-jni.so 调用 sherpa-onnx，不直接使用 C/C++ API。
+            excludes += setOf(
+                "**/libsherpa-onnx-c-api.so",
+                "**/libsherpa-onnx-cxx-api.so"
+            )
+        }
         resources {
             excludes += setOf(
                 "/META-INF/INDEX.LIST",

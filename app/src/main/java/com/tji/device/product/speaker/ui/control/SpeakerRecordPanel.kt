@@ -68,6 +68,7 @@ internal fun SpeakerRecordBrowser(
     currentVolume: Int,
     onRecordQueryChange: (String) -> Unit,
     onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
     onPlay: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onDelete: (String) -> Unit
@@ -116,7 +117,8 @@ internal fun SpeakerRecordBrowser(
             currentVolume = currentVolume,
             onPlay = onPlay,
             onRename = onRename,
-            onDelete = onDelete
+            onDelete = onDelete,
+            onLoadMore = onLoadMore
         )
     }
 }

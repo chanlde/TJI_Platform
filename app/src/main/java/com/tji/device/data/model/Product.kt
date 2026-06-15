@@ -5,11 +5,15 @@ enum class ProductType {
     SolarClean,
     DropperSixStage,
     RadioDetection,
-    Speaker
+    Speaker,
+    BreakWindowProjectile,
+    Searchlight
 }
 
 data class ProductDefinition(
     val type: ProductType,
+    val productId: Int,
+    val productCode: String,
     val displayName: String,
     val shortLabel: String,
     val description: String,
@@ -21,6 +25,8 @@ object ProductCatalog {
     val definitions: List<ProductDefinition> = listOf(
         ProductDefinition(
             type = ProductType.FireBucket,
+            productId = 2,
+            productCode = "FireBucket",
             displayName = "消防吊桶",
             shortLabel = "FireBucket",
             description = "消防吊桶控制产品线",
@@ -29,6 +35,8 @@ object ProductCatalog {
         ),
         ProductDefinition(
             type = ProductType.SolarClean,
+            productId = 3,
+            productCode = "SolarClean",
             displayName = "光伏清洗",
             shortLabel = "SolarClean",
             description = "光伏清洗产品线",
@@ -37,14 +45,18 @@ object ProductCatalog {
         ),
         ProductDefinition(
             type = ProductType.DropperSixStage,
-            displayName = "FC100_FireDrop",
-            shortLabel = "FireDrop",
-            description = "FC100_FireDrop 控制产品线",
+            productId = 5,
+            productCode = "SixStageDropper",
+            displayName = "六段抛投",
+            shortLabel = "Dropper",
+            description = "六段抛投控制产品线",
             platformSubtitle = "无人机六路抛投系统",
             platformValueLine = "六路控制 · 分段抛投"
         ),
         ProductDefinition(
             type = ProductType.RadioDetection,
+            productId = 4,
+            productCode = "RadioDetection",
             displayName = "无线电检测",
             shortLabel = "Radio",
             description = "无线电检测产品线",
@@ -53,11 +65,33 @@ object ProductCatalog {
         ),
         ProductDefinition(
             type = ProductType.Speaker,
+            productId = 6,
+            productCode = "Speaker",
             displayName = "喊话器",
             shortLabel = "Speaker",
             description = "无人机喊话器产品线",
             platformSubtitle = "无人机喊话广播系统",
             platformValueLine = "实时喊话 · 低延迟广播"
+        ),
+        ProductDefinition(
+            type = ProductType.BreakWindowProjectile,
+            productId = 7,
+            productCode = "GlassBreaker",
+            displayName = "破窗弹",
+            shortLabel = "GlassBreaker",
+            description = "无人机破窗弹产品线",
+            platformSubtitle = "无人机破窗弹系统",
+            platformValueLine = "远程破窗 · 载荷联动"
+        ),
+        ProductDefinition(
+            type = ProductType.Searchlight,
+            productId = 8,
+            productCode = "Searchlight",
+            displayName = "探照灯",
+            shortLabel = "Searchlight",
+            description = "无人机探照灯产品线",
+            platformSubtitle = "无人机照明搜索系统",
+            platformValueLine = "强光照明 · 夜间搜寻"
         )
     )
 
@@ -69,6 +103,14 @@ object ProductCatalog {
 
     fun descriptionOf(type: ProductType): String {
         return definitionOf(type).description
+    }
+
+    fun backendProductIdOf(type: ProductType): Int {
+        return definitionOf(type).productId
+    }
+
+    fun productCodeOf(type: ProductType): String {
+        return definitionOf(type).productCode
     }
 
     fun inferType(
@@ -84,6 +126,8 @@ object ProductCatalog {
             "光伏" in fingerprint -> ProductType.SolarClean
             "solar" in fingerprint -> ProductType.SolarClean
             "抛投" in fingerprint -> ProductType.DropperSixStage
+            "sixstagedropper" in fingerprint -> ProductType.DropperSixStage
+            "six stage dropper" in fingerprint -> ProductType.DropperSixStage
             "fc100_firedrop" in fingerprint -> ProductType.DropperSixStage
             "firedrop" in fingerprint -> ProductType.DropperSixStage
             "dropper" in fingerprint -> ProductType.DropperSixStage
@@ -95,6 +139,16 @@ object ProductCatalog {
             "喊话" in fingerprint -> ProductType.Speaker
             "speaker" in fingerprint -> ProductType.Speaker
             "broadcast" in fingerprint -> ProductType.Speaker
+            "破窗" in fingerprint -> ProductType.BreakWindowProjectile
+            "glassbreaker" in fingerprint -> ProductType.BreakWindowProjectile
+            "glass breaker" in fingerprint -> ProductType.BreakWindowProjectile
+            "breakwindow" in fingerprint -> ProductType.BreakWindowProjectile
+            "break window" in fingerprint -> ProductType.BreakWindowProjectile
+            "window breaker" in fingerprint -> ProductType.BreakWindowProjectile
+            "探照" in fingerprint -> ProductType.Searchlight
+            "照明" in fingerprint -> ProductType.Searchlight
+            "searchlight" in fingerprint -> ProductType.Searchlight
+            "spotlight" in fingerprint -> ProductType.Searchlight
             else -> ProductType.FireBucket
         }
     }
@@ -113,6 +167,10 @@ object ProductCatalog {
             productId == 2 -> ProductType.FireBucket
             productId == 3 -> ProductType.SolarClean
             productId == 4 -> ProductType.RadioDetection
+            productId == 5 -> ProductType.DropperSixStage
+            productId == 6 -> ProductType.Speaker
+            productId == 7 -> ProductType.BreakWindowProjectile
+            productId == 8 -> ProductType.Searchlight
             "firebucket" in fingerprint -> ProductType.FireBucket
             "fire bucket" in fingerprint -> ProductType.FireBucket
             "水桶" in fingerprint -> ProductType.FireBucket
@@ -122,6 +180,8 @@ object ProductCatalog {
             "光伏" in fingerprint -> ProductType.SolarClean
             "droppersixstage" in fingerprint -> ProductType.DropperSixStage
             "dropper six" in fingerprint -> ProductType.DropperSixStage
+            "sixstagedropper" in fingerprint -> ProductType.DropperSixStage
+            "six stage dropper" in fingerprint -> ProductType.DropperSixStage
             "fc100_firedrop" in fingerprint -> ProductType.DropperSixStage
             "firedrop" in fingerprint -> ProductType.DropperSixStage
             "dropper" in fingerprint -> ProductType.DropperSixStage
@@ -136,6 +196,16 @@ object ProductCatalog {
             "speaker" in fingerprint -> ProductType.Speaker
             "喊话" in fingerprint -> ProductType.Speaker
             "broadcast" in fingerprint -> ProductType.Speaker
+            "破窗" in fingerprint -> ProductType.BreakWindowProjectile
+            "glassbreaker" in fingerprint -> ProductType.BreakWindowProjectile
+            "glass breaker" in fingerprint -> ProductType.BreakWindowProjectile
+            "breakwindow" in fingerprint -> ProductType.BreakWindowProjectile
+            "break window" in fingerprint -> ProductType.BreakWindowProjectile
+            "window breaker" in fingerprint -> ProductType.BreakWindowProjectile
+            "探照" in fingerprint -> ProductType.Searchlight
+            "照明" in fingerprint -> ProductType.Searchlight
+            "searchlight" in fingerprint -> ProductType.Searchlight
+            "spotlight" in fingerprint -> ProductType.Searchlight
             else -> inferType(
                 deviceType = productType ?: productCode,
                 deviceModel = null,

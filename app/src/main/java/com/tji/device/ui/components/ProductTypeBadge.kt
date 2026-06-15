@@ -26,6 +26,8 @@ fun ProductTypeBadge(
         ProductType.DropperSixStage -> PayloadColors.PrimarySoft to PayloadColors.Primary
         ProductType.RadioDetection -> PayloadColors.PrimarySoft to PayloadColors.Primary
         ProductType.Speaker -> PayloadColors.WarningSoft to PayloadColors.Warning
+        ProductType.BreakWindowProjectile -> PayloadColors.PrimarySoft to PayloadColors.Primary
+        ProductType.Searchlight -> PayloadColors.PrimarySoft to PayloadColors.Primary
     }
 
     Box(

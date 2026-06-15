@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.tji.device.BuildConfig
 import com.tji.device.data.model.ProductType
 import com.tji.device.di.ProductFloatingQuickControl
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
@@ -89,10 +90,12 @@ class FloatingWindowViewModel(
                         selectedLink?.onlineSwitches?.isEmpty() == true &&
                                 selectedLink.offlineSwitches.isNotEmpty()
 
-                    Log.d(
-                        TAG,
-                        "更新 UI -> summaries=${summaries.size}, selectedSerial=$selectedSerial, stateHash=${debugStateHash()}"
-                    )
+                    if (BuildConfig.DEBUG) {
+                        Log.d(
+                            TAG,
+                            "更新 UI -> summaries=${summaries.size}, selectedSerial=$selectedSerial, stateHash=${debugStateHash()}"
+                        )
+                    }
 
                     current.copy(
                         links = summaries,

@@ -164,7 +164,8 @@ internal fun RecordList(
     currentVolume: Int,
     onPlay: (String) -> Unit,
     onRename: (String, String) -> Unit,
-    onDelete: (String) -> Unit
+    onDelete: (String) -> Unit,
+    onLoadMore: () -> Unit
 ) {
     if (records.isEmpty()) {
         Box(
@@ -197,6 +198,16 @@ internal fun RecordList(
             onPlay = onPlay,
             onRename = onRename,
             onDelete = onDelete
+        )
+    }
+    if (hasMore) {
+        SpeakerActionButton(
+            text = "加载更多",
+            enabled = enabled,
+            color = SpeakerAccent,
+            soft = true,
+            onClick = onLoadMore,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

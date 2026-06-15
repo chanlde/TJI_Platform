@@ -22,8 +22,9 @@ class SpeakerAdpcmPacketizer(
     fun packetize(pcm16le: ByteArray, isLastPacket: Boolean = false): ByteArray? {
         val aligned = pcm16le.size - (pcm16le.size % 2)
         if (aligned < 2) return null
-        val encoded = encodeImaAdpcmBlock(pcm16le, aligned, stepIndex)
-        stepIndex = encoded.nextStepIndex
+        val initialStepIndex = if (SpeakerAudioConfig.Codec.RESET_ADPCM_STEP_INDEX_EACH_FRAME) 0 else stepIndex
+        val encoded = encodeImaAdpcmBlock(pcm16le, aligned, initialStepIndex)
+        stepIndex = if (SpeakerAudioConfig.Codec.RESET_ADPCM_STEP_INDEX_EACH_FRAME) 0 else encoded.nextStepIndex
         val header = streamContext?.let { context ->
             buildV2Header(context, encoded, isLastPacket)
         } ?: buildLegacyHeader(encoded)
@@ -85,6 +86,7 @@ class SpeakerAdpcmPacketizer(
     private fun buildFlags(type: SpeakerUdpStreamType, isLastPacket: Boolean): Int {
         var flags = if (isLastPacket) FLAG_LAST_PACKET else 0
         flags = flags or when (type) {
+            SpeakerUdpStreamType.Playback -> FLAG_PLAYBACK
             SpeakerUdpStreamType.RecordStore -> FLAG_STORE_TO_SD
             SpeakerUdpStreamType.PlaybackFeedback -> FLAG_PLAYBACK or FLAG_FEEDBACK
         }
@@ -198,6 +200,7 @@ data class SpeakerUdpStreamContext(
 )
 
 enum class SpeakerUdpStreamType(val code: Int) {
+    Playback(0),
     RecordStore(1),
     PlaybackFeedback(2)
 }

@@ -157,43 +157,63 @@ class SolarCleanMqttInbound(
     }
 
     private fun parseDeviceInfo(serialNumber: String, json: JSONObject): SolarCleanDeviceInfo {
+        val payload = json.payloadObject()
         return SolarCleanDeviceInfo(
-            hardwareVersion = json.optString("hardware_version").ifBlank {
-                json.optString("hardware").ifBlank { null }
+            hardwareVersion = payload.optString("hardware_version").ifBlank {
+                payload.optString("hardwareVersion").ifBlank {
+                    payload.optString("hardware").ifBlank { null }
+                }
             },
-            firmwareVersion = json.optString("firmware_version").ifBlank { null },
-            firmwareInnerVersion = json.optNullableInt("inner_version")
-                ?: json.optNullableInt("innerVersion"),
-            slot = json.optString("slot").ifBlank { null },
-            otaStatus = json.optString("ota_status").ifBlank { null },
-            lastOtaResult = json.optString("last_ota_result").ifBlank { null },
-            lastFailReason = json.optString("last_fail_reason").ifBlank { null },
-            batteryPercent = json.optNullableInt("battery"),
-            network = json.optString("network").ifBlank { null },
-            timestamp = json.optNullableLong("ts")
+            firmwareVersion = payload.optString("firmware_version").ifBlank {
+                payload.optString("firmwareVersion").ifBlank { null }
+            },
+            firmwareInnerVersion = payload.optNullableInt("inner_version")
+                ?: payload.optNullableInt("innerVersion"),
+            slot = payload.optString("slot").ifBlank { null },
+            otaStatus = payload.optString("ota_status").ifBlank {
+                payload.optString("otaStatus").ifBlank { null }
+            },
+            lastOtaResult = payload.optString("last_ota_result").ifBlank {
+                payload.optString("lastOtaResult").ifBlank { null }
+            },
+            lastFailReason = payload.optString("last_fail_reason").ifBlank {
+                payload.optString("lastFailReason").ifBlank { null }
+            },
+            batteryPercent = payload.optNullableInt("battery"),
+            network = payload.optString("network").ifBlank { null },
+            timestamp = payload.optNullableLong("ts") ?: json.optNullableLong("ts")
         )
     }
 
     private fun parseOtaStatus(json: JSONObject): SolarCleanOtaStatus {
-        val status = json.optString("ota_status").ifBlank {
-            json.optString("status").ifBlank { "UNKNOWN" }
+        val payload = json.payloadObject()
+        val status = payload.optString("ota_status").ifBlank {
+            payload.optString("otaStatus").ifBlank {
+                payload.optString("status").ifBlank { "UNKNOWN" }
+            }
         }
         return SolarCleanOtaStatus(
             status = status,
-            progress = json.optNullableInt("progress"),
-            targetVersion = json.optString("target_version").ifBlank { null },
-            targetInnerVersion = json.optNullableInt("target_inner_version")
-                ?: json.optNullableInt("targetInnerVersion"),
-            firmwareVersion = json.optString("firmware_version").ifBlank { null },
-            currentVersion = json.optString("current_version").ifBlank { null },
-            failedVersion = json.optString("failed_version").ifBlank { null },
-            reason = json.optString("reason").ifBlank { null },
-            message = json.optString("message").ifBlank {
-                json.optString("msg").ifBlank { null }
+            progress = payload.optNullableInt("progress"),
+            targetVersion = payload.optString("target_version").ifBlank {
+                payload.optString("targetVersion").ifBlank { null }
             },
-            downloaded = json.optNullableLong("downloaded"),
-            total = json.optNullableLong("total"),
-            timestamp = json.optNullableLong("ts")
+            targetInnerVersion = payload.optNullableInt("target_inner_version")
+                ?: payload.optNullableInt("targetInnerVersion"),
+            firmwareVersion = payload.optString("firmware_version").ifBlank {
+                payload.optString("firmwareVersion").ifBlank { null }
+            },
+            currentVersion = payload.optString("current_version").ifBlank {
+                payload.optString("currentVersion").ifBlank { null }
+            },
+            failedVersion = payload.optString("failed_version").ifBlank { null },
+            reason = payload.optString("reason").ifBlank { null },
+            message = payload.optString("message").ifBlank {
+                payload.optString("msg").ifBlank { null }
+            },
+            downloaded = payload.optNullableLong("downloaded"),
+            total = payload.optNullableLong("total"),
+            timestamp = payload.optNullableLong("ts") ?: json.optNullableLong("ts")
         )
     }
 
@@ -306,6 +326,9 @@ class SolarCleanMqttInbound(
 
     private fun JSONObject.optNullableBoolean(name: String): Boolean? =
         if (has(name) && !isNull(name)) optBoolean(name) else null
+
+    private fun JSONObject.payloadObject(): JSONObject =
+        optJSONObject("data") ?: optJSONObject("params") ?: this
 
     private fun JSONArray.toRouteSlots(): List<SolarCleanRouteSlot> {
         return (0 until length()).map { index ->

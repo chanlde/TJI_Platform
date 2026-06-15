@@ -3,6 +3,7 @@ package com.tji.device.data.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.model.TestDeviceFallbacks
@@ -135,10 +136,10 @@ class MainViewModel(
                     .filter { it.productType == productType }
                     .map { it.serialNumber }
                     .ifEmpty {
-                        when (productType) {
-                            ProductType.DropperSixStage -> listOf(TestDeviceFallbacks.DROPPER_SIX_STAGE_SERIAL)
-                            ProductType.Speaker -> listOf(TestDeviceFallbacks.SPEAKER_SERIAL)
-                            else -> emptyList()
+                        if (BuildConfig.TJI_ENABLE_LOCAL_DEMO_DEVICES) {
+                            TestDeviceFallbacks.demoDeviceFor(productType)?.let { listOf(it.serialNumber) }.orEmpty()
+                        } else {
+                            emptyList()
                         }
                     }
 
@@ -182,7 +183,9 @@ class MainViewModel(
                         when (device.productType) {
                             ProductType.DropperSixStage,
                             ProductType.RadioDetection,
-                            ProductType.Speaker -> listOf(SubscriptionTarget(device.serialNumber, device.productType))
+                            ProductType.Speaker,
+                            ProductType.BreakWindowProjectile,
+                            ProductType.Searchlight -> listOf(SubscriptionTarget(device.serialNumber, device.productType))
                             else -> emptyList()
                         }
                     }
