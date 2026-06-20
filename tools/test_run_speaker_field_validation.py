@@ -103,6 +103,22 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
             ["live-legacy-udp"],
         )
 
+    def test_write_trigger_checklist_records_required_actions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            checklist = run_speaker_field_validation.write_trigger_checklist(
+                output_dir=Path(temp_dir),
+                required_paths=["record-save", "recorded-v2-udp"],
+                duration_s=120,
+                udp_port=47000,
+            )
+            text = checklist.read_text(encoding="utf-8")
+
+        self.assertIn("# Speaker Field Trigger Checklist", text)
+        self.assertIn("- Capture window: 120 seconds", text)
+        self.assertIn("- UDP monitor port: 47000", text)
+        self.assertIn("`record-save`", text)
+        self.assertIn("`recorded-v2-udp`", text)
+
     def test_validation_report_writes_markdown_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -118,6 +134,7 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
                 shadow_status="ok",
                 expected_shadow_events=1,
                 required_shadow_paths=["record-save", "recorded-v2-udp"],
+                trigger_checklist=output_dir / "trigger-checklist.md",
                 monitor_output=output_dir / "qt-monitor.log",
                 monitor_summary=["udpMonitorPackets=25", "udpMonitorStatus=ok"],
                 monitor_status="ok",
@@ -132,6 +149,7 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
         self.assertIn("- Result: PASS", text)
         self.assertIn("- Install: ok", text)
         self.assertIn("- Expected shadow events: 1", text)
+        self.assertIn("- Trigger checklist: `", text)
         self.assertIn("- Required shadow paths: record-save,recorded-v2-udp", text)
         self.assertIn("- Missing shadow paths: none", text)
         self.assertIn("- Expected UDP packets: 25", text)

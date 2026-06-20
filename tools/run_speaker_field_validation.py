@@ -31,6 +31,13 @@ DEFAULT_QT_MONITOR = (
 )
 DEFAULT_ANDROID_PACKAGE = "com.tji.device"
 DEFAULT_ANDROID_ACTIVITY = ".ui.main.MainActivity"
+TRIGGER_STEPS = {
+    "tts-temp-file": "Trigger text-to-speech playback that uploads a temporary HADP file.",
+    "local-kokoro-tts-file": "Trigger local Kokoro TTS file generation and upload.",
+    "record-save": "Record and save a push-to-talk clip.",
+    "live-legacy-udp": "Start live microphone talk so legacy UDP packets are sent.",
+    "recorded-v2-udp": "Play a saved/recorded clip so v2 record-store UDP packets are sent.",
+}
 
 
 @dataclass(frozen=True)
@@ -75,6 +82,7 @@ class ValidationReport:
     required_shadow_paths: list[str] = field(default_factory=list)
     missing_shadow_paths: list[str] = field(default_factory=list)
     shadow_non_match: bool = False
+    trigger_checklist: Path | None = None
     monitor_output: Path | None = None
     monitor_summary: list[str] = field(default_factory=list)
     monitor_status: str = "skipped"
@@ -94,6 +102,7 @@ class ValidationReport:
             f"- ADB serial: {self.adb_serial or 'skipped'}",
             f"- Android shadow log: `{self.shadow_output}`" if self.shadow_output else "- Android shadow log: skipped",
             f"- Qt monitor log: `{self.monitor_output}`" if self.monitor_output else "- Qt monitor log: skipped",
+            f"- Trigger checklist: `{self.trigger_checklist}`" if self.trigger_checklist else "- Trigger checklist: skipped",
             f"- Expected shadow events: {self.expected_shadow_events}",
             f"- Required shadow paths: {','.join(self.required_shadow_paths) if self.required_shadow_paths else 'none'}",
             f"- Missing shadow paths: {','.join(self.missing_shadow_paths) if self.missing_shadow_paths else 'none'}",
@@ -163,6 +172,40 @@ def normalize_required_paths(paths: list[str]) -> list[str]:
 def missing_shadow_paths(events: list[verify_speaker_shadow.ShadowEvent], required_paths: list[str]) -> list[str]:
     seen_paths = {event.path for event in events}
     return [path for path in required_paths if path not in seen_paths]
+
+
+def write_trigger_checklist(
+    output_dir: Path,
+    required_paths: list[str],
+    duration_s: int,
+    udp_port: int,
+) -> Path:
+    path = output_dir / "trigger-checklist.md"
+    paths = required_paths or list(TRIGGER_STEPS)
+    lines = [
+        "# Speaker Field Trigger Checklist",
+        "",
+        f"- Capture window: {max(1, duration_s)} seconds",
+        f"- UDP monitor port: {udp_port}",
+        "",
+        "## Required Actions",
+        "",
+    ]
+    for shadow_path in paths:
+        lines.append(f"- [ ] `{shadow_path}`: {TRIGGER_STEPS.get(shadow_path, 'Trigger this shadow path during capture.')}")
+    lines.extend(
+        [
+            "",
+            "## Pass Criteria",
+            "",
+            "- `shadowStatus=ok`",
+            "- `nonMatchEvents=0`",
+            "- `missingShadowPaths=` is empty",
+            "- `udpMonitorUnknownPackets=0`",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
 
 
 def timestamped_output_dir(base: Path = DEFAULT_OUTPUT_DIR) -> Path:
@@ -304,6 +347,14 @@ def main(argv: list[str] | None = None) -> int:
     report.expected_udp_packets = max(0, args.expect_packets)
     required_shadow_paths = normalize_required_paths(args.require_shadow_path)
     report.required_shadow_paths = required_shadow_paths
+    trigger_checklist = write_trigger_checklist(
+        output_dir=output_dir,
+        required_paths=required_shadow_paths,
+        duration_s=args.duration_s,
+        udp_port=args.udp_port,
+    )
+    report.trigger_checklist = trigger_checklist
+    print(f"triggerChecklist={trigger_checklist}")
 
     monitor_process: MonitorProcess | None = None
     monitor_output = output_dir / "qt-monitor.log"
@@ -343,6 +394,7 @@ def main(argv: list[str] | None = None) -> int:
             report.shadow_output = shadow_output
             print(f"adbStatus=ok serial={serial}")
             print(f"shadowOutput={shadow_output}")
+            print(f"triggerChecklist={trigger_checklist}")
             print("action=trigger speaker TTS, local Kokoro file, record-save, live talk, and recorded playback flows now")
             lines = verify_speaker_shadow.collect_logcat(args.adb, serial, max(1, args.duration_s), shadow_output)
             events = verify_speaker_shadow.parse_shadow_events(lines)

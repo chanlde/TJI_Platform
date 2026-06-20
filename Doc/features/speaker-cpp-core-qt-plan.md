@@ -196,6 +196,8 @@ tools/run_speaker_real_device_validation.sh
 
 默认会先执行 `./gradlew :app:assembleDebug`，再安装并启动 App，启用 Qt UDP monitor，并要求覆盖 5 条标准 shadow path：`tts-temp-file`、`local-kokoro-tts-file`、`record-save`、`live-legacy-udp`、`recorded-v2-udp`。
 
+脚本开始后会在输出目录写入 `trigger-checklist.md`，现场抓日志时按清单依次触发文字临时文件、本地 Kokoro TTS、录音保存、实时喊话和录音播放路径。
+
 常用覆盖项：
 
 ```bash
@@ -240,6 +242,7 @@ pathCounts=...
 nonMatchEvents=0
 requiredShadowPaths=tts-temp-file,local-kokoro-tts-file,record-save,live-legacy-udp,recorded-v2-udp
 missingShadowPaths=
+triggerChecklist=.../trigger-checklist.md
 udpMonitorPackets=...
 udpMonitorUnknownPackets=0
 udpMonitorSequence=0..N
@@ -247,7 +250,7 @@ udpMonitorStatus=ok
 reportOutput=.../field-validation-report.md
 ```
 
-脚本会在输出目录生成 `field-validation-report.md`，报告内会记录期望 shadow 事件数、必需 shadow path、缺失 shadow path、期望 UDP 包数、`shadowStatus`、`udpMonitorStatus` 和原始日志路径，同时保留 `android-shadow.log` 和 `qt-monitor.log`，便于把一次现场联调结果归档。真实设备验收建议保留 `--expect-shadow-events 1`，避免忘记触发喊话链路时出现空日志误通过；保留 `--require-shadow-path` 列表，避免只触发了其中一条链路就误判完整通过。如果抓取期间没有任何 shadow 事件，脚本会输出 `shadowStatus=failed expectedEvents=1 actualEvents=0` 并失败；如果缺路径，会输出 `missingShadowPaths=...` 并失败。
+脚本会在输出目录生成 `field-validation-report.md`，报告内会记录期望 shadow 事件数、必需 shadow path、缺失 shadow path、期望 UDP 包数、`shadowStatus`、`udpMonitorStatus`、`trigger-checklist.md` 和原始日志路径，同时保留 `android-shadow.log` 和 `qt-monitor.log`，便于把一次现场联调结果归档。真实设备验收建议保留 `--expect-shadow-events 1`，避免忘记触发喊话链路时出现空日志误通过；保留 `--require-shadow-path` 列表，避免只触发了其中一条链路就误判完整通过。如果抓取期间没有任何 shadow 事件，脚本会输出 `shadowStatus=failed expectedEvents=1 actualEvents=0` 并失败；如果缺路径，会输出 `missingShadowPaths=...` 并失败。
 
 如果只抓 Android shadow、不监听电脑 UDP，可用：
 
@@ -661,6 +664,7 @@ Qt 负责：
 29. 已完成：field validation 脚本新增 `--expect-shadow-events`，真实验收可要求至少抓到 1 条 Android shadow 事件，报告会记录期望值、`shadowStatus` 和 `udpMonitorStatus`，避免空日志误通过；emulator 预演已验证 APK native libs、安装、启动和报告生成链路。
 30. 已完成：field validation 脚本新增 `--require-shadow-path`，可要求覆盖 `tts-temp-file`、`local-kokoro-tts-file`、`record-save`、`live-legacy-udp`、`recorded-v2-udp` 等关键路径，报告会记录必需路径和缺失路径。
 31. 已完成：新增 `tools/run_speaker_real_device_validation.sh`，把构建、安装、启动、Qt monitor、标准 shadow path 验收和常用环境变量覆盖收敛为真实设备一键入口；emulator 预演已验证参数拼装和缺路径失败报告。
-32. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-33. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-34. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+32. 已完成：field validation 输出目录新增 `trigger-checklist.md`，列出抓取窗口、UDP 端口、必需 shadow path 和现场人工触发动作，报告会链接该清单。
+33. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+34. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+35. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
