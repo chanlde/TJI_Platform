@@ -232,11 +232,12 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 生成 `RECORD_DOWNLOAD` 控制 JSON。
 - 下载 `downloadUrl` 并做字节比对。
 - 导出 v2 record-store UDP packet 预览文件。
+- 配置 UDP host/port 并发送单个 v2 record-store UDP packet。
 
 暂未做：
 
 - 多设备配置管理。
-- UDP 真实发送和播放路径验证。
+- 连续 UDP 播放流和真实设备播放路径验证。
 - 日志导出。
 
 验收：
@@ -489,4 +490,4 @@ Qt 负责：
 7. 已完成：Android 接 JNI shadow mode，Debug/Release native build 均通过。
 8. 已完成：Qt console + Widgets MVP 接入 core，并完成服务器上传/下载字节比对。
 9. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-10. 下一步：Qt 多设备配置管理、UDP 真实发送/播放路径验证和日志导出。
+10. 下一步：Qt 多设备配置管理、连续 UDP 播放流/真实设备播放路径验证和日志导出。
