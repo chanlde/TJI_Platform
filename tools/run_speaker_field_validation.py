@@ -70,10 +70,13 @@ class ValidationReport:
     adb_serial: str | None = None
     shadow_output: Path | None = None
     shadow_summary: list[str] = field(default_factory=list)
+    shadow_status: str = "skipped"
+    expected_shadow_events: int = 0
     shadow_non_match: bool = False
     monitor_output: Path | None = None
     monitor_summary: list[str] = field(default_factory=list)
     monitor_status: str = "skipped"
+    expected_udp_packets: int = 0
     exit_code: int = 0
 
     def write(self) -> Path:
@@ -89,13 +92,17 @@ class ValidationReport:
             f"- ADB serial: {self.adb_serial or 'skipped'}",
             f"- Android shadow log: `{self.shadow_output}`" if self.shadow_output else "- Android shadow log: skipped",
             f"- Qt monitor log: `{self.monitor_output}`" if self.monitor_output else "- Qt monitor log: skipped",
+            f"- Expected shadow events: {self.expected_shadow_events}",
+            f"- Expected UDP packets: {self.expected_udp_packets}",
             "",
             "## Android Shadow",
             "",
+            f"- `shadowStatus={self.shadow_status}`",
         ]
         lines.extend(f"- `{line}`" for line in (self.shadow_summary or ["skipped"]))
         lines.extend(["", "## Qt UDP Monitor", ""])
-        lines.extend(f"- `{line}`" for line in (self.monitor_summary or [self.monitor_status]))
+        lines.append(f"- `udpMonitorStatus={self.monitor_status}`")
+        lines.extend(f"- `{line}`" for line in self.monitor_summary)
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return path
 
@@ -265,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print("apkStatus=ok")
         report.apk_ok = True
+    report.expected_shadow_events = max(0, args.expect_shadow_events)
+    report.expected_udp_packets = max(0, args.expect_packets)
 
     monitor_process: MonitorProcess | None = None
     monitor_output = output_dir / "qt-monitor.log"
@@ -312,9 +321,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(line)
             if not shadow_ok(len(events), max(0, args.expect_shadow_events)):
                 print(f"shadowStatus=failed expectedEvents={args.expect_shadow_events} actualEvents={len(events)}")
+                report.shadow_status = "failed"
                 exit_code = max(exit_code, 1)
+            else:
+                print(f"shadowStatus=ok expectedEvents={args.expect_shadow_events} actualEvents={len(events)}")
+                report.shadow_status = "ok"
             if any(event.status != "match" for event in events):
                 report.shadow_non_match = True
+                report.shadow_status = "failed"
                 exit_code = max(exit_code, 1)
 
     if monitor_process is not None:

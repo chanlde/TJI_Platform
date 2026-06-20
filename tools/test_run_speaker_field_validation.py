@@ -90,9 +90,12 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
                 adb_serial="device-1",
                 shadow_output=output_dir / "android-shadow.log",
                 shadow_summary=["shadowEvents=5", "nonMatchEvents=0"],
+                shadow_status="ok",
+                expected_shadow_events=1,
                 monitor_output=output_dir / "qt-monitor.log",
                 monitor_summary=["udpMonitorPackets=25", "udpMonitorStatus=ok"],
                 monitor_status="ok",
+                expected_udp_packets=25,
                 exit_code=0,
             )
 
@@ -102,7 +105,11 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
         self.assertIn("# Speaker Field Validation Report", text)
         self.assertIn("- Result: PASS", text)
         self.assertIn("- Install: ok", text)
+        self.assertIn("- Expected shadow events: 1", text)
+        self.assertIn("- Expected UDP packets: 25", text)
+        self.assertIn("- `shadowStatus=ok`", text)
         self.assertIn("- `shadowEvents=5`", text)
+        self.assertIn("- `udpMonitorStatus=ok`", text)
         self.assertIn("- `udpMonitorPackets=25`", text)
 
 
