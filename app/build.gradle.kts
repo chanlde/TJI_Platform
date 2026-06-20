@@ -42,6 +42,11 @@ android {
             // 这样不会把 x86/armeabi-v7a 的 sherpa/onnxruntime so 一起打进 APK。
             abiFilters += listOf("arm64-v8a")
         }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DANDROID_STL=c++_shared")
+            }
+        }
         buildConfigField(
             "String",
             "TJI_SPEAKER_RELAY_HOST",
@@ -91,6 +96,13 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 

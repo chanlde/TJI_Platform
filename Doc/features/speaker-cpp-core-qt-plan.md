@@ -6,6 +6,7 @@
 - 适用对象：Android App、Qt/C++ 电脑上位机、服务器临时文件服务、MCU 联调。
 - 当前结论：先把喊话器纯算法和协议转换抽成共享 C++ core，再让 Android 通过 JNI 调用、Qt 上位机直接链接。
 - 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest 和服务器上传/下载验证。
+- Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径。
 
 ## 1. 目标
 
@@ -145,6 +146,7 @@ ctest --test-dir native/speaker-core/build --output-on-failure
 ```text
 app/src/main/cpp/speaker_core_jni.cpp
 app/src/main/java/com/tji/device/product/speaker/core/SpeakerCoreNative.kt
+app/src/main/java/com/tji/device/product/speaker/core/SpeakerCoreShadowVerifier.kt
 ```
 
 Gradle 增加：
@@ -152,7 +154,7 @@ Gradle 增加：
 ```kotlin
 externalNativeBuild {
     cmake {
-        path = file("../native/speaker-core/CMakeLists.txt")
+        path = file("src/main/cpp/CMakeLists.txt")
     }
 }
 ```
@@ -160,14 +162,16 @@ externalNativeBuild {
 接入策略：
 
 1. Kotlin 原实现继续生产真实结果。
-2. JNI 同时计算一份 C++ 结果。
-3. Debug 日志比较 size、CRC、header、frameCount、audioBytes。
-4. 连续通过后再切换真实调用。
+2. `SpeakerCoreNative` 通过 JNI 调用 C++ core，native 不可用时返回 `null`。
+3. `SpeakerCoreShadowVerifier` 同时计算一份 C++ 结果。
+4. Debug 日志比较 size、CRC、header、frameCount、audioBytes。
+5. 连续通过后再切换真实调用。
 
 验收：
 
 ```bash
-./gradlew :app:compileDebugKotlin :app:testDebugUnitTest
+./gradlew :app:externalNativeBuildDebug :app:compileDebugKotlin
+./gradlew :app:testDebugUnitTest
 ```
 
 ### V4：协议层抽入 C++ core
@@ -455,5 +459,6 @@ Qt 负责：
 4. 已完成：增加 CMake/CTest。
 5. 已完成：增加服务器上传验证脚本，并完成上传/下载字节比对。
 6. 已完成：从 App 当前实现导出 Kotlin golden samples，补齐 C++ 与 Kotlin 字节级对齐测试。
-7. 下一步：Android 接 JNI shadow mode。
-8. 下一步：Qt 上位机 MVP 接入 core。
+7. 已完成：Android 接 JNI shadow mode，Debug/Release native build 均通过。
+8. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
+9. 下一步：Qt 上位机 MVP 接入 core。

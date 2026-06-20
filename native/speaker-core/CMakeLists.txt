@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.22.1)
 
 project(tji_speaker_core VERSION 0.1.0 LANGUAGES CXX)
 
@@ -11,6 +11,10 @@ add_library(tji_speaker_core
     src/pcm_utils.cpp
     src/udp_packetizer.cpp
     src/speaker_core_c_api.cpp
+)
+
+set_target_properties(tji_speaker_core PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
 )
 
 target_include_directories(tji_speaker_core
