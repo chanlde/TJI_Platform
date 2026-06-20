@@ -14,8 +14,8 @@
 - Qt Widgets/CLI 已支持 Qt Multimedia 解码的压缩音频文件流：macOS AAC/M4A/MP3 均已验证可解码、转 8 kHz mono PCM16，再用连续 ADPCM 状态按 40 ms 分包为 v2 record-store UDP 发送。
 - Qt CLI 已增加 UDP monitor 工具：可监听真实设备或桌面端 UDP 流，输出包数、字节数、v1/v2 包分类、首包 header、序号范围和平均包间隔。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
-- Qt macOS `.app` bundle target 已建立：`TJI Speaker Control.app` 内置 `NSMicrophoneUsageDescription`，保留原 `tji_speaker_control` CLI 入口用于 smoke 自动化；签名、公证和安装包分发仍待产品化。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `bd6fb00 Add macOS app bundle target`；远端仓库地址待定。
+- Qt macOS `.app` bundle target 和本地打包脚本已建立：`TJI Speaker Control.app` 内置 `NSMicrophoneUsageDescription`，`scripts/package-macos.sh` 可运行 `macdeployqt`、ad-hoc 签名校验并生成本地 zip；Apple Developer 签名、公证和正式安装包分发仍待产品化。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `e4e0793 Add macOS packaging script`；远端仓库地址待定。
 
 ## 1. 目标
 
@@ -323,7 +323,7 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 麦克风流发送前可手动调节 `-24 dB` 到 `+24 dB` 输入增益，也可开启轻量 Auto Gain 和阈值 Noise Gate，并随 profile 保存。
 - Qt UDP monitor 监听指定端口，输出 `totalPackets`、`v2Packets`、`firstMagic`、`firstVersion`、`firstSequence`、`lastSequence`、`firstHeader`、`avgGapMs`，用于桌面端自测和真实设备联调。
 - 导出 Widgets 联调日志，包含连接参数、生成结果、控制 JSON 和操作日志。
-- macOS `.app` bundle 目标输出到 `build/apps/qt-speaker-control/TJI Speaker Control.app`，Info.plist 已包含麦克风权限说明；原 `tji_speaker_control` 可执行文件继续保留给命令行 smoke 和 CI 使用。
+- macOS `.app` bundle 目标输出到 `build/apps/qt-speaker-control/TJI Speaker Control.app`，Info.plist 已包含麦克风权限说明；`scripts/package-macos.sh` 可生成 `dist/TJI-Speaker-Control-macOS.zip`，原 `tji_speaker_control` 可执行文件继续保留给命令行 smoke 和 CI 使用。
 
 暂未做：
 
@@ -393,7 +393,7 @@ QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
 目标：从可联调变成客户可用。
 
 - Windows 打包和签名。
-- macOS 签名、公证和安装包分发。
+- macOS Developer ID 签名、公证和正式安装包分发。
 - 日志归档和自动附加最近联调记录。
 - 崩溃日志。
 - 设备发现。
@@ -635,6 +635,7 @@ Qt 负责：
 25. 已完成：field validation 脚本增加 `--install-apk` 和 `--launch-app`，默认安装后启动 `com.tji.device/.ui.main.MainActivity`。
 26. 已完成：field validation 脚本自动生成 `field-validation-report.md`，汇总 APK、安装启动、Android shadow、Qt UDP monitor 和日志路径。
 27. 已完成：Qt macOS `.app` bundle target 建立，`Info.plist` 包含 `NSMicrophoneUsageDescription`；完成 bundle build、PlistBuddy 权限字段检查、服务器上传/下载 smoke 和本地 monitor 验证：25 个 v2 包、序号 `0..24`、平均间隔约 `40.4167 ms`。
-28. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`，Qt monitor 包数、序号和间隔正常。
-29. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-30. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+28. 已完成：Qt 新增 macOS 本地打包脚本和分发说明，`macdeployqt` 使用 Homebrew library search path、ad-hoc 签名、错误输出拦截和 zip 产物生成；完成打包脚本验证、codesign 校验和 `.app` 包内可执行文件 smoke，monitor 验证 25 个 v2 包、序号 `0..24`、平均间隔约 `40.0417 ms`。
+29. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`，Qt monitor 包数、序号和间隔正常。
+30. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+31. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
