@@ -8,8 +8,9 @@
 - 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest 和服务器上传/下载验证。
 - Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径。
 - Qt desktop MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，console 和 Widgets 两个入口都能生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
+- Qt Widgets 已支持多设备 profiles：可保存、加载、删除命名设备配置，覆盖 deviceId、recordId、服务器、文件路径和 UDP 目标。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `edc99cf Add Qt control log export`；远端仓库地址待定。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `323d2ea Add Qt device profiles`；远端仓库地址待定。
 
 ## 1. 目标
 
@@ -229,6 +230,7 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 服务器地址命令行配置。
 - Qt Widgets 窗口输入 `deviceId`、`recordId`、服务器地址和输出路径。
 - Qt Widgets 使用 `QSettings` 保存设备、服务器和文件路径配置。
+- Qt Widgets 保存、加载、删除命名设备 profiles，便于多台喊话器反复联调。
 - HADP 本地生成。
 - 上传临时 HADP 到服务器。
 - 生成 `RECORD_DOWNLOAD` 控制 JSON。
@@ -242,7 +244,6 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 
 暂未做：
 
-- 多设备配置管理。
 - 麦克风驱动的连续 UDP 播放流。
 - MP3 / AAC 等压缩音频文件解码。
 - 真实设备播放路径验证。
@@ -294,7 +295,7 @@ QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
 - 日志归档和自动附加最近联调记录。
 - 崩溃日志。
 - 设备发现。
-- 多设备列表。
+- 多设备列表批量管理。
 - 弱网重试。
 - 协议版本协商。
 - MCU 固件兼容矩阵。
@@ -514,6 +515,7 @@ Qt 负责：
 7. 已完成：Android 接 JNI shadow mode，Debug/Release native build 均通过。
 8. 已完成：Qt console + Widgets MVP 接入 core，并完成服务器上传/下载字节比对。
 9. 已完成：Qt Widgets 增加日志导出，并完成本地编译与服务器 smoke 验证。
-10. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-11. 下一步：Qt 多设备配置管理、麦克风驱动 UDP 播放流、MP3/AAC 文件解码和真实设备播放路径验证。
-12. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+10. 已完成：Qt Widgets 增加命名设备 profiles，并完成本地编译、窗口启动和服务器 smoke 验证。
+11. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
+12. 下一步：Qt 麦克风驱动 UDP 播放流、MP3/AAC 文件解码和真实设备播放路径验证。
+13. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
