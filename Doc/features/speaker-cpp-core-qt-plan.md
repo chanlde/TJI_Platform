@@ -233,11 +233,13 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 下载 `downloadUrl` 并做字节比对。
 - 导出 v2 record-store UDP packet 预览文件。
 - 配置 UDP host/port 并发送单个 v2 record-store UDP packet。
+- 按 40 ms 节奏发送 1 秒 v2 record-store UDP 测试流，并用本地 UDP listener 验证 25 包。
 
 暂未做：
 
 - 多设备配置管理。
-- 连续 UDP 播放流和真实设备播放路径验证。
+- 麦克风或文件驱动的连续 UDP 播放流。
+- 真实设备播放路径验证。
 - 日志导出。
 
 验收：
@@ -259,6 +261,11 @@ QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
   --server http://146.56.250.203:8008 \
   --output build/generated/REC_QT_WIDGETS_SMOKE.hadp \
   --udp-output build/generated/REC_QT_RECORD_STORE_PACKET.bin
+QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
+  --smoke \
+  --send-udp-stream \
+  --udp-host 127.0.0.1 \
+  --udp-port 47002
 ```
 
 ### V6：产品化收尾
@@ -490,4 +497,4 @@ Qt 负责：
 7. 已完成：Android 接 JNI shadow mode，Debug/Release native build 均通过。
 8. 已完成：Qt console + Widgets MVP 接入 core，并完成服务器上传/下载字节比对。
 9. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-10. 下一步：Qt 多设备配置管理、连续 UDP 播放流/真实设备播放路径验证和日志导出。
+10. 下一步：Qt 多设备配置管理、麦克风/文件驱动 UDP 播放流、真实设备播放路径验证和日志导出。
