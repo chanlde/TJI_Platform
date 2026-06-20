@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  android:
+    name: Android build and tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run documentation checks
+        run: ./gradlew checkDocs
+
+      - name: Run debug unit tests
+        run: ./gradlew :app:testDebugUnitTest
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug
+
+  speaker-core:
+    name: speaker-core CTest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+
+      - name: Configure
+        run: cmake -S native/speaker-core -B native/speaker-core/build-ci -G Ninja
+
+      - name: Build
+        run: cmake --build native/speaker-core/build-ci
+
+      - name: Run CTest
+        run: ctest --test-dir native/speaker-core/build-ci --output-on-failure

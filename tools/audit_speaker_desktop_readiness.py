@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_QT_REPO = Path.home() / "Desktop/code/QT/tji-speaker-desktop"
 DEFAULT_OUTPUT_DIR = ROOT / "build/speaker-desktop-readiness"
 QT_REPO_SLUG = "chanlde/tji-speaker-desktop"
+TJI_REPO_SLUG = "chanlde/TJI_Platform"
 
 
 @dataclass(frozen=True)
@@ -73,18 +74,18 @@ def file_check(path: Path, name: str) -> Check:
     return Check(name, "PASS" if path.exists() else "WARN", str(path))
 
 
-def latest_qt_ci() -> Check:
+def latest_github_ci(repo_slug: str, workflow: str, label: str) -> Check:
     if shutil.which("gh") is None:
-        return Check("Qt GitHub Actions CI", "WARN", "gh not available")
+        return Check(label, "WARN", "gh not available")
     result = run(
         [
             "gh",
             "run",
             "list",
             "--repo",
-            QT_REPO_SLUG,
+            repo_slug,
             "--workflow",
-            "CI",
+            workflow,
             "--limit",
             "1",
             "--json",
@@ -95,13 +96,13 @@ def latest_qt_ci() -> Check:
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
-        return Check("Qt GitHub Actions CI", "WARN", detail or "query failed")
+        return Check(label, "WARN", detail or "query failed")
     try:
         runs = json.loads(result.stdout)
     except json.JSONDecodeError:
-        return Check("Qt GitHub Actions CI", "WARN", "invalid gh JSON")
+        return Check(label, "WARN", "invalid gh JSON")
     if not runs:
-        return Check("Qt GitHub Actions CI", "WARN", "no CI runs found")
+        return Check(label, "WARN", "no CI runs found")
     latest = runs[0]
     ok = latest.get("status") == "completed" and latest.get("conclusion") == "success"
     detail = (
@@ -109,7 +110,7 @@ def latest_qt_ci() -> Check:
         f"conclusion={latest.get('conclusion')} sha={str(latest.get('headSha', ''))[:7]} "
         f"url={latest.get('url')}"
     )
-    return Check("Qt GitHub Actions CI", "PASS" if ok else "FAIL", detail)
+    return Check(label, "PASS" if ok else "FAIL", detail)
 
 
 def adb_devices() -> tuple[list[str], list[str]]:
@@ -182,7 +183,8 @@ def main(argv: list[str] | None = None) -> int:
     checks.append(executable_check(qt_repo / "build/apps/qt-speaker-monitor/tji_speaker_monitor", "Qt UDP monitor executable"))
     checks.append(file_check(qt_repo / "dist/TJI-Speaker-Control-macOS.manifest.json", "Qt package manifest"))
     checks.append(file_check(qt_repo / "dist/SHA256SUMS", "Qt package checksum"))
-    checks.append(latest_qt_ci())
+    checks.append(latest_github_ci(TJI_REPO_SLUG, "CI", "TJI_Platform GitHub Actions CI"))
+    checks.append(latest_github_ci(QT_REPO_SLUG, "CI", "Qt GitHub Actions CI"))
 
     devices, physical = adb_devices()
     if args.require_real_device:

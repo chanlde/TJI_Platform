@@ -6,6 +6,7 @@
 .gradle/
 build/
 **/build/
+**/build-*/
 **/.gradle/
 **/.cxx/
 app/release/

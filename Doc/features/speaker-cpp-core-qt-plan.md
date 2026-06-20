@@ -268,7 +268,7 @@ tools/audit_speaker_desktop_readiness.py
 tools/audit_speaker_desktop_readiness.py --require-real-device
 ```
 
-默认模式会检查 `TJI_Platform` 和 Qt desktop 两个仓库的分支、干净工作区、origin、push 状态，检查 `speaker-core` C ABI header、Qt 本地可执行文件、package manifest/checksum、Qt GitHub Actions CI 最新结果和 ADB 设备，并生成 `build/speaker-desktop-readiness/readiness-report.md`。没有真实 Android 设备时默认输出 `PASS_WITH_PENDING_REAL_DEVICE`；加 `--require-real-device` 后会把物理设备缺失作为失败，用于现场最终验收前的硬门槛。
+默认模式会检查 `TJI_Platform` 和 Qt desktop 两个仓库的分支、干净工作区、origin、push 状态，检查 `speaker-core` C ABI header、Qt 本地可执行文件、package manifest/checksum、两个仓库的 GitHub Actions CI 最新结果和 ADB 设备，并生成 `build/speaker-desktop-readiness/readiness-report.md`。没有真实 Android 设备时默认输出 `PASS_WITH_PENDING_REAL_DEVICE`；加 `--require-real-device` 后会把物理设备缺失作为失败，用于现场最终验收前的硬门槛。
 
 手工备用命令：
 
@@ -687,5 +687,6 @@ Qt 负责：
 40. 已完成：Qt 仓库已创建远端 `https://github.com/chanlde/tji-speaker-desktop` 并推送 `main`；Qt `doctor.sh` 已确认工作区干净、origin 正常、package checksum 和 manifest 正常。
 41. 已完成：Qt 仓库新增 GitHub Actions CI，远端 run `27875349496` 已通过 macOS 依赖安装、双仓库 checkout、Qt build、`speaker-core` CTest 和 console `--no-upload` smoke。
 42. 已完成：新增 `tools/audit_speaker_desktop_readiness.py`，可一键汇总 App 仓库、Qt 仓库、远端 CI、Qt 本地产物、package metadata 和 ADB 设备状态，并生成 `readiness-report.md`；默认 audit 已通过到 `PASS_WITH_PENDING_REAL_DEVICE`，严格模式正确因缺少物理 Android 设备失败。
-43. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-44. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+43. 已完成：主项目新增 GitHub Actions CI，覆盖 `checkDocs`、`:app:testDebugUnitTest`、`:app:assembleDebug` 和 `native/speaker-core` CTest；readiness audit 已扩展为同时检查主项目 CI 与 Qt CI。
+44. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+45. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
