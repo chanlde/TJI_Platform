@@ -226,15 +226,17 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 设备 `deviceId` 命令行输入。
 - 服务器地址命令行配置。
 - Qt Widgets 窗口输入 `deviceId`、`recordId`、服务器地址和输出路径。
+- Qt Widgets 使用 `QSettings` 保存设备、服务器和文件路径配置。
 - HADP 本地生成。
 - 上传临时 HADP 到服务器。
 - 生成 `RECORD_DOWNLOAD` 控制 JSON。
 - 下载 `downloadUrl` 并做字节比对。
+- 导出 v2 record-store UDP packet 预览文件。
 
 暂未做：
 
-- 设备配置保存。
-- UDP 播放路径验证。
+- 多设备配置管理。
+- UDP 真实发送和播放路径验证。
 - 日志导出。
 
 验收：
@@ -254,7 +256,8 @@ QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
   --device-id T12345678 \
   --record-id REC_QT_WIDGETS_SMOKE \
   --server http://146.56.250.203:8008 \
-  --output build/generated/REC_QT_WIDGETS_SMOKE.hadp
+  --output build/generated/REC_QT_WIDGETS_SMOKE.hadp \
+  --udp-output build/generated/REC_QT_RECORD_STORE_PACKET.bin
 ```
 
 ### V6：产品化收尾
@@ -486,4 +489,4 @@ Qt 负责：
 7. 已完成：Android 接 JNI shadow mode，Debug/Release native build 均通过。
 8. 已完成：Qt console + Widgets MVP 接入 core，并完成服务器上传/下载字节比对。
 9. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-10. 下一步：Qt 设备配置保存、UDP 播放路径验证和日志导出。
+10. 下一步：Qt 多设备配置管理、UDP 真实发送/播放路径验证和日志导出。
