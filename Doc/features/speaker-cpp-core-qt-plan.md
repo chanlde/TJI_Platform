@@ -293,7 +293,54 @@ git push origin main
 - push 前看 `git diff --stat`，确认没有误加入本地大文件、模型、APK、build 目录。
 - 如果远端拒绝 push，先 `git pull --rebase origin main`，解决冲突后重新测试。
 
-## 7. 服务器交换测试
+## 7. Golden Samples 对齐
+
+Kotlin golden fixtures 位置：
+
+```text
+app/src/test/resources/speaker-core-golden/
+```
+
+当前覆盖：
+
+- 1 秒 8 kHz mono PCM16 synthetic voice。
+- legacy ADPCM UDP frame 0 / frame 1。
+- v2 record-store last packet。
+- PCM16 HADP。
+- IMA ADPCM HADP。
+- 元数据 CRC、frameCount、fileSize、durationMs。
+
+刷新 fixtures：
+
+```bash
+TJI_UPDATE_SPEAKER_GOLDEN=1 \
+  ./gradlew :app:testDebugUnitTest \
+  --tests 'com.tji.device.product.speaker.audio.SpeakerCoreGoldenFixtureTest'
+```
+
+普通校验：
+
+```bash
+./gradlew :app:testDebugUnitTest \
+  --tests 'com.tji.device.product.speaker.audio.SpeakerCoreGoldenFixtureTest'
+```
+
+C++ 字节级对齐：
+
+```bash
+source $HOME/Desktop/code/QT/scripts/qt-env.sh
+cmake -S native/speaker-core -B native/speaker-core/build -G Ninja
+cmake --build native/speaker-core/build
+ctest --test-dir native/speaker-core/build --output-on-failure
+```
+
+约束：
+
+- 只有确认 Kotlin 当前行为就是新标准时，才允许刷新 fixture。
+- 刷新后必须同时跑 Kotlin 单测和 C++ CTest。
+- C++ 对 fixture 的校验必须是字节级，不只比 header 或 CRC。
+
+## 8. 服务器交换测试
 
 服务器临时 HADP 上传接口：
 
@@ -339,7 +386,7 @@ native/speaker-core/tools/verify_record_upload.py \
 downloadVerified=true
 ```
 
-## 8. Android 替换顺序
+## 9. Android 替换顺序
 
 推荐顺序：
 
@@ -369,7 +416,7 @@ Kotlin header == C++ header
 Kotlin metadata == C++ metadata
 ```
 
-## 9. Qt 上位机通信边界
+## 10. Qt 上位机通信边界
 
 Qt 负责：
 
@@ -390,7 +437,7 @@ Qt 负责：
 
 这样即使以后 Qt 不满意，换 C# 上位机也可以继续调用同一个 C ABI / DLL。
 
-## 10. 回滚策略
+## 11. 回滚策略
 
 每个阶段必须能独立回滚：
 
@@ -400,13 +447,13 @@ Qt 负责：
 - V4 每个 parser 单独替换，失败回 Kotlin fallback。
 - V5 Qt 上位机独立工程，不阻塞 Android 发布。
 
-## 11. 近期执行清单
+## 12. 近期执行清单
 
 1. 已完成：当前 App 测试通过并推送远端。
 2. 已完成：建立 `native/speaker-core`。
 3. 已完成：迁移 HADP/ADPCM/UDP 分包到 C++ 第一版。
 4. 已完成：增加 CMake/CTest。
 5. 已完成：增加服务器上传验证脚本，并完成上传/下载字节比对。
-6. 下一步：从 `SpeakerAudioDataTest` 导出 Kotlin golden samples，补齐 C++ 与 Kotlin 字节级对齐测试。
+6. 已完成：从 App 当前实现导出 Kotlin golden samples，补齐 C++ 与 Kotlin 字节级对齐测试。
 7. 下一步：Android 接 JNI shadow mode。
 8. 下一步：Qt 上位机 MVP 接入 core。

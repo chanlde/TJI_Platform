@@ -3,9 +3,12 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -43,6 +46,50 @@ void require_true(bool value, const std::string &message) {
 void require_eq(size_t actual, size_t expected, const std::string &message) {
     if (actual != expected) {
         throw std::runtime_error(message + ": actual=" + std::to_string(actual) + " expected=" + std::to_string(expected));
+    }
+}
+
+std::vector<uint8_t> read_binary(const std::string &path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("failed to open fixture: " + path);
+    }
+    return std::vector<uint8_t>(
+        std::istreambuf_iterator<char>(in),
+        std::istreambuf_iterator<char>()
+    );
+}
+
+std::string read_text(const std::string &path) {
+    std::ifstream in(path);
+    if (!in) {
+        throw std::runtime_error("failed to open fixture: " + path);
+    }
+    std::ostringstream out;
+    out << in.rdbuf();
+    return out.str();
+}
+
+std::string metadata_value(const std::string &metadata, std::string_view key) {
+    const std::string needle = std::string(key) + "=";
+    size_t offset = metadata.find(needle);
+    if (offset == std::string::npos) {
+        throw std::runtime_error("missing metadata key: " + std::string(key));
+    }
+    offset += needle.size();
+    const size_t end = metadata.find('\n', offset);
+    return metadata.substr(offset, end == std::string::npos ? std::string::npos : end - offset);
+}
+
+void require_bytes_eq(const uint8_t *actual, size_t actual_size, const std::vector<uint8_t> &expected, const std::string &message) {
+    if (actual_size != expected.size()) {
+        throw std::runtime_error(
+            message + " size mismatch: actual=" + std::to_string(actual_size) +
+            " expected=" + std::to_string(expected.size())
+        );
+    }
+    if (std::memcmp(actual, expected.data(), expected.size()) != 0) {
+        throw std::runtime_error(message + " bytes mismatch");
     }
 }
 
@@ -179,6 +226,90 @@ void test_hadp_adpcm_header_and_decode_size() {
     require_eq(decoded.buffer.size, pcm.size(), "adpcm decoded pcm size");
 }
 
+void test_kotlin_golden_legacy_and_v2_packets() {
+    const auto pcm = read_binary("../../app/src/test/resources/speaker-core-golden/voice_1s_8k_pcm16le.raw");
+    const auto legacy_frame0 = read_binary("../../app/src/test/resources/speaker-core-golden/legacy_adpcm_packet_frame0.bin");
+    const auto v2_record_store_last = read_binary("../../app/src/test/resources/speaker-core-golden/v2_record_store_last_packet.bin");
+
+    OwnedBuffer legacy_packet;
+    require_eq(
+        tji_sc_packetize_adpcm_legacy(pcm.data(), 640, 0, 0, &legacy_packet.buffer),
+        TJI_SC_OK,
+        "golden legacy frame 0 packetize"
+    );
+    require_bytes_eq(legacy_packet.buffer.data, legacy_packet.buffer.size, legacy_frame0, "golden legacy frame 0");
+
+    OwnedBuffer v2_packet;
+    require_eq(
+        tji_sc_packetize_adpcm_v2(
+            pcm.data(),
+            640,
+            0,
+            0,
+            "T12345678",
+            "STORE_T12345678_1",
+            "REC_T12345678_1",
+            TJI_SC_STREAM_RECORD_STORE,
+            1,
+            &v2_packet.buffer
+        ),
+        TJI_SC_OK,
+        "golden v2 record-store packetize"
+    );
+    require_bytes_eq(v2_packet.buffer.data, v2_packet.buffer.size, v2_record_store_last, "golden v2 record-store packet");
+}
+
+void test_kotlin_golden_hadp_files() {
+    const auto pcm = read_binary("../../app/src/test/resources/speaker-core-golden/voice_1s_8k_pcm16le.raw");
+    const auto pcm16_hadp = read_binary("../../app/src/test/resources/speaker-core-golden/hadp_pcm16_1s.hadp");
+    const auto adpcm_hadp = read_binary("../../app/src/test/resources/speaker-core-golden/hadp_ima_adpcm_1s.hadp");
+    const auto metadata = read_text("../../app/src/test/resources/speaker-core-golden/metadata.properties");
+
+    OwnedBuffer pcm16;
+    TjiScHadpMetadata pcm16_metadata{};
+    require_eq(
+        tji_sc_encode_hadp(
+            pcm.data(),
+            pcm.size(),
+            "REC_PCM16_TEST",
+            TJI_SC_CODEC_PCM16,
+            8000,
+            1,
+            40,
+            &pcm16.buffer,
+            &pcm16_metadata
+        ),
+        TJI_SC_OK,
+        "golden encode pcm16 hadp"
+    );
+    require_bytes_eq(pcm16.buffer.data, pcm16.buffer.size, pcm16_hadp, "golden pcm16 hadp");
+    require_eq(pcm16_metadata.file_size, std::stoul(metadata_value(metadata, "pcm16.fileSize")), "golden pcm16 file size");
+    require_true(std::string(pcm16_metadata.crc32) == metadata_value(metadata, "pcm16.crc32"), "golden pcm16 crc");
+    require_true(std::string(pcm16_metadata.audio_crc32) == metadata_value(metadata, "pcm16.audioCrc32"), "golden pcm16 audio crc");
+
+    OwnedBuffer adpcm;
+    TjiScHadpMetadata adpcm_metadata{};
+    require_eq(
+        tji_sc_encode_hadp(
+            pcm.data(),
+            pcm.size(),
+            "REC_ADPCM_TEST",
+            TJI_SC_CODEC_IMA_ADPCM,
+            8000,
+            1,
+            40,
+            &adpcm.buffer,
+            &adpcm_metadata
+        ),
+        TJI_SC_OK,
+        "golden encode adpcm hadp"
+    );
+    require_bytes_eq(adpcm.buffer.data, adpcm.buffer.size, adpcm_hadp, "golden adpcm hadp");
+    require_eq(adpcm_metadata.file_size, std::stoul(metadata_value(metadata, "adpcm.fileSize")), "golden adpcm file size");
+    require_true(std::string(adpcm_metadata.crc32) == metadata_value(metadata, "adpcm.crc32"), "golden adpcm crc");
+    require_true(std::string(adpcm_metadata.audio_crc32) == metadata_value(metadata, "adpcm.audioCrc32"), "golden adpcm audio crc");
+}
+
 } // namespace
 
 int main() {
@@ -187,6 +318,8 @@ int main() {
         test_v2_record_store_header();
         test_hadp_pcm16_header_and_decode();
         test_hadp_adpcm_header_and_decode_size();
+        test_kotlin_golden_legacy_and_v2_packets();
+        test_kotlin_golden_hadp_files();
     } catch (const std::exception &error) {
         std::cerr << "speaker-core test failed: " << error.what() << '\n';
         return 1;
@@ -194,4 +327,3 @@ int main() {
     std::cout << "speaker-core tests passed\n";
     return 0;
 }
-

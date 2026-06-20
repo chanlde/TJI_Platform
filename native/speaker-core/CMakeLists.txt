@@ -35,6 +35,9 @@ add_executable(tji_speaker_core_tests
 target_link_libraries(tji_speaker_core_tests PRIVATE tji_speaker_core)
 
 add_test(NAME tji_speaker_core_tests COMMAND tji_speaker_core_tests)
+set_tests_properties(tji_speaker_core_tests PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 add_executable(tji_speaker_core_sample
     tools/generate_hadp_sample.cpp
