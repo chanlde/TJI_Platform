@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import run_speaker_field_validation
 
@@ -66,6 +68,33 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
         self.assertIn("udpMonitorExpectedPackets=25", lines)
         self.assertIn("udpMonitorV2Packets=25", lines)
         self.assertIn("udpMonitorAvgGapMs=40.125", lines)
+
+    def test_validation_report_writes_markdown_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            report = run_speaker_field_validation.ValidationReport(
+                output_dir=output_dir,
+                apk=Path("/tmp/app.apk"),
+                apk_ok=True,
+                install_status="ok",
+                launch_status="ok",
+                adb_serial="device-1",
+                shadow_output=output_dir / "android-shadow.log",
+                shadow_summary=["shadowEvents=5", "nonMatchEvents=0"],
+                monitor_output=output_dir / "qt-monitor.log",
+                monitor_summary=["udpMonitorPackets=25", "udpMonitorStatus=ok"],
+                monitor_status="ok",
+                exit_code=0,
+            )
+
+            path = report.write()
+            text = path.read_text(encoding="utf-8")
+
+        self.assertIn("# Speaker Field Validation Report", text)
+        self.assertIn("- Result: PASS", text)
+        self.assertIn("- Install: ok", text)
+        self.assertIn("- `shadowEvents=5`", text)
+        self.assertIn("- `udpMonitorPackets=25`", text)
 
 
 if __name__ == "__main__":

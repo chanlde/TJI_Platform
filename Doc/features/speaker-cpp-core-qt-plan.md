@@ -221,7 +221,10 @@ udpMonitorPackets=...
 udpMonitorUnknownPackets=0
 udpMonitorSequence=0..N
 udpMonitorStatus=ok
+reportOutput=.../field-validation-report.md
 ```
+
+脚本会在输出目录生成 `field-validation-report.md`，同时保留 `android-shadow.log` 和 `qt-monitor.log`，便于把一次现场联调结果归档。
 
 如果只抓 Android shadow、不监听电脑 UDP，可用：
 
@@ -628,6 +631,7 @@ Qt 负责：
 23. 已完成：新增 `tools/verify_speaker_shadow.py`，支持 APK native lib 检查、ADB 设备选择、logcat 抓取和 `speakerCoreShadow` 状态/路径汇总。
 24. 已完成：新增 `tools/run_speaker_field_validation.py`，可同时编排 APK native lib 检查、Android shadow logcat 抓取和 Qt UDP monitor 输出汇总。
 25. 已完成：field validation 脚本增加 `--install-apk` 和 `--launch-app`，默认安装后启动 `com.tji.device/.ui.main.MainActivity`。
-26. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`，Qt monitor 包数、序号和间隔正常。
-27. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-28. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+26. 已完成：field validation 脚本自动生成 `field-validation-report.md`，汇总 APK、安装启动、Android shadow、Qt UDP monitor 和日志路径。
+27. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`，Qt monitor 包数、序号和间隔正常。
+28. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+29. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。

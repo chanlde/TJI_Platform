@@ -16,7 +16,7 @@ import argparse
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -58,6 +58,46 @@ class MonitorSummary:
 class MonitorProcess:
     process: subprocess.Popen[str]
     output_file: object
+
+
+@dataclass
+class ValidationReport:
+    output_dir: Path
+    apk: Path
+    apk_ok: bool = False
+    install_status: str = "skipped"
+    launch_status: str = "skipped"
+    adb_serial: str | None = None
+    shadow_output: Path | None = None
+    shadow_summary: list[str] = field(default_factory=list)
+    shadow_non_match: bool = False
+    monitor_output: Path | None = None
+    monitor_summary: list[str] = field(default_factory=list)
+    monitor_status: str = "skipped"
+    exit_code: int = 0
+
+    def write(self) -> Path:
+        path = self.output_dir / "field-validation-report.md"
+        lines = [
+            "# Speaker Field Validation Report",
+            "",
+            f"- Result: {'PASS' if self.exit_code == 0 else 'FAIL'}",
+            f"- APK: `{self.apk}`",
+            f"- APK native libs: {'ok' if self.apk_ok else 'failed'}",
+            f"- Install: {self.install_status}",
+            f"- Launch: {self.launch_status}",
+            f"- ADB serial: {self.adb_serial or 'skipped'}",
+            f"- Android shadow log: `{self.shadow_output}`" if self.shadow_output else "- Android shadow log: skipped",
+            f"- Qt monitor log: `{self.monitor_output}`" if self.monitor_output else "- Qt monitor log: skipped",
+            "",
+            "## Android Shadow",
+            "",
+        ]
+        lines.extend(f"- `{line}`" for line in (self.shadow_summary or ["skipped"]))
+        lines.extend(["", "## Qt UDP Monitor", ""])
+        lines.extend(f"- `{line}`" for line in (self.monitor_summary or [self.monitor_status]))
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
 
 
 def parse_monitor_summary(text: str) -> MonitorSummary:
@@ -179,6 +219,10 @@ def launch_app(adb: str, serial: str, package_name: str, activity: str) -> int:
     return 0
 
 
+def status_from_code(code: int) -> str:
+    return "ok" if code == 0 else "failed"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", type=Path, default=None, help="APK to inspect. Defaults to newest app/build/outputs/apk/**/*.apk.")
@@ -205,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     if apk is None or not apk.exists():
         print(f"apkStatus=missing apkPath={apk or 'none'}")
         return 2
+    report = ValidationReport(output_dir=output_dir, apk=apk)
     missing = verify_speaker_shadow.missing_native_libs(apk)
     print(f"apkPath={apk}")
     if missing:
@@ -214,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 1
     else:
         print("apkStatus=ok")
+        report.apk_ok = True
 
     monitor_process: MonitorProcess | None = None
     monitor_output = output_dir / "qt-monitor.log"
@@ -222,6 +268,7 @@ def main(argv: list[str] | None = None) -> int:
         if not monitor_path.exists():
             print(f"udpMonitorStatus=missing path={monitor_path}")
             exit_code = max(exit_code, 2)
+            report.monitor_status = "missing"
         else:
             monitor_process = start_monitor(
                 monitor_path=monitor_path,
@@ -231,25 +278,35 @@ def main(argv: list[str] | None = None) -> int:
                 output_path=monitor_output,
             )
             print(f"udpMonitorStatus=running port={args.udp_port} output={monitor_output}")
+            report.monitor_output = monitor_output
+            report.monitor_status = "running"
 
     if not args.skip_adb:
         status, serial = select_serial(args.adb, args.serial)
         if status != 0 or serial is None:
             exit_code = max(exit_code, status)
         else:
+            report.adb_serial = serial
             if args.install_apk:
-                exit_code = max(exit_code, install_apk(args.adb, serial, apk))
+                install_status = install_apk(args.adb, serial, apk)
+                report.install_status = status_from_code(install_status)
+                exit_code = max(exit_code, install_status)
             if args.launch_app:
-                exit_code = max(exit_code, launch_app(args.adb, serial, args.android_package, args.android_activity))
+                launch_status = launch_app(args.adb, serial, args.android_package, args.android_activity)
+                report.launch_status = status_from_code(launch_status)
+                exit_code = max(exit_code, launch_status)
             shadow_output = output_dir / "android-shadow.log"
+            report.shadow_output = shadow_output
             print(f"adbStatus=ok serial={serial}")
             print(f"shadowOutput={shadow_output}")
             print("action=trigger speaker TTS, local Kokoro file, record-save, live talk, and recorded playback flows now")
             lines = verify_speaker_shadow.collect_logcat(args.adb, serial, max(1, args.duration_s), shadow_output)
             events = verify_speaker_shadow.parse_shadow_events(lines)
-            for line in verify_speaker_shadow.summarize_events(events):
+            report.shadow_summary = verify_speaker_shadow.summarize_events(events)
+            for line in report.shadow_summary:
                 print(line)
             if any(event.status != "match" for event in events):
+                report.shadow_non_match = True
                 exit_code = max(exit_code, 1)
 
     if monitor_process is not None:
@@ -257,15 +314,21 @@ def main(argv: list[str] | None = None) -> int:
         monitor_process.output_file.close()
         monitor_text = monitor_output.read_text(encoding="utf-8") if monitor_output.exists() else ""
         summary = parse_monitor_summary(monitor_text)
-        for line in monitor_summary_lines(summary, max(0, args.expect_packets)):
+        report.monitor_summary = monitor_summary_lines(summary, max(0, args.expect_packets))
+        for line in report.monitor_summary:
             print(line)
         if monitor_return != 0 or not monitor_ok(summary, max(0, args.expect_packets)):
             print(f"udpMonitorStatus=failed exitCode={monitor_return}")
+            report.monitor_status = "failed"
             exit_code = max(exit_code, 1)
         else:
             print(f"udpMonitorStatus=ok exitCode={monitor_return}")
+            report.monitor_status = "ok"
 
     print(f"outputDir={output_dir}")
+    report.exit_code = exit_code
+    report_path = report.write()
+    print(f"reportOutput={report_path}")
     return exit_code
 
 
