@@ -6,7 +6,7 @@
 - 适用对象：Android App、Qt/C++ 电脑上位机、服务器临时文件服务、MCU 联调。
 - 当前结论：先把喊话器纯算法和协议转换抽成共享 C++ core，再让 Android 通过 JNI 调用、Qt 上位机直接链接。
 - 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest 和服务器上传/下载验证。
-- Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径。
+- Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径；TTS 临时文件、本地 Kokoro TTS 文件和录音保存 HADP 路径会输出结构化 shadow 摘要。
 - Qt desktop MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，console 和 Widgets 两个入口都能生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
 - Qt Widgets 已支持多设备 profiles：可保存、加载、删除命名设备配置，覆盖 deviceId、recordId、服务器、文件路径和 UDP 目标。
 - Qt Widgets 已支持麦克风 UDP 流和输入格式转换：优先请求 8 kHz mono PCM16，失败时用设备 preferred format 采集，再混音/线性重采样为 8 kHz mono PCM16 后按 40 ms 分包为 v2 record-store UDP 发送。
@@ -172,7 +172,7 @@ externalNativeBuild {
 1. Kotlin 原实现继续生产真实结果。
 2. `SpeakerCoreNative` 通过 JNI 调用 C++ core，native 不可用时返回 `null`。
 3. `SpeakerCoreShadowVerifier` 同时计算一份 C++ 结果。
-4. Debug 日志比较 size、CRC、header、frameCount、audioBytes。
+4. Debug 日志比较 size、CRC、header、frameCount、audioBytes；HADP 主路径统一输出 `speakerCoreShadow status=...`。
 5. 连续通过后再切换真实调用。
 
 验收：
@@ -181,6 +181,23 @@ externalNativeBuild {
 ./gradlew :app:externalNativeBuildDebug :app:compileDebugKotlin
 ./gradlew :app:testDebugUnitTest
 ```
+
+真机抓 shadow 日志：
+
+```bash
+adb logcat -c
+adb logcat -s SpeakerAudioData | rg 'speakerCoreShadow|record save encoded|tts temp file encoded|local kokoro tts file encoded'
+```
+
+通过标准：
+
+```text
+speakerCoreShadow status=match path=tts-temp-file ...
+speakerCoreShadow status=match path=local-kokoro-tts-file ...
+speakerCoreShadow status=match path=record-save ...
+```
+
+如果出现 `status=nativeUnavailable`，优先检查 APK 是否打入 `libtji_speaker_core_jni.so`、ABI 是否匹配、`System.loadLibrary("tji_speaker_core_jni")` 是否成功。若出现 `status=mismatch`，日志会带出 `kotlinSize`、`nativeSize`、`mismatchOffset`、两边 CRC 和首包/header 前缀。
 
 ### V4：协议层抽入 C++ core
 
@@ -555,6 +572,7 @@ Qt 负责：
 16. 已完成：Qt Widgets 增加麦克风轻量 Auto Gain，支持 profile 保存和日志导出，并完成本地编译、窗口启动和文件流 smoke 回归。
 17. 已完成：Qt Widgets 增加麦克风阈值 Noise Gate，支持 profile 保存和日志导出，并完成本地编译、窗口启动和文件流 smoke 回归。
 18. 已完成：Qt CLI 增加 UDP monitor，完成服务器上传/下载 smoke 和本地流监听验证：25 个 v2 包、序号 `0..24`、平均间隔约 `40.25 ms`。
-19. 下一步：在真实 Android 设备上打开 shadow 日志，用 Qt UDP monitor 连续比对真实录音/播放路径的包数、序号和包间隔。
-20. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-21. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+19. 已完成：Android HADP shadow 日志结构化，TTS 临时文件、本地 Kokoro TTS 文件和录音保存路径输出 `status=match|mismatch|nativeUnavailable`、CRC、size、header 前缀和路径 metadata。
+20. 下一步：在真实 Android 设备上打开 shadow 日志，用 Qt UDP monitor 连续比对真实录音/播放路径的包数、序号和包间隔。
+21. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+22. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。

@@ -25,6 +25,7 @@ import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
 import com.tji.device.product.speaker.audio.SpeakerUdpStreamContext
 import com.tji.device.product.speaker.audio.SpeakerUdpStreamType
 import com.tji.device.product.speaker.audio.SpeakerVoiceProcessor
+import com.tji.device.product.speaker.core.SpeakerCoreShadowVerifier
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
 import com.tji.device.product.speaker.model.SpeakerCommand
 import com.tji.device.product.speaker.model.SpeakerDeviceState
@@ -292,6 +293,12 @@ class SpeakerControlViewModel(
                     sampleRate = quality.sampleRate,
                     packetMs = quality.packetMs
                 )
+                logHadpShadowResult(
+                    label = "tts-temp-file",
+                    hadp = hadp,
+                    pcm16le = processedPcm,
+                    recordId = recordId
+                )
                 Log.d(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "tts temp file encoded recordId=$recordId engine=${_ttsEngine.value.name} " +
@@ -485,6 +492,12 @@ class SpeakerControlViewModel(
                     recordId = recordId,
                     sampleRate = localAudio.sampleRate,
                     packetMs = quality.packetMs
+                )
+                logHadpShadowResult(
+                    label = "local-kokoro-tts-file",
+                    hadp = hadp,
+                    pcm16le = localAudio.pcm16,
+                    recordId = recordId
                 )
                 Log.d(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
@@ -693,6 +706,12 @@ class SpeakerControlViewModel(
                     recordId = recordId,
                     sampleRate = quality.sampleRate,
                     packetMs = quality.packetMs
+                )
+                logHadpShadowResult(
+                    label = "record-save",
+                    hadp = hadp,
+                    pcm16le = processedPcm,
+                    recordId = recordId
                 )
                 Log.d(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
@@ -1120,6 +1139,25 @@ class SpeakerControlViewModel(
     }
 
     private fun newMsgId(prefix: String): String = "speaker-$prefix-${System.currentTimeMillis()}"
+
+    private fun logHadpShadowResult(
+        label: String,
+        hadp: SpeakerHadpFile,
+        pcm16le: ByteArray,
+        recordId: String
+    ) {
+        val result = SpeakerCoreShadowVerifier.compareHadp(
+            kotlinHadp = hadp,
+            pcm16le = pcm16le,
+            recordId = recordId
+        )
+        Log.d(
+            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
+            "${result.toLogLine()} path=$label recordId=$recordId " +
+                "codec=${hadp.codec.wireName} sampleRate=${hadp.sampleRate} packetMs=${hadp.packetMs} " +
+                "frames=${hadp.frameCount} fileSize=${hadp.fileSize}"
+        )
+    }
 
     private fun defaultRecordName(): String =
         "录音 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"

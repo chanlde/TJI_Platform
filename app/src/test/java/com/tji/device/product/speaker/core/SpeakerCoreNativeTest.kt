@@ -3,6 +3,7 @@ package com.tji.device.product.speaker.core
 import com.tji.device.product.speaker.audio.SpeakerAdpcmPacketizer
 import com.tji.device.product.speaker.audio.SpeakerHadpCodec
 import com.tji.device.product.speaker.audio.SpeakerHadpFile
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -48,5 +49,41 @@ class SpeakerCoreNativeTest {
         )
 
         assertTrue(result is SpeakerCoreShadowResult.NativeUnavailable)
+        assertEquals("speakerCoreShadow status=nativeUnavailable", result.toLogLine())
+    }
+
+    @Test
+    fun shadowMatchLogLineIncludesStableSummaryFields() {
+        val result = SpeakerCoreShadowResult.Match(
+            label = "hadp:pcm16",
+            byteCount = 768,
+            crc32 = "0x1234ABCD"
+        )
+
+        assertEquals(
+            "speakerCoreShadow status=match label=hadp:pcm16 byteCount=768 crc32=0x1234ABCD",
+            result.toLogLine()
+        )
+    }
+
+    @Test
+    fun shadowMismatchLogLineIncludesMismatchDiagnostics() {
+        val result = SpeakerCoreShadowResult.Mismatch(
+            label = "v2-adpcm-packet",
+            kotlinSize = 238,
+            nativeSize = 237,
+            mismatchOffset = 28,
+            kotlinCrc32 = "0x11111111",
+            nativeCrc32 = "0x22222222",
+            kotlinHeader = "5aa502014f000200",
+            nativeHeader = "5aa502014e000200"
+        )
+
+        assertEquals(
+            "speakerCoreShadow status=mismatch label=v2-adpcm-packet kotlinSize=238 nativeSize=237 " +
+                "mismatchOffset=28 kotlinCrc32=0x11111111 nativeCrc32=0x22222222 " +
+                "kotlinHeader=5aa502014f000200 nativeHeader=5aa502014e000200",
+            result.toLogLine()
+        )
     }
 }
