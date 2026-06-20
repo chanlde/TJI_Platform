@@ -194,7 +194,7 @@ externalNativeBuild {
 tools/run_speaker_real_device_validation.sh
 ```
 
-默认会先执行 `./gradlew :app:assembleDebug`，再安装并启动 App，启用 Qt UDP monitor，并要求覆盖 5 条标准 shadow path：`tts-temp-file`、`local-kokoro-tts-file`、`record-save`、`live-legacy-udp`、`recorded-v2-udp`。
+默认会先检查 Qt monitor、ADB 和设备选择，再执行 `./gradlew :app:assembleDebug`，安装并启动 App，启用 Qt UDP monitor，要求至少收到 1 个 UDP 包，并要求覆盖 5 条标准 shadow path：`tts-temp-file`、`local-kokoro-tts-file`、`record-save`、`live-legacy-udp`、`recorded-v2-udp`。
 
 脚本开始后会在输出目录写入 `trigger-checklist.md`，现场抓日志时按清单依次触发文字临时文件、本地 Kokoro TTS、录音保存、实时喊话和录音播放路径。
 
@@ -204,6 +204,8 @@ tools/run_speaker_real_device_validation.sh
 SERIAL=<adb-serial> DURATION_S=180 UDP_PORT=47000 tools/run_speaker_real_device_validation.sh
 SKIP_BUILD=1 APK=app/build/outputs/apk/debug/TJI_Platform_V2.0.4.apk tools/run_speaker_real_device_validation.sh
 EXPECT_PACKETS=25 tools/run_speaker_real_device_validation.sh
+OUTPUT_DIR=build/speaker-field-validation/site-001 tools/run_speaker_real_device_validation.sh
+tools/run_speaker_real_device_validation.sh --help
 ```
 
 底层命令等价于：
@@ -216,6 +218,7 @@ tools/run_speaker_field_validation.py \
   --launch-app \
   --qt-monitor $HOME/Desktop/code/QT/tji-speaker-desktop/build/apps/qt-speaker-monitor/tji_speaker_monitor \
   --udp-port 47000 \
+  --expect-packets 1 \
   --expect-shadow-events 1 \
   --require-shadow-path tts-temp-file \
   --require-shadow-path local-kokoro-tts-file \
@@ -250,7 +253,7 @@ udpMonitorStatus=ok
 reportOutput=.../field-validation-report.md
 ```
 
-脚本会在输出目录生成 `field-validation-report.md`，报告内会记录期望 shadow 事件数、必需 shadow path、缺失 shadow path、期望 UDP 包数、`shadowStatus`、`udpMonitorStatus`、`trigger-checklist.md` 和原始日志路径，同时保留 `android-shadow.log` 和 `qt-monitor.log`，便于把一次现场联调结果归档。真实设备验收建议保留 `--expect-shadow-events 1`，避免忘记触发喊话链路时出现空日志误通过；保留 `--require-shadow-path` 列表，避免只触发了其中一条链路就误判完整通过。如果抓取期间没有任何 shadow 事件，脚本会输出 `shadowStatus=failed expectedEvents=1 actualEvents=0` 并失败；如果缺路径，会输出 `missingShadowPaths=...` 并失败。
+脚本会在输出目录生成 `field-validation-report.md`，报告内会记录期望 shadow 事件数、必需 shadow path、缺失 shadow path、期望 UDP 包数、`shadowStatus`、`udpMonitorStatus`、`trigger-checklist.md` 和原始日志路径，同时保留 `android-shadow.log` 和 `qt-monitor.log`，便于把一次现场联调结果归档。真实设备验收建议保留 `--expect-shadow-events 1`，避免忘记触发喊话链路时出现空日志误通过；保留 `--require-shadow-path` 列表，避免只触发了其中一条链路就误判完整通过；保留默认 `EXPECT_PACKETS=1` 或按现场预期提高到 `25`，避免 UDP monitor 空日志误通过。如果抓取期间没有任何 shadow 事件，脚本会输出 `shadowStatus=failed expectedEvents=1 actualEvents=0` 并失败；如果缺路径，会输出 `missingShadowPaths=...` 并失败；如果没有达到期望 UDP 包数，会输出 `udpMonitorStatus=failed` 并失败。
 
 如果只抓 Android shadow、不监听电脑 UDP，可用：
 
@@ -671,6 +674,7 @@ Qt 负责：
 36. 已完成：Qt 仓库新增 `scripts/doctor.sh`，可自检 Qt/CMake/Ninja、TJI speaker-core 路径、Git 工作区/远端、CLI/monitor/.app 产物、麦克风权限字段、package checksum、manifest 和 ADB 设备；本机自检通过，仅提示本次未推送前的 origin 缺失 warning。
 37. 已完成：Qt 仓库新增 `scripts/release-check.sh`，串联 `doctor.sh`、`package-macos.sh`、`shasum -a 256 -c` 和 `smoke-packaged.sh`，日志输出到 `build/generated/release-check-*`；本机 release-check 已通过，packaged smoke 收到 25 个 v2 包、序号 `0..24`、平均间隔约 `40.0417 ms`。
 38. 已完成：Qt release-check 新增 `release-check-report.md`，记录 artifact、SHA-256、Qt version、Git commit、分步日志、`downloadVerified`、UDP packet counts、sequence 和 `avgGapMs`；本机 release-check 已通过，`downloadVerified=true`，packaged smoke 收到 25 个 v2 包、序号 `0..24`、平均间隔约 `40.0833 ms`。
-39. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-40. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-41. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 创建远端 Git 仓库并使用 `scripts/push-remote.sh` 推送。
+39. 已完成：真实设备一键验收脚本新增 preflight、`--help`、`--help-field`、`OUTPUT_DIR`、`SKIP_ADB`、`SKIP_MONITOR`，并把默认 UDP 验收从 `EXPECT_PACKETS=0` 收紧到 `EXPECT_PACKETS=1`；本地 wrapper smoke 已验证 APK native libs、报告和 `trigger-checklist.md` 生成。
+40. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+41. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+42. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 创建远端 Git 仓库并使用 `scripts/push-remote.sh` 推送。
