@@ -5,8 +5,8 @@
 - 状态：active
 - 适用对象：Android App、Qt/C++ 电脑上位机、服务器临时文件服务、MCU 联调。
 - 当前结论：先把喊话器纯算法和协议转换抽成共享 C++ core，再让 Android 通过 JNI 调用、Qt 上位机直接链接。
-- 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest 和服务器上传/下载验证。
-- Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径；TTS 临时文件、本地 Kokoro TTS 文件、录音保存 HADP 路径和 UDP 分包路径会输出结构化 shadow 摘要。
+- 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest、服务器上传/下载验证和 GitHub Actions Ubuntu CTest。
+- Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径；TTS 临时文件、本地 Kokoro TTS 文件、录音保存 HADP 路径和 UDP 分包路径会输出结构化 shadow 摘要；主项目 GitHub Actions 已通过 `checkDocs`、`:app:testDebugUnitTest`、`:app:assembleDebug` 和 `native/speaker-core` CTest。
 - Qt desktop MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，console 和 Widgets 两个入口都能生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
 - Qt Widgets 已支持多设备 profiles：可保存、加载、删除命名设备配置，覆盖 deviceId、recordId、服务器、文件路径和 UDP 目标。
 - Qt Widgets 已支持麦克风 UDP 流和输入格式转换：优先请求 8 kHz mono PCM16，失败时用设备 preferred format 采集，再混音/线性重采样为 8 kHz mono PCM16 后用 stateful ADPCM packetizer 按 40 ms 分包为 v2 record-store UDP 发送。
@@ -687,6 +687,7 @@ Qt 负责：
 40. 已完成：Qt 仓库已创建远端 `https://github.com/chanlde/tji-speaker-desktop` 并推送 `main`；Qt `doctor.sh` 已确认工作区干净、origin 正常、package checksum 和 manifest 正常。
 41. 已完成：Qt 仓库新增 GitHub Actions CI，远端 run `27875349496` 已通过 macOS 依赖安装、双仓库 checkout、Qt build、`speaker-core` CTest 和 console `--no-upload` smoke。
 42. 已完成：新增 `tools/audit_speaker_desktop_readiness.py`，可一键汇总 App 仓库、Qt 仓库、远端 CI、Qt 本地产物、package metadata 和 ADB 设备状态，并生成 `readiness-report.md`；默认 audit 已通过到 `PASS_WITH_PENDING_REAL_DEVICE`，严格模式正确因缺少物理 Android 设备失败。
-43. 已完成：主项目新增 GitHub Actions CI，覆盖 `checkDocs`、`:app:testDebugUnitTest`、`:app:assembleDebug` 和 `native/speaker-core` CTest；readiness audit 已扩展为同时检查主项目 CI 与 Qt CI。
-44. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-45. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+43. 已完成：主项目新增 GitHub Actions CI，覆盖 `checkDocs`、`:app:testDebugUnitTest`、`:app:assembleDebug` 和 `native/speaker-core` CTest；远端 run `27875722061` 已通过，readiness audit 已扩展为同时检查主项目 CI 与 Qt CI。
+44. 已完成：修复 `speaker_core_c_api.cpp` 缺少 `<stdexcept>` 导致的 Ubuntu/GCC 构建失败；本地 CTest、Android debug 单测/构建和远端 CI 已通过。
+45. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+46. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
