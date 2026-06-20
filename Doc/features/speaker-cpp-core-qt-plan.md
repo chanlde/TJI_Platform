@@ -5,6 +5,7 @@
 - 状态：active
 - 适用对象：Android App、Qt/C++ 电脑上位机、服务器临时文件服务、MCU 联调。
 - 当前结论：先把喊话器纯算法和协议转换抽成共享 C++ core，再让 Android 通过 JNI 调用、Qt 上位机直接链接。
+- 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest 和服务器上传/下载验证。
 
 ## 1. 目标
 
@@ -86,7 +87,9 @@ C++ core 不负责：
 
 目标：C++ 复刻纯算法，先不接 Android。
 
-目录建议：
+当前已建立：
+
+目录：
 
 ```text
 native/speaker-core/
@@ -96,25 +99,34 @@ native/speaker-core/
     adpcm_codec.cpp
     udp_packetizer.cpp
     hadp_codec.cpp
-    pcm_resampler.cpp
-    voice_processor.cpp
-    tone_generator.cpp
+    pcm_utils.cpp
+    speaker_core_c_api.cpp
+    speaker_core_internal.h
   tests/
     speaker_core_tests.cpp
+  tools/
+    generate_hadp_sample.cpp
+    verify_record_upload.py
 ```
 
-第一批 API：
+已实现 API：
 
 ```cpp
 tji_sc_encode_hadp(...)
-tji_sc_decode_hadp(...)
-tji_sc_packetize_adpcm(...)
-tji_sc_process_push_to_talk(...)
-tji_sc_process_playback(...)
-tji_sc_resample_pcm16(...)
-tji_sc_generate_tone(...)
+tji_sc_decode_hadp_pcm16(...)
+tji_sc_packetize_adpcm_legacy(...)
+tji_sc_packetize_adpcm_v2(...)
+tji_sc_crc32(...)
 tji_sc_free(...)
 ```
+
+暂未抽入：
+
+- `SpeakerVoiceProcessor.processPushToTalk`
+- `SpeakerVoiceProcessor.applyPlaybackTone`
+- 重采样 / tone generator
+- 命令 JSON 与 MQTT parser
+- Android JNI wrapper
 
 验收：
 
@@ -309,29 +321,22 @@ C++ core 提取后必须验证：
 4. 服务器返回 `ok=true` 和 `downloadUrl`。
 5. 下载 `downloadUrl`，比对文件字节完全一致。
 
-示例命令格式：
+当前自动化命令：
 
 ```bash
-curl -F "deviceId=T12345678" \
-  -F "recordId=REC_T12345678_TEST" \
-  -F "name=cpp-core-test" \
-  -F "fileSize=<bytes>" \
-  -F "crc32=<0xXXXXXXXX>" \
-  -F "durationMs=<ms>" \
-  -F "codec=pcm16" \
-  -F "sampleRate=8000" \
-  -F "channels=1" \
-  -F "packetMs=40" \
-  -F "frameBytes=640" \
-  -F "samplesPerFrame=320" \
-  -F "file=@build/golden/REC_T12345678_TEST.hadp" \
-  http://146.56.250.203:8008/api/speaker/records/upload-temp
+source $HOME/Desktop/code/QT/scripts/qt-env.sh
+cmake -S native/speaker-core -B native/speaker-core/build -G Ninja
+cmake --build native/speaker-core/build
+native/speaker-core/tools/verify_record_upload.py \
+  --generator native/speaker-core/build/tji_speaker_core_sample \
+  --output native/speaker-core/generated/REC_CPP_CORE_SMOKE.hadp
 ```
 
-后续应做成脚本：
+成功输出示例：
 
 ```text
-native/speaker-core/tools/verify_record_upload.py
+{"ok":true,...,"codec":"ima_adpcm","frameBytes":164,"samplesPerFrame":320,...}
+downloadVerified=true
 ```
 
 ## 8. Android 替换顺序
@@ -397,12 +402,11 @@ Qt 负责：
 
 ## 11. 近期执行清单
 
-1. 当前 App 测试通过并推送远端。
-2. 建立 `native/speaker-core`。
-3. 从 `SpeakerAudioDataTest` 导出 golden samples。
-4. 迁移 HADP/ADPCM 到 C++。
-5. 增加 CMake/CTest。
-6. 增加服务器上传验证脚本。
-7. Android 接 JNI shadow mode。
-8. Qt 上位机 MVP 接入 core。
-
+1. 已完成：当前 App 测试通过并推送远端。
+2. 已完成：建立 `native/speaker-core`。
+3. 已完成：迁移 HADP/ADPCM/UDP 分包到 C++ 第一版。
+4. 已完成：增加 CMake/CTest。
+5. 已完成：增加服务器上传验证脚本，并完成上传/下载字节比对。
+6. 下一步：从 `SpeakerAudioDataTest` 导出 Kotlin golden samples，补齐 C++ 与 Kotlin 字节级对齐测试。
+7. 下一步：Android 接 JNI shadow mode。
+8. 下一步：Qt 上位机 MVP 接入 core。
