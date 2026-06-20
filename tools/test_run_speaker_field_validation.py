@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 import run_speaker_field_validation
+import verify_speaker_shadow
 
 
 class RunSpeakerFieldValidationTest(unittest.TestCase):
@@ -78,6 +79,30 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
     def test_shadow_ok_accepts_expected_events(self) -> None:
         self.assertTrue(run_speaker_field_validation.shadow_ok(event_count=3, expect_events=1))
 
+    def test_normalize_required_paths_splits_and_deduplicates_values(self) -> None:
+        self.assertEqual(
+            run_speaker_field_validation.normalize_required_paths(
+                ["record-save, live-legacy-udp", "record-save", " recorded-v2-udp "]
+            ),
+            ["record-save", "live-legacy-udp", "recorded-v2-udp"],
+        )
+
+    def test_missing_shadow_paths_reports_required_paths_not_seen(self) -> None:
+        events = verify_speaker_shadow.parse_shadow_events(
+            [
+                "speakerCoreShadow status=match path=record-save\n",
+                "speakerCoreShadow status=match path=recorded-v2-udp\n",
+            ]
+        )
+
+        self.assertEqual(
+            run_speaker_field_validation.missing_shadow_paths(
+                events,
+                ["record-save", "live-legacy-udp", "recorded-v2-udp"],
+            ),
+            ["live-legacy-udp"],
+        )
+
     def test_validation_report_writes_markdown_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
@@ -92,6 +117,7 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
                 shadow_summary=["shadowEvents=5", "nonMatchEvents=0"],
                 shadow_status="ok",
                 expected_shadow_events=1,
+                required_shadow_paths=["record-save", "recorded-v2-udp"],
                 monitor_output=output_dir / "qt-monitor.log",
                 monitor_summary=["udpMonitorPackets=25", "udpMonitorStatus=ok"],
                 monitor_status="ok",
@@ -106,6 +132,8 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
         self.assertIn("- Result: PASS", text)
         self.assertIn("- Install: ok", text)
         self.assertIn("- Expected shadow events: 1", text)
+        self.assertIn("- Required shadow paths: record-save,recorded-v2-udp", text)
+        self.assertIn("- Missing shadow paths: none", text)
         self.assertIn("- Expected UDP packets: 25", text)
         self.assertIn("- `shadowStatus=ok`", text)
         self.assertIn("- `shadowEvents=5`", text)

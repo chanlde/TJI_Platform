@@ -72,6 +72,8 @@ class ValidationReport:
     shadow_summary: list[str] = field(default_factory=list)
     shadow_status: str = "skipped"
     expected_shadow_events: int = 0
+    required_shadow_paths: list[str] = field(default_factory=list)
+    missing_shadow_paths: list[str] = field(default_factory=list)
     shadow_non_match: bool = False
     monitor_output: Path | None = None
     monitor_summary: list[str] = field(default_factory=list)
@@ -93,6 +95,8 @@ class ValidationReport:
             f"- Android shadow log: `{self.shadow_output}`" if self.shadow_output else "- Android shadow log: skipped",
             f"- Qt monitor log: `{self.monitor_output}`" if self.monitor_output else "- Qt monitor log: skipped",
             f"- Expected shadow events: {self.expected_shadow_events}",
+            f"- Required shadow paths: {','.join(self.required_shadow_paths) if self.required_shadow_paths else 'none'}",
+            f"- Missing shadow paths: {','.join(self.missing_shadow_paths) if self.missing_shadow_paths else 'none'}",
             f"- Expected UDP packets: {self.expected_udp_packets}",
             "",
             "## Android Shadow",
@@ -141,6 +145,24 @@ def monitor_ok(summary: MonitorSummary, expect_packets: int) -> bool:
 
 def shadow_ok(event_count: int, expect_events: int) -> bool:
     return expect_events <= 0 or event_count >= expect_events
+
+
+def normalize_required_paths(paths: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in paths:
+        for value in raw.split(","):
+            path = value.strip()
+            if not path or path in seen:
+                continue
+            normalized.append(path)
+            seen.add(path)
+    return normalized
+
+
+def missing_shadow_paths(events: list[verify_speaker_shadow.ShadowEvent], required_paths: list[str]) -> list[str]:
+    seen_paths = {event.path for event in events}
+    return [path for path in required_paths if path not in seen_paths]
 
 
 def timestamped_output_dir(base: Path = DEFAULT_OUTPUT_DIR) -> Path:
@@ -245,6 +267,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--udp-port", type=int, default=47000, help="UDP port to monitor.")
     parser.add_argument("--expect-packets", type=int, default=0, help="minimum UDP packets expected by the monitor.")
     parser.add_argument("--expect-shadow-events", type=int, default=0, help="minimum Android shadow events expected.")
+    parser.add_argument(
+        "--require-shadow-path",
+        action="append",
+        default=[],
+        help="required Android shadow path; repeat or pass comma-separated values.",
+    )
     parser.add_argument("--install-apk", action="store_true", help="install the APK on the selected Android device before capture.")
     parser.add_argument("--launch-app", action="store_true", help="launch the Android app before capture.")
     parser.add_argument("--android-package", default=DEFAULT_ANDROID_PACKAGE, help="Android package name to launch.")
@@ -274,6 +302,8 @@ def main(argv: list[str] | None = None) -> int:
         report.apk_ok = True
     report.expected_shadow_events = max(0, args.expect_shadow_events)
     report.expected_udp_packets = max(0, args.expect_packets)
+    required_shadow_paths = normalize_required_paths(args.require_shadow_path)
+    report.required_shadow_paths = required_shadow_paths
 
     monitor_process: MonitorProcess | None = None
     monitor_output = output_dir / "qt-monitor.log"
@@ -326,6 +356,14 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(f"shadowStatus=ok expectedEvents={args.expect_shadow_events} actualEvents={len(events)}")
                 report.shadow_status = "ok"
+            missing_paths = missing_shadow_paths(events, required_shadow_paths)
+            report.missing_shadow_paths = missing_paths
+            if required_shadow_paths:
+                print(f"requiredShadowPaths={','.join(required_shadow_paths)}")
+                print(f"missingShadowPaths={','.join(missing_paths)}")
+            if missing_paths:
+                report.shadow_status = "failed"
+                exit_code = max(exit_code, 1)
             if any(event.status != "match" for event in events):
                 report.shadow_non_match = True
                 report.shadow_status = "failed"
