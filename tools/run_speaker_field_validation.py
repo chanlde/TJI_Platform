@@ -132,6 +132,10 @@ def monitor_ok(summary: MonitorSummary, expect_packets: int) -> bool:
     return True
 
 
+def shadow_ok(event_count: int, expect_events: int) -> bool:
+    return expect_events <= 0 or event_count >= expect_events
+
+
 def timestamped_output_dir(base: Path = DEFAULT_OUTPUT_DIR) -> Path:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return base / stamp
@@ -233,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--qt-monitor", type=Path, default=DEFAULT_QT_MONITOR, help="path to tji_speaker_monitor.")
     parser.add_argument("--udp-port", type=int, default=47000, help="UDP port to monitor.")
     parser.add_argument("--expect-packets", type=int, default=0, help="minimum UDP packets expected by the monitor.")
+    parser.add_argument("--expect-shadow-events", type=int, default=0, help="minimum Android shadow events expected.")
     parser.add_argument("--install-apk", action="store_true", help="install the APK on the selected Android device before capture.")
     parser.add_argument("--launch-app", action="store_true", help="launch the Android app before capture.")
     parser.add_argument("--android-package", default=DEFAULT_ANDROID_PACKAGE, help="Android package name to launch.")
@@ -305,6 +310,9 @@ def main(argv: list[str] | None = None) -> int:
             report.shadow_summary = verify_speaker_shadow.summarize_events(events)
             for line in report.shadow_summary:
                 print(line)
+            if not shadow_ok(len(events), max(0, args.expect_shadow_events)):
+                print(f"shadowStatus=failed expectedEvents={args.expect_shadow_events} actualEvents={len(events)}")
+                exit_code = max(exit_code, 1)
             if any(event.status != "match" for event in events):
                 report.shadow_non_match = True
                 exit_code = max(exit_code, 1)

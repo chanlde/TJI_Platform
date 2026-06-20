@@ -199,7 +199,8 @@ tools/run_speaker_field_validation.py \
   --install-apk \
   --launch-app \
   --qt-monitor $HOME/Desktop/code/QT/tji-speaker-desktop/build/apps/qt-speaker-monitor/tji_speaker_monitor \
-  --udp-port 47000
+  --udp-port 47000 \
+  --expect-shadow-events 1
 ```
 
 `verify_speaker_shadow.py --apk-only` 会先检查 APK 内是否包含：
@@ -225,7 +226,7 @@ udpMonitorStatus=ok
 reportOutput=.../field-validation-report.md
 ```
 
-脚本会在输出目录生成 `field-validation-report.md`，同时保留 `android-shadow.log` 和 `qt-monitor.log`，便于把一次现场联调结果归档。
+脚本会在输出目录生成 `field-validation-report.md`，同时保留 `android-shadow.log` 和 `qt-monitor.log`，便于把一次现场联调结果归档。真实设备验收建议保留 `--expect-shadow-events 1`，避免忘记触发喊话链路时出现空日志误通过；如果抓取期间没有任何 shadow 事件，脚本会输出 `shadowStatus=failed expectedEvents=1 actualEvents=0` 并失败。
 
 如果只抓 Android shadow、不监听电脑 UDP，可用：
 
@@ -636,6 +637,7 @@ Qt 负责：
 26. 已完成：field validation 脚本自动生成 `field-validation-report.md`，汇总 APK、安装启动、Android shadow、Qt UDP monitor 和日志路径。
 27. 已完成：Qt macOS `.app` bundle target 建立，`Info.plist` 包含 `NSMicrophoneUsageDescription`；完成 bundle build、PlistBuddy 权限字段检查、服务器上传/下载 smoke 和本地 monitor 验证：25 个 v2 包、序号 `0..24`、平均间隔约 `40.4167 ms`。
 28. 已完成：Qt 新增 macOS 本地打包脚本和分发说明，`macdeployqt` 使用 Homebrew library search path、ad-hoc 签名、错误输出拦截和 zip 产物生成；完成打包脚本验证、codesign 校验和 `.app` 包内可执行文件 smoke，monitor 验证 25 个 v2 包、序号 `0..24`、平均间隔约 `40.0417 ms`。
-29. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`，Qt monitor 包数、序号和间隔正常。
-30. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-31. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+29. 已完成：field validation 脚本新增 `--expect-shadow-events`，真实验收可要求至少抓到 1 条 Android shadow 事件，避免空日志误通过；emulator 预演已验证 APK native libs、安装、启动和报告生成链路。
+30. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`，Qt monitor 包数、序号和间隔正常。
+31. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+32. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。

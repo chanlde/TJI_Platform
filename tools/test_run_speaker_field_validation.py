@@ -69,6 +69,15 @@ class RunSpeakerFieldValidationTest(unittest.TestCase):
         self.assertIn("udpMonitorV2Packets=25", lines)
         self.assertIn("udpMonitorAvgGapMs=40.125", lines)
 
+    def test_shadow_ok_accepts_disabled_expectation(self) -> None:
+        self.assertTrue(run_speaker_field_validation.shadow_ok(event_count=0, expect_events=0))
+
+    def test_shadow_ok_rejects_missing_expected_events(self) -> None:
+        self.assertFalse(run_speaker_field_validation.shadow_ok(event_count=0, expect_events=1))
+
+    def test_shadow_ok_accepts_expected_events(self) -> None:
+        self.assertTrue(run_speaker_field_validation.shadow_ok(event_count=3, expect_events=1))
+
     def test_validation_report_writes_markdown_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
