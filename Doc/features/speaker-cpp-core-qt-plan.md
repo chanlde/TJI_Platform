@@ -235,12 +235,13 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 配置 UDP host/port 并发送单个 v2 record-store UDP packet。
 - 按 40 ms 节奏发送 1 秒 v2 record-store UDP 测试流，并用本地 UDP listener 验证 25 包。
 - 从 raw 8 kHz mono PCM16LE 文件按 40 ms 节奏发送 v2 record-store UDP 流，并用 Kotlin golden PCM 验证 25 包。
+- 从 PCM 16-bit mono 8 kHz WAV 文件解析 data chunk 后按 40 ms 节奏发送 v2 record-store UDP 流，并验证 25 包。
 
 暂未做：
 
 - 多设备配置管理。
 - 麦克风驱动的连续 UDP 播放流。
-- WAV / MP3 等常见音频文件解码。
+- MP3 / AAC 等压缩音频文件解码。
 - 真实设备播放路径验证。
 - 日志导出。
 
@@ -274,6 +275,12 @@ QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
   --pcm-input $HOME/Desktop/code/TJI/TJI_Platform/app/src/test/resources/speaker-core-golden/voice_1s_8k_pcm16le.raw \
   --udp-host 127.0.0.1 \
   --udp-port 47003
+QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
+  --smoke \
+  --send-pcm-file-stream \
+  --pcm-input build/generated/voice_1s_8k_pcm16le.wav \
+  --udp-host 127.0.0.1 \
+  --udp-port 47004
 ```
 
 ### V6：产品化收尾
@@ -505,4 +512,4 @@ Qt 负责：
 7. 已完成：Android 接 JNI shadow mode，Debug/Release native build 均通过。
 8. 已完成：Qt console + Widgets MVP 接入 core，并完成服务器上传/下载字节比对。
 9. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-10. 下一步：Qt 多设备配置管理、麦克风驱动 UDP 播放流、WAV/MP3 文件解码、真实设备播放路径验证和日志导出。
+10. 下一步：Qt 多设备配置管理、麦克风驱动 UDP 播放流、MP3/AAC 文件解码、真实设备播放路径验证和日志导出。
