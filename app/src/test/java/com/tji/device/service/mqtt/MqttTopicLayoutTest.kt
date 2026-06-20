@@ -9,7 +9,7 @@ class MqttTopicLayoutTest {
 
     @Test
     fun mapsPlatformProductsToCanonicalDeviceTopics() {
-        val serialNumber = "SN-001"
+        val deviceId = "T0000001"
 
         listOf(
             ProductType.FireBucket to "FireBucket",
@@ -22,40 +22,40 @@ class MqttTopicLayoutTest {
             val topics = mqttTopicsFor(productType)
 
             assertEquals(
-                "$productCode/devices/$serialNumber/lifecycle",
-                topics.lifecycleTopic(serialNumber)
+                "$productCode/devices/$deviceId/lifecycle",
+                topics.lifecycleTopic(deviceId)
             )
             assertEquals(
-                "$productCode/devices/$serialNumber/status",
-                topics.statusTopic(serialNumber)
+                "$productCode/devices/$deviceId/status",
+                topics.statusTopic(deviceId)
             )
             assertEquals(
-                "$productCode/devices/$serialNumber/control",
-                topics.controlTopic(serialNumber)
+                "$productCode/devices/$deviceId/control",
+                topics.controlTopic(deviceId)
             )
         }
     }
 
     @Test
     fun keepsRadioDetectionLegacyRidStatusTopicSeparateFromRgbAckTopic() {
-        val serialNumber = "RID-001"
+        val deviceId = "RID-001"
         val topics = mqttTopicsFor(ProductType.RadioDetection)
 
         assertEquals(
-            "RadioDetection/devices/$serialNumber/lifecycle",
-            topics.lifecycleTopic(serialNumber)
+            "RadioDetection/devices/$deviceId/lifecycle",
+            topics.lifecycleTopic(deviceId)
         )
         assertEquals(
-            "spectrum-detection-client/$serialNumber",
-            topics.statusTopic(serialNumber)
+            "spectrum-detection-client/$deviceId",
+            topics.statusTopic(deviceId)
         )
         assertEquals(
-            "RadioDetection/devices/$serialNumber/control",
-            topics.controlTopic(serialNumber)
+            "RadioDetection/devices/$deviceId/control",
+            topics.controlTopic(deviceId)
         )
         assertEquals(
-            "RadioDetection/devices/$serialNumber/status",
-            RadioDetectionMqttTopics.rgbAckTopic(serialNumber)
+            "RadioDetection/devices/$deviceId/status",
+            RadioDetectionMqttTopics.rgbAckTopic(deviceId)
         )
     }
 }

@@ -10,11 +10,14 @@ import com.tji.device.product.solarclean.mqtt.SolarCleanMqttTopics
 
 /**
  * 每个产品一套 MQTT 主题前缀（lifecycle / status / control）。
+ *
+ * 平台正式协议统一称设备身份为 `deviceId`。部分旧接口、UI 状态和产品内部模型仍保留
+ * `serialNumber` 命名，传入本接口前应已经映射成正式协议中的同一个设备身份值。
  */
 interface MqttTopicLayout {
-    fun lifecycleTopic(serialNumber: String): String
-    fun statusTopic(serialNumber: String): String
-    fun controlTopic(serialNumber: String): String
+    fun lifecycleTopic(deviceId: String): String
+    fun statusTopic(deviceId: String): String
+    fun controlTopic(deviceId: String): String
 }
 
 fun mqttTopicsFor(productType: ProductType): MqttTopicLayout = when (productType) {
@@ -30,7 +33,7 @@ fun mqttTopicsFor(productType: ProductType): MqttTopicLayout = when (productType
 private class PlaceholderProductMqttTopics(
     private val productCode: String
 ) : MqttTopicLayout {
-    override fun lifecycleTopic(serialNumber: String): String = "$productCode/devices/$serialNumber/lifecycle"
-    override fun statusTopic(serialNumber: String): String = "$productCode/devices/$serialNumber/status"
-    override fun controlTopic(serialNumber: String): String = "$productCode/devices/$serialNumber/control"
+    override fun lifecycleTopic(deviceId: String): String = "$productCode/devices/$deviceId/lifecycle"
+    override fun statusTopic(deviceId: String): String = "$productCode/devices/$deviceId/status"
+    override fun controlTopic(deviceId: String): String = "$productCode/devices/$deviceId/control"
 }

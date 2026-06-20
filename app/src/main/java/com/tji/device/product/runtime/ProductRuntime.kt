@@ -17,7 +17,10 @@ data class ProductDeviceRuntimeSnapshot(
     val isOnline: Boolean,
     val childCount: Int? = null,
     val payload: ProductRuntimePayload? = null
-)
+) {
+    val deviceId: String
+        get() = serialNumber
+}
 
 interface ProductRuntimeController {
     val productType: ProductType

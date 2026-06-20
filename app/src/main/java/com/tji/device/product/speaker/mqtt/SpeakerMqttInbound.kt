@@ -36,7 +36,7 @@ class SpeakerMqttInbound(
                 val records = parseRecords(json.optJSONArray("items") ?: json.optJSONArray("records"))
                 Log.d(
                     TAG,
-                    "Speaker record list parsed sn=$serialNumber offset=${json.optInt("offset", 0)} " +
+                    "Speaker record list parsed deviceId=$serialNumber offset=${json.optInt("offset", 0)} " +
                         "limit=${json.optInt("limit", 8)} total=${json.optInt("total", json.optInt("count", records.size))} " +
                         "count=${records.size} first=${records.firstOrNull()?.recordId.orEmpty()} " +
                         "last=${records.lastOrNull()?.recordId.orEmpty()}"
@@ -58,7 +58,7 @@ class SpeakerMqttInbound(
                 val status = parseStorageStatus(json)
                 Log.d(
                     TAG,
-                    "Speaker storage parsed sn=$serialNumber ok=${status.ok} " +
+                    "Speaker storage parsed deviceId=$serialNumber ok=${status.ok} " +
                         "free=${status.freeBytes} total=${status.totalBytes} " +
                         "records=${status.recordCount}/${status.maxRecords} backend=${status.backend}"
                 )
@@ -74,12 +74,12 @@ class SpeakerMqttInbound(
                 val event = parseRecordEvent(eventType, json)
                 Log.d(
                     TAG,
-                    "Speaker record event sn=$serialNumber type=${event.type} ok=${event.ok} " +
+                    "Speaker record event deviceId=$serialNumber type=${event.type} ok=${event.ok} " +
                         "code=${event.code} recordId=${event.recordId} progress=${event.progress} msg=${event.message}"
                 )
                 repository.updateRecordEvent(serialNumber, event)
             }
-            else -> Log.d(TAG, "Speaker MQTT ignored sn=$serialNumber event=$eventType")
+            else -> Log.d(TAG, "Speaker MQTT ignored deviceId=$serialNumber event=$eventType")
         }
     }
 

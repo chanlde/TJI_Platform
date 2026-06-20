@@ -25,7 +25,7 @@ data class SubscriptionTarget(
 /**
  * MQTT 订阅管理器
  *
- * 订阅时由调用方传入该产品线下的 [ProductType]，并写入 SN 映射；入站消息直接带此类型分发，不再在 Handler 内推断。
+ * 订阅时由调用方传入该产品线下的 [ProductType]，并写入 deviceId 映射；入站消息直接带此类型分发，不再在 Handler 内推断。
  */
 class MqttSubscriptionManager(
     private val mqttEventHandler: MqttEventHandler,
@@ -33,9 +33,9 @@ class MqttSubscriptionManager(
     private val subscribedTopics = ConcurrentHashMap.newKeySet<String>()
     private val subscribedDevices = ConcurrentHashMap.newKeySet<SubscriptionTarget>()
     private var messageScope = newMessageScope()
-    /** 订阅时登记的「此 SN 当前属于哪条产品线」 */
+    /** 订阅时登记的「此 deviceId 当前属于哪条产品线」 */
     private val subscriptionProductBySerial = ConcurrentHashMap<String, ProductType>()
-    /** 同一 SN 上串行「退订 / 强制重订」，避免与 `async`、重连叠加以致 unsubscribe/subscribe 交错重复。 */
+    /** 同一 deviceId 上串行「退订 / 强制重订」，避免与 `async`、重连叠加以致 unsubscribe/subscribe 交错重复。 */
     private val subscriptionTargetLocks = ConcurrentHashMap<String, Mutex>()
     private fun lockForTarget(serialNumber: String, productType: ProductType): Mutex =
         subscriptionTargetLocks.getOrPut("${productType.name}:$serialNumber") { Mutex() }
@@ -43,19 +43,19 @@ class MqttSubscriptionManager(
     private val TAG = "MqttSubscriptionManager"
 
     /**
-     * @param productType 本次列表中所有 SN 所属产品线（与 `openProduct`、登录下发的绑定设备一致）
+     * @param productType 本次列表中所有 deviceId 所属产品线（与 `openProduct`、登录下发的绑定设备一致）
      */
-    suspend fun subscribeToDevices(serialNumbers: List<String>, productType: ProductType) =
+    suspend fun subscribeToDevices(deviceIds: List<String>, productType: ProductType) =
         coroutineScope {
-            serialNumbers.map { serialNumber ->
+            deviceIds.map { serialNumber ->
                 async {
                     subscribeToDevice(serialNumber, productType)
                 }
             }.awaitAll()
         }
 
-    suspend fun unsubscribeFromDevices(serialNumbers: List<String>) = coroutineScope {
-        serialNumbers.map { serialNumber ->
+    suspend fun unsubscribeFromDevices(deviceIds: List<String>) = coroutineScope {
+        deviceIds.map { serialNumber ->
             async {
                 unsubscribeFromDevice(serialNumber)
             }
@@ -92,7 +92,7 @@ class MqttSubscriptionManager(
 
         try {
             if (productType == null) {
-                Log.w(TAG, "退订时无 SN 产品线记录，按全部产品线尝试退订: $serialNumber")
+                Log.w(TAG, "退订时无 deviceId 产品线记录，按全部产品线尝试退订: $serialNumber")
             }
 
             val topics = when (productType) {
@@ -131,7 +131,7 @@ class MqttSubscriptionManager(
             Log.d(TAG, "设备 $serialNumber 取消订阅完成，当前总订阅数: ${subscribedTopics.size}")
 
         } catch (e: Exception) {
-            Log.e(TAG, "处理设备取消订阅失败 - SN: $serialNumber", e)
+            Log.e(TAG, "处理设备取消订阅失败 - deviceId: $serialNumber", e)
         }
 
         Log.d(TAG, "--- 设备取消订阅处理结束: $serialNumber ---")
@@ -194,7 +194,7 @@ class MqttSubscriptionManager(
                                         message
                                     )
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "消息处理失败 - SN: $serialNumber", e)
+                                    Log.e(TAG, "消息处理失败 - deviceId: $serialNumber", e)
                                 }
                             }
                         },
@@ -208,7 +208,7 @@ class MqttSubscriptionManager(
                                         isRetained = isRetained
                                     )
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "消息处理失败 - SN: $serialNumber", e)
+                                    Log.e(TAG, "消息处理失败 - deviceId: $serialNumber", e)
                                 }
                             }
                         },
@@ -230,7 +230,7 @@ class MqttSubscriptionManager(
             Log.d(TAG, "设备 $serialNumber 订阅完成，当前总订阅数: ${subscribedTopics.size}")
 
         } catch (e: Exception) {
-            Log.e(TAG, "处理设备订阅失败 - SN: $serialNumber", e)
+            Log.e(TAG, "处理设备订阅失败 - deviceId: $serialNumber", e)
         }
 
         Log.d(TAG, "--- 设备订阅处理结束: $serialNumber ---")

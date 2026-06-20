@@ -58,7 +58,7 @@ Multipart 字段：
 
 ```text
 file              .hadp 文件
-deviceId          设备 SN
+deviceId          设备正式通信身份
 recordId          录音 ID
 name              显示名称
 fileSize          文件字节数

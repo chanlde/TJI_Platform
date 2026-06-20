@@ -5,12 +5,12 @@ import com.tji.device.service.mqtt.MqttTopicLayout
 object DropperSixStageMqttTopics : MqttTopicLayout {
     private const val PREFIX = "SixStageDropper/devices/"
 
-    override fun lifecycleTopic(serialNumber: String): String =
-        "${PREFIX}$serialNumber/lifecycle"
+    override fun lifecycleTopic(deviceId: String): String =
+        "${PREFIX}$deviceId/lifecycle"
 
-    override fun statusTopic(serialNumber: String): String =
-        "${PREFIX}$serialNumber/status"
+    override fun statusTopic(deviceId: String): String =
+        "${PREFIX}$deviceId/status"
 
-    override fun controlTopic(serialNumber: String): String =
-        "${PREFIX}$serialNumber/control"
+    override fun controlTopic(deviceId: String): String =
+        "${PREFIX}$deviceId/control"
 }

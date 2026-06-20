@@ -22,7 +22,7 @@ import org.json.JSONObject
 /**
  * 光伏清洗 MQTT 入站。
  *
- * Topic 采用平台统一布局：`SolarClean/devices/{sn}/lifecycle|status|control`。
+ * Topic 采用平台统一布局：`SolarClean/devices/{deviceId}/lifecycle|status|control`。
  * Payload 字段参考 Notion 光伏清洗文档：ack/state/event 语义保留，但不采用文档中的 topic 名。
  */
 class SolarCleanMqttInbound(
@@ -42,19 +42,19 @@ class SolarCleanMqttInbound(
         when (eventType) {
             "online" -> {
                 if (isRetained) {
-                    Log.d(TAG, "忽略 retained online: sn=$linkSn")
+                    Log.d(TAG, "忽略 retained online: deviceId=$linkSn")
                     return
                 }
                 val timestamp = json.optNullableLong("ts")
                 repository.updateOnlineStatus(linkSn, isOnline = true, timestamp = timestamp)
                 resetOnlineTimeout(linkSn)
-                Log.d(TAG, "SolarClean online: sn=$linkSn ts=$timestamp")
+                Log.d(TAG, "SolarClean online: deviceId=$linkSn ts=$timestamp")
             }
             "offline" -> {
                 val timestamp = json.optNullableLong("ts")
                 cancelOnlineTimeout(linkSn)
                 repository.updateOnlineStatus(linkSn, isOnline = false, timestamp = timestamp)
-                Log.d(TAG, "SolarClean offline: sn=$linkSn ts=$timestamp")
+                Log.d(TAG, "SolarClean offline: deviceId=$linkSn ts=$timestamp")
             }
             "ack" -> {
                 val ack = parseAck(json)
@@ -284,7 +284,7 @@ class SolarCleanMqttInbound(
         }
         if (shouldMarkOffline) {
             repository.updateOnlineStatus(serialNumber, isOnline = false, timestamp = System.currentTimeMillis())
-            Log.w(TAG, "SolarClean state timeout, mark offline: sn=$serialNumber")
+            Log.w(TAG, "SolarClean state timeout, mark offline: deviceId=$serialNumber")
             synchronized(timeoutLock) {
                 if (lastOnlineSignalAt[serialNumber] == signalAt) {
                     onlineTimeoutJobs.remove(serialNumber)

@@ -31,7 +31,7 @@ class DropperSixStageMqttInbound(
             )
             "state", "status" -> repository.updateState(parseState(serialNumber, json, allowOnline = !isRetained))
             "ack" -> repository.updateAck(serialNumber, parseAck(json))
-            else -> Log.d(TAG, "六段抛投 MQTT 未处理 sn=$serialNumber event=$eventType")
+            else -> Log.d(TAG, "六段抛投 MQTT 未处理 deviceId=$serialNumber event=$eventType")
         }
     }
 

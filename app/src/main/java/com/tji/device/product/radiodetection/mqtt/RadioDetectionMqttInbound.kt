@@ -21,7 +21,7 @@ class RadioDetectionMqttInbound(
 
         RadioRgbAckParser.parse(message)?.let { ack ->
             repository.updateRgbAck(serialNumber, ack)
-            Log.d(TAG, "RadioDetection RGB ack: sn=$serialNumber msgId=${ack.msgId} ok=${ack.ok} code=${ack.code}")
+            Log.d(TAG, "RadioDetection RGB ack: deviceId=$serialNumber msgId=${ack.msgId} ok=${ack.ok} code=${ack.code}")
             return
         }
 
@@ -29,7 +29,7 @@ class RadioDetectionMqttInbound(
         if (packet != null) {
             replayStore.recordRidPayload(serialNumber, message)
             repository.upsertRidPacket(serialNumber, packet)
-            Log.d(TAG, "RadioDetection RID: sn=$serialNumber target=${packet.targetId} retained=$isRetained")
+            Log.d(TAG, "RadioDetection RID: deviceId=$serialNumber target=${packet.targetId} retained=$isRetained")
         }
     }
 

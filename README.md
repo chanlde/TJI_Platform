@@ -30,7 +30,7 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 - 多产品首页：按产品线进入设备列表。
 - 消防吊桶 `FireBucket`：保留 Link / 桶控制逻辑，一个账号可有多个 Link，一个 Link 下可挂多个桶。
 - 光伏清洗 `SolarClean`：已接入 MQTT 状态、控制、悬浮窗快捷控制、设备设置与 OTA 入口。
-- 六段抛投 `DropperSixStage`：支持 6 路通道状态展示、单通道控制、全部开/关、定时开钩和测试循环。
+- 六段抛投 `SixStageDropper`：支持 6 路通道状态展示、单通道控制、全部开/关、定时开钩和测试循环。
 - 喊话器 `Speaker`：支持实时喊话、录音保存/播放/删除/改名、文字转语音、音色调节和存储状态展示。
 - 无线电侦测 `RadioDetection`：支持侦测监控界面、目标列表、回放/轨迹/告警等业务页面骨架。
 - MQTT 实时通信：按产品订阅 `status` / `lifecycle`，按设备发布 `control`。
@@ -44,7 +44,7 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 
 - `FireBucket`：消防吊桶。
 - `SolarClean`：光伏清洗。
-- `DropperSixStage`：六段抛投。
+- `SixStageDropper`：六段抛投（App 内部类型名保留 `DropperSixStage`）。
 - `Speaker`：喊话器。
 - `RadioDetection`：无线电侦测。
 
@@ -64,14 +64,16 @@ app/src/main/java/com/tji/device/
   ui/               # 平台首页、登录页、悬浮窗、公共组件
   di/               # AppContainer 与 ProductModuleRegistry 手动依赖注入
 NetWork/            # 网络、HTTP、MQTT 基础模块
-Doc/                # 项目说明与协议文档
+Doc/                # 分层文档入口
 server/             # 辅助联调服务脚本与部署说明
 ```
+
+完整文档入口见 [Doc/README.md](Doc/README.md)。
 
 新增产品线前先阅读：
 
 ```text
-Doc/新增产品线接入规范.md
+Doc/architecture/product-line-onboarding.md
 ```
 
 该文档用于统一新增产品的目录隔离、UI 风格、MQTT topic、悬浮窗、测试和交付清单。具体产品需求再写到对应产品自己的 Doc 下。
@@ -81,9 +83,9 @@ Doc/新增产品线接入规范.md
 光伏清洗当前使用平台统一 topic：
 
 ```text
-SolarClean/devices/{deviceSn}/control
-SolarClean/devices/{deviceSn}/status
-SolarClean/devices/{deviceSn}/lifecycle
+SolarClean/devices/{deviceId}/control
+SolarClean/devices/{deviceId}/status
+SolarClean/devices/{deviceId}/lifecycle
 ```
 
 当前启用命令码：
@@ -110,7 +112,7 @@ App 当前负责：
 - 用户确认后下发 `START_OTA`。
 - 监听 `otaStatus` 展示升级状态。
 
-单片机侧需要负责 Bootloader、A/B 分区、固件下载、校验、启动确认、失败回滚。详细方案见 `Doc/OTA升级方案.md`。
+单片机侧需要负责 Bootloader、A/B 分区、固件下载、校验、启动确认、失败回滚。详细方案见 `Doc/features/ota/solar-clean-ota-plan.md`。
 
 ## 构建
 
@@ -124,6 +126,12 @@ App 当前负责：
 
 ```bash
 ./gradlew :app:compileDebugKotlin
+```
+
+文档结构验证：
+
+```bash
+./gradlew checkDocs
 ```
 
 构建 Debug APK：

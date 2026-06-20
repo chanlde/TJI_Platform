@@ -1,0 +1,408 @@
+# 喊话器 C++ Core 与 Qt 上位机实施方案
+
+## 状态
+
+- 状态：active
+- 适用对象：Android App、Qt/C++ 电脑上位机、服务器临时文件服务、MCU 联调。
+- 当前结论：先把喊话器纯算法和协议转换抽成共享 C++ core，再让 Android 通过 JNI 调用、Qt 上位机直接链接。
+
+## 1. 目标
+
+把喊话器当前 App 中已经稳定的核心能力抽成可复用 C++ 库，避免 Android App 和电脑上位机各写一套协议。
+
+最终目标：
+
+```text
+speaker-core C++
+  -> Android App JNI
+  -> Qt/C++ 上位机
+  -> CMake 单元测试和 golden samples
+```
+
+保持不变的正式口径：
+
+```text
+ProductCode = Speaker
+deviceId = Txxxxxxx
+MQTT topic = Speaker/devices/{deviceId}/lifecycle|status|control
+HADP 临时文件上传 = /api/speaker/records/upload-temp
+```
+
+## 2. 当前 App 代码落点
+
+| 能力 | 当前文件 | 是否适合抽入 C++ core |
+|------|----------|------------------------|
+| 命令 JSON 生成 | `app/src/main/java/com/tji/device/product/speaker/repository/SpeakerRepository.kt` | 第二期 |
+| MQTT 入站解析 | `app/src/main/java/com/tji/device/product/speaker/mqtt/SpeakerMqttInbound.kt` | 第二期 |
+| ADPCM UDP 分包 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerAdpcmPacketizer.kt` | 第一期 |
+| HADP 编码 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerHadpEncoder.kt` | 第一期 |
+| HADP / ADPCM 解码 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerAdpcmDecoder.kt` | 第一期 |
+| PTT / TTS 音频处理 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerVoiceProcessor.kt` | 第一期后段 |
+| 麦克风采集 / UDP 发送 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerAudioRelay.kt` | 不抽 |
+| TTS 引擎 | `SpeakerTtsSynthesizer` / `SpeakerLocalKokoroTtsClient` | 不抽 |
+| 上传临时 HADP | `SpeakerRecordUploadClient` | 不抽，保留平台网络层 |
+| UI / ViewModel 状态 | `SpeakerControlViewModel.kt` | 不抽 |
+
+## 3. 不抽进 core 的边界
+
+C++ core 只负责纯逻辑：
+
+- 输入 PCM，输出处理后的 PCM。
+- 输入 PCM，输出 `.hadp` 字节和元数据。
+- 输入 PCM 帧，输出 UDP audio packet。
+- 输入命令参数，输出 JSON 字符串。
+- 输入 MQTT JSON，输出结构化解析结果。
+
+C++ core 不负责：
+
+- Android 麦克风权限和 `AudioRecord`。
+- Qt 麦克风设备选择。
+- UDP socket 发送。
+- HTTP 上传。
+- MQTT 连接。
+- 页面状态、按钮、Toast、Compose 或 Qt Widgets。
+- Android TTS / Kokoro 模型调用。
+
+## 4. 版本路线
+
+### V1：冻结 App 行为
+
+目标：不改业务，只把当前 Kotlin 行为固定成 golden samples。
+
+要做：
+
+- 扩展 `SpeakerAudioDataTest`，导出 ADPCM、HADP、PCM 处理样本。
+- 增加命令 JSON golden samples。
+- 增加 MQTT 入站解析 golden samples。
+- 把样本放到 `app/src/test/resources/speaker-core-golden/`。
+
+验收：
+
+```bash
+./gradlew :app:testDebugUnitTest
+```
+
+### V2：C++ core 第一版
+
+目标：C++ 复刻纯算法，先不接 Android。
+
+目录建议：
+
+```text
+native/speaker-core/
+  CMakeLists.txt
+  include/tji_speaker_core.h
+  src/
+    adpcm_codec.cpp
+    udp_packetizer.cpp
+    hadp_codec.cpp
+    pcm_resampler.cpp
+    voice_processor.cpp
+    tone_generator.cpp
+  tests/
+    speaker_core_tests.cpp
+```
+
+第一批 API：
+
+```cpp
+tji_sc_encode_hadp(...)
+tji_sc_decode_hadp(...)
+tji_sc_packetize_adpcm(...)
+tji_sc_process_push_to_talk(...)
+tji_sc_process_playback(...)
+tji_sc_resample_pcm16(...)
+tji_sc_generate_tone(...)
+tji_sc_free(...)
+```
+
+验收：
+
+```bash
+cmake -S native/speaker-core -B native/speaker-core/build -G Ninja
+cmake --build native/speaker-core/build
+ctest --test-dir native/speaker-core/build --output-on-failure
+```
+
+### V3：Android JNI 接入
+
+目标：Android 可以调用 C++ core，但先 shadow mode。
+
+新增：
+
+```text
+app/src/main/cpp/speaker_core_jni.cpp
+app/src/main/java/com/tji/device/product/speaker/core/SpeakerCoreNative.kt
+```
+
+Gradle 增加：
+
+```kotlin
+externalNativeBuild {
+    cmake {
+        path = file("../native/speaker-core/CMakeLists.txt")
+    }
+}
+```
+
+接入策略：
+
+1. Kotlin 原实现继续生产真实结果。
+2. JNI 同时计算一份 C++ 结果。
+3. Debug 日志比较 size、CRC、header、frameCount、audioBytes。
+4. 连续通过后再切换真实调用。
+
+验收：
+
+```bash
+./gradlew :app:compileDebugKotlin :app:testDebugUnitTest
+```
+
+### V4：协议层抽入 C++ core
+
+目标：Android 和 Qt 共用命令生成与解析。
+
+抽取：
+
+- `SpeakerCommand -> JSON`
+- ACK parser
+- state parser
+- record_list parser
+- storage_status parser
+- record_event parser
+- recordId / storeTaskId 生成规则
+
+验收：
+
+```bash
+./gradlew :app:testDebugUnitTest
+ctest --test-dir native/speaker-core/build --output-on-failure
+```
+
+### V5：Qt 上位机 MVP
+
+目标：Qt 上位机直接链接 `speaker-core`，先做可联调版本。
+
+目录建议：
+
+```text
+$HOME/Desktop/code/QT/tji-speaker-desktop/
+  CMakeLists.txt
+  native/speaker-core/        # 可用 git submodule 或拷贝开发期版本
+  apps/qt-speaker-console/
+    CMakeLists.txt
+    src/
+      main.cpp
+      MainWindow.cpp
+      SpeakerDeviceClient.cpp
+      SpeakerRecordTransferClient.cpp
+```
+
+MVP 功能：
+
+- 设备 `deviceId` 输入和保存。
+- 服务器地址配置。
+- HADP 本地生成。
+- 上传临时 HADP 到服务器。
+- 生成 `RECORD_DOWNLOAD` 控制 JSON。
+- UDP 播放路径验证。
+- 日志窗口。
+
+验收：
+
+```bash
+cd $HOME/Desktop/code/QT/tji-speaker-desktop
+source ../scripts/qt-env.sh
+cmake -S . -B build -G Ninja
+cmake --build build
+```
+
+### V6：产品化收尾
+
+目标：从可联调变成客户可用。
+
+- Windows 打包和签名。
+- macOS 打包和权限说明。
+- 日志导出。
+- 崩溃日志。
+- 设备发现。
+- 多设备列表。
+- 弱网重试。
+- 协议版本协商。
+- MCU 固件兼容矩阵。
+
+## 5. Qt 环境
+
+当前 Mac 环境采用 Homebrew 安装 Qt：
+
+```bash
+brew install qt ninja
+brew install --cask qt-creator
+```
+
+Qt 工作区：
+
+```text
+$HOME/Desktop/code/QT
+```
+
+环境脚本：
+
+```bash
+source $HOME/Desktop/code/QT/scripts/qt-env.sh
+```
+
+smoke 工程：
+
+```bash
+cd $HOME/Desktop/code/QT/examples/qt-smoke
+source $HOME/Desktop/code/QT/scripts/qt-env.sh
+cmake -S . -B build -G Ninja
+cmake --build build
+```
+
+## 6. Git 同步流程
+
+每次进入 C++ core 提取前，先同步当前 App 稳定状态。
+
+标准流程：
+
+```bash
+git status --short --branch
+./gradlew checkDocs :app:testDebugUnitTest :NetWork:testDebugUnitTest
+git add README.md Doc tools build.gradle.kts app/src/main/java app/src/test/java
+git commit -m "Align platform docs and device identity"
+git push origin main
+```
+
+约束：
+
+- 只在测试通过后 push。
+- push 前看 `git diff --stat`，确认没有误加入本地大文件、模型、APK、build 目录。
+- 如果远端拒绝 push，先 `git pull --rebase origin main`，解决冲突后重新测试。
+
+## 7. 服务器交换测试
+
+服务器临时 HADP 上传接口：
+
+```text
+POST /api/speaker/records/upload-temp
+```
+
+服务代码：
+
+```text
+server/kokoro_tts_service/app.py
+```
+
+健康检查：
+
+```bash
+curl http://146.56.250.203:8008/health
+```
+
+C++ core 提取后必须验证：
+
+1. C++ 生成 `.hadp`。
+2. 计算 `fileSize`、`crc32`、`durationMs`、`codec`、`sampleRate`、`channels`、`packetMs`、`frameBytes`、`samplesPerFrame`。
+3. 上传到服务器。
+4. 服务器返回 `ok=true` 和 `downloadUrl`。
+5. 下载 `downloadUrl`，比对文件字节完全一致。
+
+示例命令格式：
+
+```bash
+curl -F "deviceId=T12345678" \
+  -F "recordId=REC_T12345678_TEST" \
+  -F "name=cpp-core-test" \
+  -F "fileSize=<bytes>" \
+  -F "crc32=<0xXXXXXXXX>" \
+  -F "durationMs=<ms>" \
+  -F "codec=pcm16" \
+  -F "sampleRate=8000" \
+  -F "channels=1" \
+  -F "packetMs=40" \
+  -F "frameBytes=640" \
+  -F "samplesPerFrame=320" \
+  -F "file=@build/golden/REC_T12345678_TEST.hadp" \
+  http://146.56.250.203:8008/api/speaker/records/upload-temp
+```
+
+后续应做成脚本：
+
+```text
+native/speaker-core/tools/verify_record_upload.py
+```
+
+## 8. Android 替换顺序
+
+推荐顺序：
+
+1. `SpeakerHadpEncoder` -> JNI。
+2. `SpeakerAdpcmPacketizer` -> JNI。
+3. `SpeakerAdpcmDecoder` -> JNI。
+4. `SpeakerVoiceProcessor.processPushToTalk` -> JNI。
+5. `SpeakerVoiceProcessor.applyPlaybackTone` -> JNI。
+6. `SpeakerCommand.toJson` -> JNI。
+7. `SpeakerMqttInbound` parser -> JNI。
+
+每一步都保留 Kotlin fallback：
+
+```kotlin
+val result = runCatching {
+    SpeakerCoreNative.encodeHadp(...)
+}.getOrElse {
+    SpeakerHadpEncoder.encode(...)
+}
+```
+
+Debug 期可以同时计算：
+
+```text
+Kotlin result CRC == C++ result CRC
+Kotlin header == C++ header
+Kotlin metadata == C++ metadata
+```
+
+## 9. Qt 上位机通信边界
+
+Qt 负责：
+
+- UI。
+- 设备列表。
+- TCP / UDP / MQTT / HTTP。
+- 文件选择和播放控制。
+- 日志展示。
+
+`speaker-core` 负责：
+
+- PCM 处理。
+- HADP。
+- ADPCM。
+- UDP packet bytes。
+- 命令 JSON。
+- MQTT payload parser。
+
+这样即使以后 Qt 不满意，换 C# 上位机也可以继续调用同一个 C ABI / DLL。
+
+## 10. 回滚策略
+
+每个阶段必须能独立回滚：
+
+- V1 只加测试和样本，不改运行时。
+- V2 只加 C++ core，不接 App。
+- V3 JNI 默认 shadow mode，不影响 App 正式行为。
+- V4 每个 parser 单独替换，失败回 Kotlin fallback。
+- V5 Qt 上位机独立工程，不阻塞 Android 发布。
+
+## 11. 近期执行清单
+
+1. 当前 App 测试通过并推送远端。
+2. 建立 `native/speaker-core`。
+3. 从 `SpeakerAudioDataTest` 导出 golden samples。
+4. 迁移 HADP/ADPCM 到 C++。
+5. 增加 CMake/CTest。
+6. 增加服务器上传验证脚本。
+7. Android 接 JNI shadow mode。
+8. Qt 上位机 MVP 接入 core。
+
