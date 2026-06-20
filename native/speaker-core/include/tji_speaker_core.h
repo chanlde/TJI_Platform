@@ -31,6 +31,8 @@ typedef struct TjiScBuffer {
     size_t size;
 } TjiScBuffer;
 
+typedef struct TjiScAdpcmPacketizer TjiScAdpcmPacketizer;
+
 typedef struct TjiScHadpMetadata {
     int codec_id;
     int sample_rate;
@@ -87,9 +89,37 @@ int tji_sc_packetize_adpcm_v2(
     TjiScBuffer *out_packet
 );
 
+int tji_sc_adpcm_packetizer_create(TjiScAdpcmPacketizer **out_packetizer);
+
+void tji_sc_adpcm_packetizer_free(TjiScAdpcmPacketizer *packetizer);
+
+void tji_sc_adpcm_packetizer_reset(TjiScAdpcmPacketizer *packetizer);
+
+int tji_sc_adpcm_packetizer_packetize_legacy(
+    TjiScAdpcmPacketizer *packetizer,
+    const uint8_t *pcm16le,
+    size_t pcm16le_size,
+    uint32_t sequence,
+    uint32_t timestamp_samples,
+    TjiScBuffer *out_packet
+);
+
+int tji_sc_adpcm_packetizer_packetize_v2(
+    TjiScAdpcmPacketizer *packetizer,
+    const uint8_t *pcm16le,
+    size_t pcm16le_size,
+    uint32_t sequence,
+    uint32_t timestamp_ms,
+    const char *device_id,
+    const char *task_id,
+    const char *talk_id,
+    int stream_type,
+    int is_last_packet,
+    TjiScBuffer *out_packet
+);
+
 uint32_t tji_sc_crc32(const uint8_t *data, size_t size);
 
 #ifdef __cplusplus
 }
 #endif
-

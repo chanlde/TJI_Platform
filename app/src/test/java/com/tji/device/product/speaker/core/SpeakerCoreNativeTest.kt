@@ -22,6 +22,7 @@ class SpeakerCoreNativeTest {
                 codec = SpeakerHadpCodec.Pcm16
             )
         )
+        assertNull(SpeakerCoreNative.createAdpcmPacketizerOrNull())
     }
 
     @Test

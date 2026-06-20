@@ -98,6 +98,14 @@ struct OwnedBuffer {
     ~OwnedBuffer() { tji_sc_free(&buffer); }
 };
 
+struct OwnedPacketizer {
+    TjiScAdpcmPacketizer *packetizer = nullptr;
+    OwnedPacketizer() {
+        require_eq(tji_sc_adpcm_packetizer_create(&packetizer), TJI_SC_OK, "create adpcm packetizer");
+    }
+    ~OwnedPacketizer() { tji_sc_adpcm_packetizer_free(packetizer); }
+};
+
 void test_legacy_adpcm_header() {
     auto pcm = synthetic_voice_pcm(0.08, 320);
     OwnedBuffer packet;
@@ -259,6 +267,57 @@ void test_kotlin_golden_legacy_and_v2_packets() {
     require_bytes_eq(v2_packet.buffer.data, v2_packet.buffer.size, v2_record_store_last, "golden v2 record-store packet");
 }
 
+void test_stateful_v2_packetizer_matches_hadp_adpcm_frames() {
+    const auto pcm = read_binary("../../app/src/test/resources/speaker-core-golden/voice_1s_8k_pcm16le.raw");
+    OwnedBuffer hadp;
+    TjiScHadpMetadata metadata{};
+    require_eq(
+        tji_sc_encode_hadp(
+            pcm.data(),
+            1280,
+            "REC_ADPCM_STATEFUL_TEST",
+            TJI_SC_CODEC_IMA_ADPCM,
+            8000,
+            1,
+            40,
+            &hadp.buffer,
+            &metadata
+        ),
+        TJI_SC_OK,
+        "encode stateful adpcm hadp"
+    );
+    require_eq(metadata.frame_count, 2, "stateful hadp frame count");
+
+    OwnedPacketizer packetizer;
+    for (uint32_t frame = 0; frame < 2; ++frame) {
+        OwnedBuffer packet;
+        require_eq(
+            tji_sc_adpcm_packetizer_packetize_v2(
+                packetizer.packetizer,
+                pcm.data() + frame * 640,
+                640,
+                frame,
+                frame * 40,
+                "T12345678",
+                "STORE_T12345678_1",
+                "REC_T12345678_1",
+                TJI_SC_STREAM_RECORD_STORE,
+                frame == 1 ? 1 : 0,
+                &packet.buffer
+            ),
+            TJI_SC_OK,
+            "stateful v2 packetize"
+        );
+        const size_t header_len = u16le(packet.buffer.data + 4);
+        const uint8_t *expected_payload = hadp.buffer.data + 128 + frame * 164;
+        require_true(header_len + 164 == packet.buffer.size, "stateful v2 packet size");
+        require_true(
+            std::memcmp(packet.buffer.data + header_len, expected_payload, 164) == 0,
+            "stateful v2 payload matches hadp frame " + std::to_string(frame)
+        );
+    }
+}
+
 void test_kotlin_golden_hadp_files() {
     const auto pcm = read_binary("../../app/src/test/resources/speaker-core-golden/voice_1s_8k_pcm16le.raw");
     const auto pcm16_hadp = read_binary("../../app/src/test/resources/speaker-core-golden/hadp_pcm16_1s.hadp");
@@ -319,6 +378,7 @@ int main() {
         test_hadp_pcm16_header_and_decode();
         test_hadp_adpcm_header_and_decode_size();
         test_kotlin_golden_legacy_and_v2_packets();
+        test_stateful_v2_packetizer_matches_hadp_adpcm_frames();
         test_kotlin_golden_hadp_files();
     } catch (const std::exception &error) {
         std::cerr << "speaker-core test failed: " << error.what() << '\n';

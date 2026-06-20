@@ -8,6 +8,9 @@ import java.util.Locale
 import java.util.zip.CRC32
 
 object SpeakerCoreShadowVerifier {
+    fun createUdpPacketSessionOrNull(): UdpPacketSession? =
+        SpeakerCoreNative.createAdpcmPacketizerOrNull()?.let(::UdpPacketSession)
+
     fun compareHadp(
         kotlinHadp: SpeakerHadpFile,
         pcm16le: ByteArray,
@@ -91,6 +94,53 @@ object SpeakerCoreShadowVerifier {
 
     private fun ByteArray.hexPrefix(bytes: Int = 16): String =
         take(bytes).joinToString(separator = "") { "%02x".format(Locale.US, it.toInt() and 0xFF) }
+
+    class UdpPacketSession internal constructor(
+        private val nativePacketizer: SpeakerCoreNative.AdpcmPacketizer
+    ) {
+        fun reset() {
+            nativePacketizer.reset()
+        }
+
+        fun close() {
+            nativePacketizer.close()
+        }
+
+        fun compareLegacyPacket(
+            kotlinPacket: ByteArray,
+            pcm16le: ByteArray,
+            sequence: Int,
+            timestampSamples: Int
+        ): SpeakerCoreShadowResult {
+            val native = nativePacketizer.packetizeLegacyOrNull(
+                pcm16le = pcm16le,
+                sequence = sequence,
+                timestampSamples = timestampSamples
+            ) ?: return SpeakerCoreShadowResult.NativeUnavailable
+            return compare("legacy-adpcm-packet", kotlinPacket, native)
+        }
+
+        fun compareV2Packet(
+            kotlinPacket: ByteArray,
+            pcm16le: ByteArray,
+            sequence: Int,
+            timestampMs: Int,
+            context: SpeakerUdpStreamContext,
+            isLastPacket: Boolean
+        ): SpeakerCoreShadowResult {
+            val native = nativePacketizer.packetizeV2OrNull(
+                pcm16le = pcm16le,
+                sequence = sequence,
+                timestampMs = timestampMs,
+                deviceId = context.deviceId,
+                taskId = context.taskId,
+                talkId = context.talkId,
+                streamType = context.type,
+                isLastPacket = isLastPacket
+            ) ?: return SpeakerCoreShadowResult.NativeUnavailable
+            return compare("v2-adpcm-packet", kotlinPacket, native)
+        }
+    }
 }
 
 sealed class SpeakerCoreShadowResult {

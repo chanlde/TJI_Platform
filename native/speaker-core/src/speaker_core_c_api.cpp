@@ -33,6 +33,10 @@ int translate_exception() {
 
 } // namespace
 
+struct TjiScAdpcmPacketizer {
+    int step_index = 0;
+};
+
 extern "C" {
 
 void tji_sc_free(TjiScBuffer *buffer) {
@@ -139,9 +143,95 @@ int tji_sc_packetize_adpcm_v2(
     }
 }
 
+int tji_sc_adpcm_packetizer_create(TjiScAdpcmPacketizer **out_packetizer) {
+    if (out_packetizer == nullptr) return TJI_SC_INVALID_ARGUMENT;
+    try {
+        *out_packetizer = new TjiScAdpcmPacketizer();
+        return TJI_SC_OK;
+    } catch (...) {
+        *out_packetizer = nullptr;
+        return translate_exception();
+    }
+}
+
+void tji_sc_adpcm_packetizer_free(TjiScAdpcmPacketizer *packetizer) {
+    delete packetizer;
+}
+
+void tji_sc_adpcm_packetizer_reset(TjiScAdpcmPacketizer *packetizer) {
+    if (packetizer != nullptr) {
+        packetizer->step_index = 0;
+    }
+}
+
+int tji_sc_adpcm_packetizer_packetize_legacy(
+    TjiScAdpcmPacketizer *packetizer,
+    const uint8_t *pcm16le,
+    size_t pcm16le_size,
+    uint32_t sequence,
+    uint32_t timestamp_samples,
+    TjiScBuffer *out_packet
+) {
+    if (packetizer == nullptr || out_packet == nullptr) return TJI_SC_INVALID_ARGUMENT;
+    try {
+        auto result = tji::speaker::packetize_adpcm_legacy(
+            pcm16le,
+            pcm16le_size,
+            sequence,
+            timestamp_samples,
+            packetizer->step_index
+        );
+        packetizer->step_index = result.next_step_index;
+        return copy_to_c_buffer(result.packet, out_packet);
+    } catch (...) {
+        return translate_exception();
+    }
+}
+
+int tji_sc_adpcm_packetizer_packetize_v2(
+    TjiScAdpcmPacketizer *packetizer,
+    const uint8_t *pcm16le,
+    size_t pcm16le_size,
+    uint32_t sequence,
+    uint32_t timestamp_ms,
+    const char *device_id,
+    const char *task_id,
+    const char *talk_id,
+    int stream_type,
+    int is_last_packet,
+    TjiScBuffer *out_packet
+) {
+    if (
+        packetizer == nullptr ||
+        out_packet == nullptr ||
+        device_id == nullptr ||
+        task_id == nullptr ||
+        talk_id == nullptr
+    ) {
+        return TJI_SC_INVALID_ARGUMENT;
+    }
+    try {
+        auto result = tji::speaker::packetize_adpcm_v2(
+            pcm16le,
+            pcm16le_size,
+            sequence,
+            timestamp_ms,
+            device_id,
+            task_id,
+            talk_id,
+            stream_type,
+            is_last_packet != 0,
+            packetizer->step_index
+        );
+        packetizer->step_index = result.next_step_index;
+        return copy_to_c_buffer(result.packet, out_packet);
+    } catch (...) {
+        return translate_exception();
+    }
+}
+
 uint32_t tji_sc_crc32(const uint8_t *data, size_t size) {
     return tji::speaker::crc32(data, size);
 }
 
 } // extern "C"
-

@@ -6,15 +6,15 @@
 - 适用对象：Android App、Qt/C++ 电脑上位机、服务器临时文件服务、MCU 联调。
 - 当前结论：先把喊话器纯算法和协议转换抽成共享 C++ core，再让 Android 通过 JNI 调用、Qt 上位机直接链接。
 - 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest 和服务器上传/下载验证。
-- Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径；TTS 临时文件、本地 Kokoro TTS 文件和录音保存 HADP 路径会输出结构化 shadow 摘要。
+- Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径；TTS 临时文件、本地 Kokoro TTS 文件、录音保存 HADP 路径和 UDP 分包路径会输出结构化 shadow 摘要。
 - Qt desktop MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，console 和 Widgets 两个入口都能生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
 - Qt Widgets 已支持多设备 profiles：可保存、加载、删除命名设备配置，覆盖 deviceId、recordId、服务器、文件路径和 UDP 目标。
-- Qt Widgets 已支持麦克风 UDP 流和输入格式转换：优先请求 8 kHz mono PCM16，失败时用设备 preferred format 采集，再混音/线性重采样为 8 kHz mono PCM16 后按 40 ms 分包为 v2 record-store UDP 发送。
+- Qt Widgets 已支持麦克风 UDP 流和输入格式转换：优先请求 8 kHz mono PCM16，失败时用设备 preferred format 采集，再混音/线性重采样为 8 kHz mono PCM16 后用 stateful ADPCM packetizer 按 40 ms 分包为 v2 record-store UDP 发送。
 - Qt Widgets 已支持麦克风手动增益、轻量自动增益和阈值 Noise Gate：手动增益范围 `-24 dB` 到 `+24 dB`，Noise Gate 阈值范围 `-70 dB` 到 `-20 dB`，相关设置随当前设置和命名 profile 保存，并写入联调日志。
-- Qt Widgets/CLI 已支持 Qt Multimedia 解码的压缩音频文件流：macOS AAC/M4A/MP3 均已验证可解码、转 8 kHz mono PCM16，再按 40 ms 分包为 v2 record-store UDP 发送。
+- Qt Widgets/CLI 已支持 Qt Multimedia 解码的压缩音频文件流：macOS AAC/M4A/MP3 均已验证可解码、转 8 kHz mono PCM16，再用连续 ADPCM 状态按 40 ms 分包为 v2 record-store UDP 发送。
 - Qt CLI 已增加 UDP monitor 工具：可监听真实设备或桌面端 UDP 流，输出包数、字节数、v1/v2 包分类、首包 header、序号范围和平均包间隔。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `88aa587 Add Qt UDP monitor tool`；远端仓库地址待定。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `4b17f1e Use stateful ADPCM packetizer for Qt streams`；远端仓库地址待定。
 
 ## 1. 目标
 
@@ -125,6 +125,11 @@ tji_sc_encode_hadp(...)
 tji_sc_decode_hadp_pcm16(...)
 tji_sc_packetize_adpcm_legacy(...)
 tji_sc_packetize_adpcm_v2(...)
+tji_sc_adpcm_packetizer_create(...)
+tji_sc_adpcm_packetizer_packetize_legacy(...)
+tji_sc_adpcm_packetizer_packetize_v2(...)
+tji_sc_adpcm_packetizer_reset(...)
+tji_sc_adpcm_packetizer_free(...)
 tji_sc_crc32(...)
 tji_sc_free(...)
 ```
@@ -135,7 +140,7 @@ tji_sc_free(...)
 - `SpeakerVoiceProcessor.applyPlaybackTone`
 - 重采样 / tone generator
 - 命令 JSON 与 MQTT parser
-- Android JNI wrapper
+- JNI 正式替换路径；当前只用于 shadow mode。
 
 验收：
 
@@ -172,7 +177,7 @@ externalNativeBuild {
 1. Kotlin 原实现继续生产真实结果。
 2. `SpeakerCoreNative` 通过 JNI 调用 C++ core，native 不可用时返回 `null`。
 3. `SpeakerCoreShadowVerifier` 同时计算一份 C++ 结果。
-4. Debug 日志比较 size、CRC、header、frameCount、audioBytes；HADP 主路径统一输出 `speakerCoreShadow status=...`。
+4. Debug 日志比较 size、CRC、header、frameCount、audioBytes；HADP 主路径和 UDP 分包路径统一输出 `speakerCoreShadow status=...`。
 5. 连续通过后再切换真实调用。
 
 验收：
@@ -195,9 +200,11 @@ adb logcat -s SpeakerAudioData | rg 'speakerCoreShadow|record save encoded|tts t
 speakerCoreShadow status=match path=tts-temp-file ...
 speakerCoreShadow status=match path=local-kokoro-tts-file ...
 speakerCoreShadow status=match path=record-save ...
+speakerCoreShadow status=match path=recorded-v2-udp ...
+speakerCoreShadow status=match path=live-legacy-udp ...
 ```
 
-如果出现 `status=nativeUnavailable`，优先检查 APK 是否打入 `libtji_speaker_core_jni.so`、ABI 是否匹配、`System.loadLibrary("tji_speaker_core_jni")` 是否成功。若出现 `status=mismatch`，日志会带出 `kotlinSize`、`nativeSize`、`mismatchOffset`、两边 CRC 和首包/header 前缀。
+如果出现 `status=nativeUnavailable`，优先检查 APK 是否打入 `libtji_speaker_core_jni.so`、ABI 是否匹配、`System.loadLibrary("tji_speaker_core_jni")` 是否成功。若出现 `status=mismatch`，日志会带出 `kotlinSize`、`nativeSize`、`mismatchOffset`、两边 CRC 和首包/header 前缀。UDP shadow 使用 stateful native packetizer，能覆盖第二帧之后的连续 ADPCM step index。
 
 ### V4：协议层抽入 C++ core
 
@@ -262,11 +269,11 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 下载 `downloadUrl` 并做字节比对。
 - 导出 v2 record-store UDP packet 预览文件。
 - 配置 UDP host/port 并发送单个 v2 record-store UDP packet。
-- 按 40 ms 节奏发送 1 秒 v2 record-store UDP 测试流，并用 Qt UDP monitor 验证 25 包、序号 `0..24` 和约 40 ms 包间隔。
-- 从 raw 8 kHz mono PCM16LE 文件按 40 ms 节奏发送 v2 record-store UDP 流，并用 Kotlin golden PCM 验证 25 包。
-- 从 PCM 16-bit mono 8 kHz WAV 文件解析 data chunk 后按 40 ms 节奏发送 v2 record-store UDP 流，并验证 25 包。
-- 从 Qt Multimedia 支持的压缩音频文件解码到 8 kHz mono PCM16 后按 40 ms 节奏发送 v2 record-store UDP 流；macOS AAC/M4A 已验证 25 包，MP3 已验证 17 包、680 ms。
-- 从默认麦克风采集音频，转换为 8 kHz mono PCM16，并按 40 ms 节奏发送 v2 record-store UDP 流。
+- 按 40 ms 节奏发送 1 秒 v2 record-store UDP 测试流，使用 stateful ADPCM packetizer，并用 Qt UDP monitor 验证 25 包、序号 `0..24` 和约 40 ms 包间隔。
+- 从 raw 8 kHz mono PCM16LE 文件按 40 ms 节奏发送 stateful v2 record-store UDP 流，并用 Kotlin golden PCM 验证 25 包。
+- 从 PCM 16-bit mono 8 kHz WAV 文件解析 data chunk 后按 40 ms 节奏发送 stateful v2 record-store UDP 流，并验证 25 包。
+- 从 Qt Multimedia 支持的压缩音频文件解码到 8 kHz mono PCM16 后按 40 ms 节奏发送 stateful v2 record-store UDP 流；macOS AAC/M4A 已验证 25 包，MP3 已验证 17 包、680 ms。
+- 从默认麦克风采集音频，转换为 8 kHz mono PCM16，并按 40 ms 节奏发送 stateful v2 record-store UDP 流。
 - 麦克风流发送前可手动调节 `-24 dB` 到 `+24 dB` 输入增益，也可开启轻量 Auto Gain 和阈值 Noise Gate，并随 profile 保存。
 - Qt UDP monitor 监听指定端口，输出 `totalPackets`、`v2Packets`、`firstMagic`、`firstVersion`、`firstSequence`、`lastSequence`、`firstHeader`、`avgGapMs`，用于桌面端自测和真实设备联调。
 - 导出 Widgets 联调日志，包含连接参数、生成结果、控制 JSON 和操作日志。
@@ -573,6 +580,9 @@ Qt 负责：
 17. 已完成：Qt Widgets 增加麦克风阈值 Noise Gate，支持 profile 保存和日志导出，并完成本地编译、窗口启动和文件流 smoke 回归。
 18. 已完成：Qt CLI 增加 UDP monitor，完成服务器上传/下载 smoke 和本地流监听验证：25 个 v2 包、序号 `0..24`、平均间隔约 `40.25 ms`。
 19. 已完成：Android HADP shadow 日志结构化，TTS 临时文件、本地 Kokoro TTS 文件和录音保存路径输出 `status=match|mismatch|nativeUnavailable`、CRC、size、header 前缀和路径 metadata。
-20. 下一步：在真实 Android 设备上打开 shadow 日志，用 Qt UDP monitor 连续比对真实录音/播放路径的包数、序号和包间隔。
-21. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-22. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+20. 已完成：C++ core 增加 stateful ADPCM UDP packetizer C ABI，CTest 验证 stateful v2 UDP payload 与 HADP 连续 ADPCM frame 字节一致。
+21. 已完成：Android JNI 增加 stateful packetizer wrapper，UDP shadow session 接入 live legacy UDP 和 recorded v2 UDP 分包路径。
+22. 已完成：Qt 1 秒流、文件流和麦克风流切换到 stateful ADPCM packetizer；本地 monitor smoke 验证 25 个 v2 包、序号 `0..24`、平均间隔约 `40.125 ms`。
+23. 下一步：在真实 Android 设备上打开 shadow 日志，用 Qt UDP monitor 连续比对真实录音/播放路径的包数、序号和包间隔。
+24. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+25. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。

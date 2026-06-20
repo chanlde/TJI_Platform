@@ -37,8 +37,14 @@ uint16_t flags_for(int stream_type, bool is_last_packet) {
 
 } // namespace
 
-std::vector<uint8_t> packetize_adpcm_legacy(const uint8_t *pcm, size_t size, uint32_t sequence, uint32_t timestamp_samples) {
-    const auto encoded = encode_ima_adpcm_block(pcm, size, 0);
+PacketizedAdpcm packetize_adpcm_legacy(
+    const uint8_t *pcm,
+    size_t size,
+    uint32_t sequence,
+    uint32_t timestamp_samples,
+    int initial_step_index
+) {
+    const auto encoded = encode_ima_adpcm_block(pcm, size, initial_step_index);
     std::vector<uint8_t> packet;
     packet.reserve(kLegacyUdpHeaderBytes + encoded.payload.size());
     put_u16_le(packet, kUdpMagic);
@@ -52,10 +58,14 @@ std::vector<uint8_t> packetize_adpcm_legacy(const uint8_t *pcm, size_t size, uin
     put_u16_le(packet, static_cast<uint16_t>(encoded.payload.size()));
     put_u16_le(packet, static_cast<uint16_t>(encoded.sample_count));
     packet.insert(packet.end(), encoded.payload.begin(), encoded.payload.end());
-    return packet;
+    return PacketizedAdpcm{std::move(packet), encoded.next_step_index};
 }
 
-std::vector<uint8_t> packetize_adpcm_v2(
+std::vector<uint8_t> packetize_adpcm_legacy(const uint8_t *pcm, size_t size, uint32_t sequence, uint32_t timestamp_samples) {
+    return packetize_adpcm_legacy(pcm, size, sequence, timestamp_samples, 0).packet;
+}
+
+PacketizedAdpcm packetize_adpcm_v2(
     const uint8_t *pcm,
     size_t size,
     uint32_t sequence,
@@ -64,9 +74,10 @@ std::vector<uint8_t> packetize_adpcm_v2(
     const std::string &task_id,
     const std::string &talk_id,
     int stream_type,
-    bool is_last_packet
+    bool is_last_packet,
+    int initial_step_index
 ) {
-    const auto encoded = encode_ima_adpcm_block(pcm, size, 0);
+    const auto encoded = encode_ima_adpcm_block(pcm, size, initial_step_index);
     const auto device = capped_id(device_id);
     const auto task = capped_id(task_id);
     const auto talk = capped_id(talk_id);
@@ -93,8 +104,32 @@ std::vector<uint8_t> packetize_adpcm_v2(
     packet.insert(packet.end(), task.begin(), task.end());
     packet.insert(packet.end(), talk.begin(), talk.end());
     packet.insert(packet.end(), encoded.payload.begin(), encoded.payload.end());
-    return packet;
+    return PacketizedAdpcm{std::move(packet), encoded.next_step_index};
+}
+
+std::vector<uint8_t> packetize_adpcm_v2(
+    const uint8_t *pcm,
+    size_t size,
+    uint32_t sequence,
+    uint32_t timestamp_ms,
+    const std::string &device_id,
+    const std::string &task_id,
+    const std::string &talk_id,
+    int stream_type,
+    bool is_last_packet
+) {
+    return packetize_adpcm_v2(
+        pcm,
+        size,
+        sequence,
+        timestamp_ms,
+        device_id,
+        task_id,
+        talk_id,
+        stream_type,
+        is_last_packet,
+        0
+    ).packet;
 }
 
 } // namespace tji::speaker
-

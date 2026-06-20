@@ -32,9 +32,21 @@ struct HadpResult {
     TjiScHadpMetadata metadata{};
 };
 
+struct PacketizedAdpcm {
+    std::vector<uint8_t> packet;
+    int next_step_index = 0;
+};
+
 EncodedAdpcm encode_ima_adpcm_block(const uint8_t *pcm, size_t length, int initial_step_index);
 std::vector<uint8_t> decode_ima_adpcm_block(const uint8_t *block, size_t block_size, int expected_samples);
 std::vector<uint8_t> packetize_adpcm_legacy(const uint8_t *pcm, size_t size, uint32_t sequence, uint32_t timestamp_samples);
+PacketizedAdpcm packetize_adpcm_legacy(
+    const uint8_t *pcm,
+    size_t size,
+    uint32_t sequence,
+    uint32_t timestamp_samples,
+    int initial_step_index
+);
 std::vector<uint8_t> packetize_adpcm_v2(
     const uint8_t *pcm,
     size_t size,
@@ -45,6 +57,18 @@ std::vector<uint8_t> packetize_adpcm_v2(
     const std::string &talk_id,
     int stream_type,
     bool is_last_packet
+);
+PacketizedAdpcm packetize_adpcm_v2(
+    const uint8_t *pcm,
+    size_t size,
+    uint32_t sequence,
+    uint32_t timestamp_ms,
+    const std::string &device_id,
+    const std::string &task_id,
+    const std::string &talk_id,
+    int stream_type,
+    bool is_last_packet,
+    int initial_step_index
 );
 HadpResult encode_hadp(
     const uint8_t *pcm,
@@ -69,4 +93,3 @@ int16_t read_i16_le(const uint8_t *data);
 uint32_t read_u32_le(const uint8_t *data);
 
 } // namespace tji::speaker
-
