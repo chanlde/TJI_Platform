@@ -29,6 +29,8 @@ DEFAULT_QT_MONITOR = (
     Path.home()
     / "Desktop/code/QT/tji-speaker-desktop/build/apps/qt-speaker-monitor/tji_speaker_monitor"
 )
+DEFAULT_ANDROID_PACKAGE = "com.tji.device"
+DEFAULT_ANDROID_ACTIVITY = ".ui.main.MainActivity"
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,12 @@ class MonitorSummary:
     @property
     def last_sequence(self) -> int:
         return int(self.values.get("lastSequence", "0"))
+
+
+@dataclass
+class MonitorProcess:
+    process: subprocess.Popen[str]
+    output_file: object
 
 
 def parse_monitor_summary(text: str) -> MonitorSummary:
@@ -95,7 +103,7 @@ def start_monitor(
     duration_s: int,
     expect_packets: int,
     output_path: Path,
-) -> subprocess.Popen[str]:
+) -> MonitorProcess:
     command = [
         str(monitor_path),
         "--port",
@@ -107,7 +115,8 @@ def start_monitor(
         command.extend(["--expect-packets", str(expect_packets)])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_file = output_path.open("w", encoding="utf-8")
-    return subprocess.Popen(command, text=True, stdout=output_file, stderr=subprocess.STDOUT)
+    process = subprocess.Popen(command, text=True, stdout=output_file, stderr=subprocess.STDOUT)
+    return MonitorProcess(process=process, output_file=output_file)
 
 
 def resolve_apk(apk: Path | None) -> Path | None:
@@ -130,6 +139,46 @@ def select_serial(adb: str, serial: str | None) -> tuple[int, str | None]:
     return 0, serial
 
 
+def activity_component(package_name: str, activity: str) -> str:
+    if activity.startswith("."):
+        return f"{package_name}/{activity}"
+    if "/" in activity:
+        return activity
+    return f"{package_name}/{activity}"
+
+
+def install_apk(adb: str, serial: str, apk: Path) -> int:
+    result = verify_speaker_shadow.run_adb(adb, serial, ["install", "-r", str(apk)], timeout=120)
+    if result.returncode != 0:
+        print("installStatus=failed")
+        if result.stdout.strip():
+            print(f"installStdout={result.stdout.strip()}")
+        if result.stderr.strip():
+            print(f"installStderr={result.stderr.strip()}")
+        return 1
+    print("installStatus=ok")
+    return 0
+
+
+def launch_app(adb: str, serial: str, package_name: str, activity: str) -> int:
+    component = activity_component(package_name, activity)
+    result = verify_speaker_shadow.run_adb(
+        adb,
+        serial,
+        ["shell", "am", "start", "-n", component],
+        timeout=30,
+    )
+    if result.returncode != 0:
+        print(f"launchStatus=failed component={component}")
+        if result.stdout.strip():
+            print(f"launchStdout={result.stdout.strip()}")
+        if result.stderr.strip():
+            print(f"launchStderr={result.stderr.strip()}")
+        return 1
+    print(f"launchStatus=ok component={component}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", type=Path, default=None, help="APK to inspect. Defaults to newest app/build/outputs/apk/**/*.apk.")
@@ -140,6 +189,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--qt-monitor", type=Path, default=DEFAULT_QT_MONITOR, help="path to tji_speaker_monitor.")
     parser.add_argument("--udp-port", type=int, default=47000, help="UDP port to monitor.")
     parser.add_argument("--expect-packets", type=int, default=0, help="minimum UDP packets expected by the monitor.")
+    parser.add_argument("--install-apk", action="store_true", help="install the APK on the selected Android device before capture.")
+    parser.add_argument("--launch-app", action="store_true", help="launch the Android app before capture.")
+    parser.add_argument("--android-package", default=DEFAULT_ANDROID_PACKAGE, help="Android package name to launch.")
+    parser.add_argument("--android-activity", default=DEFAULT_ANDROID_ACTIVITY, help="Android Activity to launch.")
     parser.add_argument("--skip-adb", action="store_true", help="skip Android shadow log collection.")
     parser.add_argument("--skip-monitor", action="store_true", help="skip Qt UDP monitor.")
     args = parser.parse_args(argv)
@@ -162,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print("apkStatus=ok")
 
-    monitor_process: subprocess.Popen[str] | None = None
+    monitor_process: MonitorProcess | None = None
     monitor_output = output_dir / "qt-monitor.log"
     if not args.skip_monitor:
         monitor_path = args.qt_monitor.resolve()
@@ -184,6 +237,10 @@ def main(argv: list[str] | None = None) -> int:
         if status != 0 or serial is None:
             exit_code = max(exit_code, status)
         else:
+            if args.install_apk:
+                exit_code = max(exit_code, install_apk(args.adb, serial, apk))
+            if args.launch_app:
+                exit_code = max(exit_code, launch_app(args.adb, serial, args.android_package, args.android_activity))
             shadow_output = output_dir / "android-shadow.log"
             print(f"adbStatus=ok serial={serial}")
             print(f"shadowOutput={shadow_output}")
@@ -196,7 +253,8 @@ def main(argv: list[str] | None = None) -> int:
                 exit_code = max(exit_code, 1)
 
     if monitor_process is not None:
-        monitor_return = monitor_process.wait(timeout=max(5, args.duration_s + 10))
+        monitor_return = monitor_process.process.wait(timeout=max(5, args.duration_s + 10))
+        monitor_process.output_file.close()
         monitor_text = monitor_output.read_text(encoding="utf-8") if monitor_output.exists() else ""
         summary = parse_monitor_summary(monitor_text)
         for line in monitor_summary_lines(summary, max(0, args.expect_packets)):

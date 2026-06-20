@@ -9,6 +9,18 @@ import run_speaker_field_validation
 
 
 class RunSpeakerFieldValidationTest(unittest.TestCase):
+    def test_activity_component_handles_relative_activity_name(self) -> None:
+        self.assertEqual(
+            run_speaker_field_validation.activity_component("com.tji.device", ".ui.main.MainActivity"),
+            "com.tji.device/.ui.main.MainActivity",
+        )
+
+    def test_activity_component_accepts_fully_qualified_component(self) -> None:
+        self.assertEqual(
+            run_speaker_field_validation.activity_component("com.tji.device", "com.tji.device/.ui.main.MainActivity"),
+            "com.tji.device/.ui.main.MainActivity",
+        )
+
     def test_parse_monitor_summary_reads_key_value_output(self) -> None:
         summary = run_speaker_field_validation.parse_monitor_summary(
             "\n".join(
