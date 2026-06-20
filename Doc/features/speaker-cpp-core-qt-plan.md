@@ -15,7 +15,7 @@
 - Qt CLI 已增加 UDP monitor 工具：可监听真实设备或桌面端 UDP 流，输出包数、字节数、v1/v2 包分类、首包 header、序号范围和平均包间隔。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
 - Qt macOS `.app` bundle target 和本地打包脚本已建立：`TJI Speaker Control.app` 内置 `NSMicrophoneUsageDescription`，`scripts/package-macos.sh` 可运行 `macdeployqt`、ad-hoc 签名校验并生成本地 zip、SHA256SUMS 和 manifest；Apple Developer 签名、公证和正式安装包分发仍待产品化。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `7f0d1c3 Add macOS package manifest checksums`；远端仓库地址待定。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `b0574a4 Add Qt remote push helper`；远端仓库地址待定，拿到地址后可用 `scripts/push-remote.sh` 配置 origin 并推送。
 
 ## 1. 目标
 
@@ -666,6 +666,7 @@ Qt 负责：
 31. 已完成：新增 `tools/run_speaker_real_device_validation.sh`，把构建、安装、启动、Qt monitor、标准 shadow path 验收和常用环境变量覆盖收敛为真实设备一键入口；emulator 预演已验证参数拼装和缺路径失败报告。
 32. 已完成：field validation 输出目录新增 `trigger-checklist.md`，列出抓取窗口、UDP 端口、必需 shadow path 和现场人工触发动作，报告会链接该清单。
 33. 已完成：Qt macOS 打包脚本新增 `SHA256SUMS` 和 manifest，记录 bundle id、版本、Qt 版本、本地 Git commit、zip 字节数、SHA-256、签名模式和 notarization 状态；完成 `shasum -a 256 -c`、codesign 校验和 `.app` 包内可执行文件 smoke，monitor 验证 25 个 v2 包、序号 `0..24`、平均间隔 `40 ms`。
-34. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-35. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-36. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+34. 已完成：Qt 仓库新增 `scripts/push-remote.sh`，拿到远端地址后可检查干净工作区、配置或更新 `origin`，并 `git push -u origin main`；已完成 shell 语法和 usage 检查。
+35. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+36. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+37. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 创建远端 Git 仓库并使用 `scripts/push-remote.sh` 推送。
