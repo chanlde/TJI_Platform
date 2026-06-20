@@ -8,6 +8,7 @@
 - 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest 和服务器上传/下载验证。
 - Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径。
 - Qt desktop MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，console 和 Widgets 两个入口都能生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `e153184 Initial Qt speaker desktop MVP`；远端仓库地址待定。
 
 ## 1. 目标
 
@@ -513,3 +514,4 @@ Qt 负责：
 8. 已完成：Qt console + Widgets MVP 接入 core，并完成服务器上传/下载字节比对。
 9. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
 10. 下一步：Qt 多设备配置管理、麦克风驱动 UDP 播放流、MP3/AAC 文件解码、真实设备播放路径验证和日志导出。
+11. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
