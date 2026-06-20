@@ -190,6 +190,30 @@ externalNativeBuild {
 真机抓 shadow 日志：
 
 ```bash
+./gradlew :app:assembleDebug
+tools/verify_speaker_shadow.py --apk-only --apk app/build/outputs/apk/debug/TJI_Platform_*.apk
+tools/verify_speaker_shadow.py --duration-s 120 --apk app/build/outputs/apk/debug/TJI_Platform_*.apk
+```
+
+脚本会先检查 APK 内是否包含：
+
+```text
+lib/arm64-v8a/libtji_speaker_core_jni.so
+lib/arm64-v8a/libc++_shared.so
+```
+
+接手机后，脚本会清空 `SpeakerAudioData` logcat 视图并抓取指定时长日志。抓取期间手动触发 TTS 临时文件、本地 Kokoro TTS 文件、录音保存、实时喊话和录音播放路径。输出摘要重点看：
+
+```text
+shadowEvents=...
+statusCounts=match:...
+pathCounts=...
+nonMatchEvents=0
+```
+
+手工备用命令：
+
+```bash
 adb logcat -c
 adb logcat -s SpeakerAudioData | rg 'speakerCoreShadow|record save encoded|tts temp file encoded|local kokoro tts file encoded'
 ```
@@ -583,6 +607,7 @@ Qt 负责：
 20. 已完成：C++ core 增加 stateful ADPCM UDP packetizer C ABI，CTest 验证 stateful v2 UDP payload 与 HADP 连续 ADPCM frame 字节一致。
 21. 已完成：Android JNI 增加 stateful packetizer wrapper，UDP shadow session 接入 live legacy UDP 和 recorded v2 UDP 分包路径。
 22. 已完成：Qt 1 秒流、文件流和麦克风流切换到 stateful ADPCM packetizer；本地 monitor smoke 验证 25 个 v2 包、序号 `0..24`、平均间隔约 `40.125 ms`。
-23. 下一步：在真实 Android 设备上打开 shadow 日志，用 Qt UDP monitor 连续比对真实录音/播放路径的包数、序号和包间隔。
-24. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-25. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+23. 已完成：新增 `tools/verify_speaker_shadow.py`，支持 APK native lib 检查、ADB 设备选择、logcat 抓取和 `speakerCoreShadow` 状态/路径汇总。
+24. 下一步：在真实 Android 设备上运行 shadow 验收脚本，同时用 Qt UDP monitor 连续比对真实录音/播放路径的包数、序号和包间隔。
+25. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+26. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
