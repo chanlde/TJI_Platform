@@ -113,6 +113,69 @@ def latest_github_ci(repo_slug: str, workflow: str, label: str) -> Check:
     return Check(label, "PASS" if ok else "FAIL", detail)
 
 
+def latest_artifact(repo_slug: str, workflow: str, artifact_name: str, label: str) -> Check:
+    if shutil.which("gh") is None:
+        return Check(label, "WARN", "gh not available")
+    run_result = run(
+        [
+            "gh",
+            "run",
+            "list",
+            "--repo",
+            repo_slug,
+            "--workflow",
+            workflow,
+            "--limit",
+            "1",
+            "--json",
+            "databaseId,status,conclusion",
+        ],
+        ROOT,
+        timeout=60,
+    )
+    if run_result.returncode != 0:
+        detail = (run_result.stderr or run_result.stdout).strip()
+        return Check(label, "WARN", detail or "run query failed")
+    try:
+        runs = json.loads(run_result.stdout)
+    except json.JSONDecodeError:
+        return Check(label, "WARN", "invalid run JSON")
+    if not runs:
+        return Check(label, "WARN", "no CI runs found")
+    latest = runs[0]
+    if latest.get("status") != "completed" or latest.get("conclusion") != "success":
+        return Check(
+            label,
+            "WARN",
+            f"latest run is not successful: id={latest.get('databaseId')} status={latest.get('status')} conclusion={latest.get('conclusion')}",
+        )
+    run_id = latest.get("databaseId")
+    artifact_result = run(
+        [
+            "gh",
+            "api",
+            f"repos/{repo_slug}/actions/runs/{run_id}/artifacts",
+        ],
+        ROOT,
+        timeout=60,
+    )
+    if artifact_result.returncode != 0:
+        detail = (artifact_result.stderr or artifact_result.stdout).strip()
+        return Check(label, "WARN", detail or "artifact query failed")
+    try:
+        payload = json.loads(artifact_result.stdout)
+    except json.JSONDecodeError:
+        return Check(label, "WARN", "invalid artifact JSON")
+    for artifact in payload.get("artifacts", []):
+        if artifact.get("name") != artifact_name:
+            continue
+        expired = bool(artifact.get("expired"))
+        size = artifact.get("size_in_bytes", "unknown")
+        status = "WARN" if expired else "PASS"
+        return Check(label, status, f"run={run_id} artifact={artifact_name} sizeBytes={size} expired={expired}")
+    return Check(label, "WARN", f"run={run_id} artifact={artifact_name} missing")
+
+
 def adb_devices() -> tuple[list[str], list[str]]:
     if shutil.which("adb") is None:
         return [], []
@@ -184,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
     checks.append(file_check(qt_repo / "dist/TJI-Speaker-Control-macOS.manifest.json", "Qt package manifest"))
     checks.append(file_check(qt_repo / "dist/SHA256SUMS", "Qt package checksum"))
     checks.append(latest_github_ci(TJI_REPO_SLUG, "CI", "TJI_Platform GitHub Actions CI"))
+    checks.append(latest_artifact(TJI_REPO_SLUG, "CI", "TJI_Platform-debug-apk", "TJI_Platform debug APK artifact"))
     checks.append(latest_github_ci(QT_REPO_SLUG, "CI", "Qt GitHub Actions CI"))
 
     devices, physical = adb_devices()

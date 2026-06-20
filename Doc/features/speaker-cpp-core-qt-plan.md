@@ -268,7 +268,7 @@ tools/audit_speaker_desktop_readiness.py
 tools/audit_speaker_desktop_readiness.py --require-real-device
 ```
 
-默认模式会检查 `TJI_Platform` 和 Qt desktop 两个仓库的分支、干净工作区、origin、push 状态，检查 `speaker-core` C ABI header、Qt 本地可执行文件、package manifest/checksum、两个仓库的 GitHub Actions CI 最新结果和 ADB 设备，并生成 `build/speaker-desktop-readiness/readiness-report.md`。没有真实 Android 设备时默认输出 `PASS_WITH_PENDING_REAL_DEVICE`；加 `--require-real-device` 后会把物理设备缺失作为失败，用于现场最终验收前的硬门槛。
+默认模式会检查 `TJI_Platform` 和 Qt desktop 两个仓库的分支、干净工作区、origin、push 状态，检查 `speaker-core` C ABI header、Qt 本地可执行文件、package manifest/checksum、两个仓库的 GitHub Actions CI 最新结果、主项目 Debug APK artifact 和 ADB 设备，并生成 `build/speaker-desktop-readiness/readiness-report.md`。没有真实 Android 设备时默认输出 `PASS_WITH_PENDING_REAL_DEVICE`；加 `--require-real-device` 后会把物理设备缺失作为失败，用于现场最终验收前的硬门槛。
 
 手工备用命令：
 
@@ -689,5 +689,6 @@ Qt 负责：
 42. 已完成：新增 `tools/audit_speaker_desktop_readiness.py`，可一键汇总 App 仓库、Qt 仓库、远端 CI、Qt 本地产物、package metadata 和 ADB 设备状态，并生成 `readiness-report.md`；默认 audit 已通过到 `PASS_WITH_PENDING_REAL_DEVICE`，严格模式正确因缺少物理 Android 设备失败。
 43. 已完成：主项目新增 GitHub Actions CI，覆盖 `checkDocs`、`:app:testDebugUnitTest`、`:app:assembleDebug` 和 `native/speaker-core` CTest；远端 run `27875722061` 已通过，readiness audit 已扩展为同时检查主项目 CI 与 Qt CI。
 44. 已完成：修复 `speaker_core_c_api.cpp` 缺少 `<stdexcept>` 导致的 Ubuntu/GCC 构建失败；本地 CTest、Android debug 单测/构建和远端 CI 已通过。
-45. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-46. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+45. 已完成：主项目 CI 增加 `TJI_Platform-debug-apk` artifact 和 `speaker-core-ctest-output` artifact，便于直接下载远端通过后的 APK 做真实设备 field validation；readiness audit 已扩展为检查 Debug APK artifact。
+46. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+47. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。

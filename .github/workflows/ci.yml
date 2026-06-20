@@ -32,6 +32,15 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug
 
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TJI_Platform-debug-apk
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/debug/output-metadata.json
+          if-no-files-found: error
+
   speaker-core:
     name: speaker-core CTest
     runs-on: ubuntu-latest
@@ -53,3 +62,11 @@ jobs:
 
       - name: Run CTest
         run: ctest --test-dir native/speaker-core/build-ci --output-on-failure
+
+      - name: Upload CTest output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: speaker-core-ctest-output
+          path: native/speaker-core/build-ci/Testing
+          if-no-files-found: warn
