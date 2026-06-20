@@ -12,8 +12,9 @@
 - Qt Widgets 已支持麦克风 UDP 流和输入格式转换：优先请求 8 kHz mono PCM16，失败时用设备 preferred format 采集，再混音/线性重采样为 8 kHz mono PCM16 后按 40 ms 分包为 v2 record-store UDP 发送。
 - Qt Widgets 已支持麦克风手动增益、轻量自动增益和阈值 Noise Gate：手动增益范围 `-24 dB` 到 `+24 dB`，Noise Gate 阈值范围 `-70 dB` 到 `-20 dB`，相关设置随当前设置和命名 profile 保存，并写入联调日志。
 - Qt Widgets/CLI 已支持 Qt Multimedia 解码的压缩音频文件流：macOS AAC/M4A/MP3 均已验证可解码、转 8 kHz mono PCM16，再按 40 ms 分包为 v2 record-store UDP 发送。
+- Qt CLI 已增加 UDP monitor 工具：可监听真实设备或桌面端 UDP 流，输出包数、字节数、v1/v2 包分类、首包 header、序号范围和平均包间隔。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `fa6e5eb Add Qt microphone noise gate`；远端仓库地址待定。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `88aa587 Add Qt UDP monitor tool`；远端仓库地址待定。
 
 ## 1. 目标
 
@@ -222,6 +223,10 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
       MainWindow.cpp
       MainWindow.h
       main.cpp
+  apps/qt-speaker-monitor/
+    CMakeLists.txt
+    src/
+      main.cpp
   shared/
     SpeakerWorkflow.cpp
     SpeakerWorkflow.h
@@ -240,12 +245,13 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 下载 `downloadUrl` 并做字节比对。
 - 导出 v2 record-store UDP packet 预览文件。
 - 配置 UDP host/port 并发送单个 v2 record-store UDP packet。
-- 按 40 ms 节奏发送 1 秒 v2 record-store UDP 测试流，并用本地 UDP listener 验证 25 包。
+- 按 40 ms 节奏发送 1 秒 v2 record-store UDP 测试流，并用 Qt UDP monitor 验证 25 包、序号 `0..24` 和约 40 ms 包间隔。
 - 从 raw 8 kHz mono PCM16LE 文件按 40 ms 节奏发送 v2 record-store UDP 流，并用 Kotlin golden PCM 验证 25 包。
 - 从 PCM 16-bit mono 8 kHz WAV 文件解析 data chunk 后按 40 ms 节奏发送 v2 record-store UDP 流，并验证 25 包。
 - 从 Qt Multimedia 支持的压缩音频文件解码到 8 kHz mono PCM16 后按 40 ms 节奏发送 v2 record-store UDP 流；macOS AAC/M4A 已验证 25 包，MP3 已验证 17 包、680 ms。
 - 从默认麦克风采集音频，转换为 8 kHz mono PCM16，并按 40 ms 节奏发送 v2 record-store UDP 流。
 - 麦克风流发送前可手动调节 `-24 dB` 到 `+24 dB` 输入增益，也可开启轻量 Auto Gain 和阈值 Noise Gate，并随 profile 保存。
+- Qt UDP monitor 监听指定端口，输出 `totalPackets`、`v2Packets`、`firstMagic`、`firstVersion`、`firstSequence`、`lastSequence`、`firstHeader`、`avgGapMs`，用于桌面端自测和真实设备联调。
 - 导出 Widgets 联调日志，包含连接参数、生成结果、控制 JSON 和操作日志。
 
 暂未做：
@@ -273,11 +279,30 @@ QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
   --server http://146.56.250.203:8008 \
   --output build/generated/REC_QT_WIDGETS_SMOKE.hadp \
   --udp-output build/generated/REC_QT_RECORD_STORE_PACKET.bin
+```
+
+监听 1 秒 UDP 流时，先在 shell A 启动 monitor：
+
+```bash
+./build/apps/qt-speaker-monitor/tji_speaker_monitor \
+  --port 47002 \
+  --duration-ms 5000 \
+  --expect-packets 25
+```
+
+再在 shell B 发送测试流：
+
+```bash
 QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
   --smoke \
   --send-udp-stream \
   --udp-host 127.0.0.1 \
   --udp-port 47002
+```
+
+其他文件流 smoke：
+
+```bash
 QT_QPA_PLATFORM=offscreen ./build/apps/qt-speaker-control/tji_speaker_control \
   --smoke \
   --send-pcm-file-stream \
@@ -529,6 +554,7 @@ Qt 负责：
 15. 已完成：Qt shared workflow 通过本机 MP3 样本完成 MP3 解码 smoke，验证 17 包、680 ms。
 16. 已完成：Qt Widgets 增加麦克风轻量 Auto Gain，支持 profile 保存和日志导出，并完成本地编译、窗口启动和文件流 smoke 回归。
 17. 已完成：Qt Widgets 增加麦克风阈值 Noise Gate，支持 profile 保存和日志导出，并完成本地编译、窗口启动和文件流 smoke 回归。
-18. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-19. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-20. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+18. 已完成：Qt CLI 增加 UDP monitor，完成服务器上传/下载 smoke 和本地流监听验证：25 个 v2 包、序号 `0..24`、平均间隔约 `40.25 ms`。
+19. 下一步：在真实 Android 设备上打开 shadow 日志，用 Qt UDP monitor 连续比对真实录音/播放路径的包数、序号和包间隔。
+20. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+21. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
