@@ -9,9 +9,9 @@
 - Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径。
 - Qt desktop MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，console 和 Widgets 两个入口都能生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
 - Qt Widgets 已支持多设备 profiles：可保存、加载、删除命名设备配置，覆盖 deviceId、recordId、服务器、文件路径和 UDP 目标。
-- Qt Widgets 已支持麦克风 UDP 流第一版：默认输入设备若支持 8 kHz mono PCM16，可按 40 ms 分包为 v2 record-store UDP 发送。
+- Qt Widgets 已支持麦克风 UDP 流和输入格式转换：优先请求 8 kHz mono PCM16，失败时用设备 preferred format 采集，再混音/线性重采样为 8 kHz mono PCM16 后按 40 ms 分包为 v2 record-store UDP 发送。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `45ebdf3 Add Qt microphone UDP streaming`；远端仓库地址待定。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `5bcf796 Add Qt microphone format conversion`；远端仓库地址待定。
 
 ## 1. 目标
 
@@ -241,12 +241,12 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 按 40 ms 节奏发送 1 秒 v2 record-store UDP 测试流，并用本地 UDP listener 验证 25 包。
 - 从 raw 8 kHz mono PCM16LE 文件按 40 ms 节奏发送 v2 record-store UDP 流，并用 Kotlin golden PCM 验证 25 包。
 - 从 PCM 16-bit mono 8 kHz WAV 文件解析 data chunk 后按 40 ms 节奏发送 v2 record-store UDP 流，并验证 25 包。
-- 从默认麦克风采集 8 kHz mono PCM16，并按 40 ms 节奏发送 v2 record-store UDP 流。
+- 从默认麦克风采集音频，转换为 8 kHz mono PCM16，并按 40 ms 节奏发送 v2 record-store UDP 流。
 - 导出 Widgets 联调日志，包含连接参数、生成结果、控制 JSON 和操作日志。
 
 暂未做：
 
-- 麦克风输入重采样：当前第一版要求设备直接支持 8 kHz mono PCM16。
+- 麦克风高级处理：当前只做通道平均和线性重采样，尚未做增益、降噪和回声处理。
 - MP3 / AAC 等压缩音频文件解码。
 - 真实设备播放路径验证。
 
@@ -519,6 +519,7 @@ Qt 负责：
 9. 已完成：Qt Widgets 增加日志导出，并完成本地编译与服务器 smoke 验证。
 10. 已完成：Qt Widgets 增加命名设备 profiles，并完成本地编译、窗口启动和服务器 smoke 验证。
 11. 已完成：Qt Widgets 增加麦克风 UDP 流第一版，并完成本地编译、窗口启动和服务器 smoke 回归。
-12. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-13. 下一步：Qt 麦克风输入重采样、MP3/AAC 文件解码和真实设备播放路径验证。
-14. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+12. 已完成：Qt Widgets 增加麦克风输入格式转换，支持从设备 preferred format 转为 8 kHz mono PCM16 后分包发送。
+13. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
+14. 下一步：Qt 麦克风增益/降噪、MP3/AAC 文件解码和真实设备播放路径验证。
+15. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
