@@ -10,10 +10,10 @@
 - Qt desktop MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，console 和 Widgets 两个入口都能生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
 - Qt Widgets 已支持多设备 profiles：可保存、加载、删除命名设备配置，覆盖 deviceId、recordId、服务器、文件路径和 UDP 目标。
 - Qt Widgets 已支持麦克风 UDP 流和输入格式转换：优先请求 8 kHz mono PCM16，失败时用设备 preferred format 采集，再混音/线性重采样为 8 kHz mono PCM16 后按 40 ms 分包为 v2 record-store UDP 发送。
-- Qt Widgets 已支持麦克风手动增益：`-24 dB` 到 `+24 dB`，随当前设置和命名 profile 保存，并写入联调日志。
+- Qt Widgets 已支持麦克风手动增益和轻量自动增益：手动范围 `-24 dB` 到 `+24 dB`，Auto Gain 可选开关，二者随当前设置和命名 profile 保存，并写入联调日志。
 - Qt Widgets/CLI 已支持 Qt Multimedia 解码的压缩音频文件流：macOS AAC/M4A/MP3 均已验证可解码、转 8 kHz mono PCM16，再按 40 ms 分包为 v2 record-store UDP 发送。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `423591e Document Qt MP3 decode smoke coverage`；远端仓库地址待定。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `fe083e5 Add Qt microphone auto gain`；远端仓库地址待定。
 
 ## 1. 目标
 
@@ -245,12 +245,12 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 从 PCM 16-bit mono 8 kHz WAV 文件解析 data chunk 后按 40 ms 节奏发送 v2 record-store UDP 流，并验证 25 包。
 - 从 Qt Multimedia 支持的压缩音频文件解码到 8 kHz mono PCM16 后按 40 ms 节奏发送 v2 record-store UDP 流；macOS AAC/M4A 已验证 25 包，MP3 已验证 17 包、680 ms。
 - 从默认麦克风采集音频，转换为 8 kHz mono PCM16，并按 40 ms 节奏发送 v2 record-store UDP 流。
-- 麦克风流发送前可手动调节 `-24 dB` 到 `+24 dB` 输入增益，并随 profile 保存。
+- 麦克风流发送前可手动调节 `-24 dB` 到 `+24 dB` 输入增益，也可开启轻量 Auto Gain，并随 profile 保存。
 - 导出 Widgets 联调日志，包含连接参数、生成结果、控制 JSON 和操作日志。
 
 暂未做：
 
-- 麦克风高级处理：当前只做通道平均、线性重采样和手动增益，尚未做自动增益、降噪和回声处理。
+- 麦克风高级处理：当前只做通道平均、线性重采样、手动增益和轻量自动增益，尚未做降噪和回声处理。
 - 压缩音频 codec 覆盖矩阵：当前依赖本机 Qt Multimedia backend，AAC/M4A/MP3 已在 macOS 验证，Windows 仍需补验。
 - 真实设备播放路径验证。
 
@@ -527,6 +527,7 @@ Qt 负责：
 13. 已完成：Qt shared workflow 增加压缩音频解码文件流，macOS AAC/M4A smoke 验证 25 包、1000 ms。
 14. 已完成：Qt Widgets 增加麦克风手动增益控制，支持 profile 保存和日志导出，并完成本地编译、窗口启动和文件流 smoke 回归。
 15. 已完成：Qt shared workflow 通过本机 MP3 样本完成 MP3 解码 smoke，验证 17 包、680 ms。
-16. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-17. 下一步：Qt 麦克风自动增益/降噪、Windows codec 覆盖补验和真实设备播放路径验证。
-17. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+16. 已完成：Qt Widgets 增加麦克风轻量 Auto Gain，支持 profile 保存和日志导出，并完成本地编译、窗口启动和文件流 smoke 回归。
+17. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
+18. 下一步：Qt 麦克风降噪/回声处理、Windows codec 覆盖补验和真实设备播放路径验证。
+19. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
