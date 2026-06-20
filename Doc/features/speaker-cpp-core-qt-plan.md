@@ -191,8 +191,22 @@ externalNativeBuild {
 真机抓 shadow 日志：
 
 ```bash
-./gradlew :app:assembleDebug
-tools/verify_speaker_shadow.py --apk-only --apk app/build/outputs/apk/debug/TJI_Platform_*.apk
+tools/run_speaker_real_device_validation.sh
+```
+
+默认会先执行 `./gradlew :app:assembleDebug`，再安装并启动 App，启用 Qt UDP monitor，并要求覆盖 5 条标准 shadow path：`tts-temp-file`、`local-kokoro-tts-file`、`record-save`、`live-legacy-udp`、`recorded-v2-udp`。
+
+常用覆盖项：
+
+```bash
+SERIAL=<adb-serial> DURATION_S=180 UDP_PORT=47000 tools/run_speaker_real_device_validation.sh
+SKIP_BUILD=1 APK=app/build/outputs/apk/debug/TJI_Platform_V2.0.4.apk tools/run_speaker_real_device_validation.sh
+EXPECT_PACKETS=25 tools/run_speaker_real_device_validation.sh
+```
+
+底层命令等价于：
+
+```bash
 tools/run_speaker_field_validation.py \
   --duration-s 120 \
   --apk app/build/outputs/apk/debug/TJI_Platform_*.apk \
@@ -646,6 +660,7 @@ Qt 负责：
 28. 已完成：Qt 新增 macOS 本地打包脚本和分发说明，`macdeployqt` 使用 Homebrew library search path、ad-hoc 签名、错误输出拦截和 zip 产物生成；完成打包脚本验证、codesign 校验和 `.app` 包内可执行文件 smoke，monitor 验证 25 个 v2 包、序号 `0..24`、平均间隔约 `40.0417 ms`。
 29. 已完成：field validation 脚本新增 `--expect-shadow-events`，真实验收可要求至少抓到 1 条 Android shadow 事件，报告会记录期望值、`shadowStatus` 和 `udpMonitorStatus`，避免空日志误通过；emulator 预演已验证 APK native libs、安装、启动和报告生成链路。
 30. 已完成：field validation 脚本新增 `--require-shadow-path`，可要求覆盖 `tts-temp-file`、`local-kokoro-tts-file`、`record-save`、`live-legacy-udp`、`recorded-v2-udp` 等关键路径，报告会记录必需路径和缺失路径。
-31. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-32. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-33. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
+31. 已完成：新增 `tools/run_speaker_real_device_validation.sh`，把构建、安装、启动、Qt monitor、标准 shadow path 验收和常用环境变量覆盖收敛为真实设备一键入口；emulator 预演已验证参数拼装和缺路径失败报告。
+32. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+33. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+34. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 配置远端 Git 仓库并推送。
