@@ -15,7 +15,7 @@
 - Qt CLI 已增加 UDP monitor 工具：可监听真实设备或桌面端 UDP 流，输出包数、字节数、v1/v2 包分类、首包 header、序号范围和平均包间隔。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
 - Qt macOS `.app` bundle target 和本地打包脚本已建立：`TJI Speaker Control.app` 内置 `NSMicrophoneUsageDescription`，`scripts/package-macos.sh` 可运行 `macdeployqt`、ad-hoc 签名校验并生成本地 zip、SHA256SUMS 和 manifest；Apple Developer 签名、公证和正式安装包分发仍待产品化。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `d8b8e5b Add Qt desktop doctor script`；远端仓库地址待定，拿到地址后可用 `scripts/push-remote.sh` 配置 origin 并推送。
+- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `3f415c7 Add Qt local release check`；远端仓库地址待定，拿到地址后可用 `scripts/push-remote.sh` 配置 origin 并推送。
 
 ## 1. 目标
 
@@ -348,7 +348,7 @@ $HOME/Desktop/code/QT/tji-speaker-desktop/
 - 麦克风流发送前可手动调节 `-24 dB` 到 `+24 dB` 输入增益，也可开启轻量 Auto Gain 和阈值 Noise Gate，并随 profile 保存。
 - Qt UDP monitor 监听指定端口，输出 `totalPackets`、`v2Packets`、`firstMagic`、`firstVersion`、`firstSequence`、`lastSequence`、`firstHeader`、`avgGapMs`，用于桌面端自测和真实设备联调。
 - 导出 Widgets 联调日志，包含连接参数、生成结果、控制 JSON 和操作日志。
-- macOS `.app` bundle 目标输出到 `build/apps/qt-speaker-control/TJI Speaker Control.app`，Info.plist 已包含麦克风权限说明；`scripts/package-macos.sh` 可生成 `dist/TJI-Speaker-Control-macOS.zip`、`dist/SHA256SUMS` 和 `dist/TJI-Speaker-Control-macOS.manifest.json`，`scripts/smoke-packaged.sh` 可验证打包后 `.app` 的服务器上传/下载和 25 包 v2 UDP 流，`scripts/doctor.sh` 可自检 Qt/CMake/Ninja、speaker-core 路径、构建产物、checksum、manifest、git remote 和 ADB 设备状态，原 `tji_speaker_control` 可执行文件继续保留给命令行 smoke 和 CI 使用。
+- macOS `.app` bundle 目标输出到 `build/apps/qt-speaker-control/TJI Speaker Control.app`，Info.plist 已包含麦克风权限说明；`scripts/package-macos.sh` 可生成 `dist/TJI-Speaker-Control-macOS.zip`、`dist/SHA256SUMS` 和 `dist/TJI-Speaker-Control-macOS.manifest.json`，`scripts/smoke-packaged.sh` 可验证打包后 `.app` 的服务器上传/下载和 25 包 v2 UDP 流，`scripts/doctor.sh` 可自检 Qt/CMake/Ninja、speaker-core 路径、构建产物、checksum、manifest、git remote 和 ADB 设备状态，`scripts/release-check.sh` 可串联 doctor、打包、checksum 和 packaged smoke 作为本机发包前总闸门，原 `tji_speaker_control` 可执行文件继续保留给命令行 smoke 和 CI 使用。
 
 暂未做：
 
@@ -669,6 +669,7 @@ Qt 负责：
 34. 已完成：Qt 仓库新增 `scripts/push-remote.sh`，拿到远端地址后可检查干净工作区、配置或更新 `origin`，并 `git push -u origin main`；已完成 shell 语法和 usage 检查。
 35. 已完成：Qt 仓库新增 `scripts/smoke-packaged.sh`，自动拉起 monitor、运行 `.app` 内可执行文件、保存 sender/monitor 日志，并校验 `downloadVerified=true`、25 个 v2 UDP 包、序号 `0..24` 和 `unknownPackets=0`；本机脚本化 smoke 已通过，平均间隔约 `40.0833 ms`。
 36. 已完成：Qt 仓库新增 `scripts/doctor.sh`，可自检 Qt/CMake/Ninja、TJI speaker-core 路径、Git 工作区/远端、CLI/monitor/.app 产物、麦克风权限字段、package checksum、manifest 和 ADB 设备；本机自检通过，仅提示本次未推送前的 origin 缺失 warning。
-37. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-38. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-39. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 创建远端 Git 仓库并使用 `scripts/push-remote.sh` 推送。
+37. 已完成：Qt 仓库新增 `scripts/release-check.sh`，串联 `doctor.sh`、`package-macos.sh`、`shasum -a 256 -c` 和 `smoke-packaged.sh`，日志输出到 `build/generated/release-check-*`；本机 release-check 已通过，packaged smoke 收到 25 个 v2 包、序号 `0..24`、平均间隔约 `40.0417 ms`。
+38. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+39. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
+40. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 创建远端 Git 仓库并使用 `scripts/push-remote.sh` 推送。
