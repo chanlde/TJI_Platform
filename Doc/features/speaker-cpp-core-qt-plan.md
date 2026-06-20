@@ -7,6 +7,7 @@
 - 当前结论：先把喊话器纯算法和协议转换抽成共享 C++ core，再让 Android 通过 JNI 调用、Qt 上位机直接链接。
 - 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest 和服务器上传/下载验证。
 - Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径。
+- Qt console MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
 
 ## 1. 目标
 
@@ -199,28 +200,31 @@ ctest --test-dir native/speaker-core/build --output-on-failure
 
 目标：Qt 上位机直接链接 `speaker-core`，先做可联调版本。
 
-目录建议：
+当前目录：
 
 ```text
 $HOME/Desktop/code/QT/tji-speaker-desktop/
   CMakeLists.txt
-  native/speaker-core/        # 可用 git submodule 或拷贝开发期版本
+  README.md
   apps/qt-speaker-console/
     CMakeLists.txt
     src/
       main.cpp
-      MainWindow.cpp
-      SpeakerDeviceClient.cpp
-      SpeakerRecordTransferClient.cpp
 ```
 
-MVP 功能：
+当前 MVP 功能：
 
-- 设备 `deviceId` 输入和保存。
-- 服务器地址配置。
+- 设备 `deviceId` 命令行输入。
+- 服务器地址命令行配置。
 - HADP 本地生成。
 - 上传临时 HADP 到服务器。
 - 生成 `RECORD_DOWNLOAD` 控制 JSON。
+- 下载 `downloadUrl` 并做字节比对。
+
+暂未做：
+
+- Qt Widgets 图形界面。
+- 设备配置保存。
 - UDP 播放路径验证。
 - 日志窗口。
 
@@ -231,6 +235,11 @@ cd $HOME/Desktop/code/QT/tji-speaker-desktop
 source ../scripts/qt-env.sh
 cmake -S . -B build -G Ninja
 cmake --build build
+./build/apps/qt-speaker-console/tji_speaker_console \
+  --device-id T12345678 \
+  --record-id REC_QT_CONSOLE_SMOKE \
+  --server http://146.56.250.203:8008 \
+  --output build/generated/REC_QT_CONSOLE_SMOKE.hadp
 ```
 
 ### V6：产品化收尾
@@ -460,5 +469,6 @@ Qt 负责：
 5. 已完成：增加服务器上传验证脚本，并完成上传/下载字节比对。
 6. 已完成：从 App 当前实现导出 Kotlin golden samples，补齐 C++ 与 Kotlin 字节级对齐测试。
 7. 已完成：Android 接 JNI shadow mode，Debug/Release native build 均通过。
-8. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
-9. 下一步：Qt 上位机 MVP 接入 core。
+8. 已完成：Qt console MVP 接入 core，并完成服务器上传/下载字节比对。
+9. 下一步：在真实 Android 设备上打开 shadow 日志，连续比对真实录音/播放路径。
+10. 下一步：Qt Widgets 上位机界面和 UDP 播放路径验证。
