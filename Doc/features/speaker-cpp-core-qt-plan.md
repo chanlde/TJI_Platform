@@ -15,7 +15,7 @@
 - Qt CLI 已增加 UDP monitor 工具：可监听真实设备或桌面端 UDP 流，输出包数、字节数、v1/v2 包分类、首包 header、序号范围和平均包间隔。
 - Qt Widgets 已支持导出联调日志：连接参数、生成文件 metadata、`RECORD_DOWNLOAD`、UDP 状态和操作日志可保存为文本文件。
 - Qt macOS `.app` bundle target 和本地打包脚本已建立：`TJI Speaker Control.app` 内置 `NSMicrophoneUsageDescription`，`scripts/package-macos.sh` 可运行 `macdeployqt`、ad-hoc 签名校验并生成本地 zip、SHA256SUMS 和 manifest；Apple Developer 签名、公证和正式安装包分发仍待产品化。
-- Qt desktop MVP 已初始化为独立本地 Git 仓库，当前本地提交为 `d49f7d2 Add release check report`；远端仓库地址待定，拿到地址后可用 `scripts/push-remote.sh` 配置 origin 并推送。
+- Qt desktop MVP 已初始化为独立 Git 仓库并推送远端，当前提交为 `9543b3b Document Qt remote repository`；远端地址为 `https://github.com/chanlde/tji-speaker-desktop`。
 
 ## 1. 目标
 
@@ -675,6 +675,6 @@ Qt 负责：
 37. 已完成：Qt 仓库新增 `scripts/release-check.sh`，串联 `doctor.sh`、`package-macos.sh`、`shasum -a 256 -c` 和 `smoke-packaged.sh`，日志输出到 `build/generated/release-check-*`；本机 release-check 已通过，packaged smoke 收到 25 个 v2 包、序号 `0..24`、平均间隔约 `40.0417 ms`。
 38. 已完成：Qt release-check 新增 `release-check-report.md`，记录 artifact、SHA-256、Qt version、Git commit、分步日志、`downloadVerified`、UDP packet counts、sequence 和 `avgGapMs`；本机 release-check 已通过，`downloadVerified=true`，packaged smoke 收到 25 个 v2 包、序号 `0..24`、平均间隔约 `40.0833 ms`。
 39. 已完成：真实设备一键验收脚本新增 preflight、`--help`、`--help-field`、`OUTPUT_DIR`、`SKIP_ADB`、`SKIP_MONITOR`，并把默认 UDP 验收从 `EXPECT_PACKETS=0` 收紧到 `EXPECT_PACKETS=1`；本地 wrapper smoke 已验证 APK native libs、报告和 `trigger-checklist.md` 生成。
-40. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
-41. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
-42. 下一步：为 `$HOME/Desktop/code/QT/tji-speaker-desktop` 创建远端 Git 仓库并使用 `scripts/push-remote.sh` 推送。
+40. 已完成：Qt 仓库已创建远端 `https://github.com/chanlde/tji-speaker-desktop` 并推送 `main`；Qt `doctor.sh` 已确认工作区干净、origin 正常、package checksum 和 manifest 正常。
+41. 下一步：在真实 Android 设备上运行 field validation 脚本，确认 shadow 全 `match`、必需路径无缺失，Qt monitor 包数、序号和间隔正常。
+42. 下一步：Qt 麦克风频谱降噪/回声消除、Windows codec 覆盖补验和真实设备播放路径验证。
