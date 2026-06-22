@@ -1,11 +1,13 @@
 package com.tji.device.product.speaker.audio
 
+import com.tji.device.product.speaker.core.SpeakerCoreNative
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.min
 
 object SpeakerHadpDecoder {
     fun decodePcm16le(hadp: SpeakerHadpFile): ByteArray {
+        SpeakerCoreNative.decodeHadpPcm16OrNull(hadp.data)?.let { return it }
         require(hadp.data.size >= HADP_HEADER_BYTES) { "HADP 文件过短" }
         val header = ByteBuffer.wrap(hadp.data, 0, HADP_HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
         val magic = ByteArray(HADP_MAGIC_BYTES)

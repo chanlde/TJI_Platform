@@ -25,6 +25,7 @@ import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
 import com.tji.device.product.speaker.audio.SpeakerUdpStreamContext
 import com.tji.device.product.speaker.audio.SpeakerUdpStreamType
 import com.tji.device.product.speaker.audio.SpeakerVoiceProcessor
+import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import com.tji.device.product.speaker.core.SpeakerCoreShadowVerifier
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
 import com.tji.device.product.speaker.model.SpeakerCommand
@@ -33,6 +34,7 @@ import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerRecordEvent
 import com.tji.device.product.speaker.repository.SpeakerControlRepository
 import com.tji.device.product.speaker.repository.SpeakerRepository
+import com.tji.device.util.toUserVisibleMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -46,9 +48,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
-import kotlin.math.PI
-import kotlin.math.roundToInt
-import kotlin.math.sin
 
 class SpeakerControlViewModel(
     private val stateRepository: SpeakerRepository,
@@ -153,6 +152,10 @@ class SpeakerControlViewModel(
     fun setVolume(serialNumber: String, volume: Int) {
         val normalizedVolume = volume.coerceIn(0, 100)
         _outputGain.value = percentToOutputGain(normalizedVolume)
+        Log.d(
+            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
+            "speaker volume commit serialNumber=$serialNumber volumePercent=$normalizedVolume"
+        )
         send(serialNumber, SpeakerCommand.SetVolume(newMsgId("volume"), normalizedVolume), "音量设置")
     }
 
@@ -276,18 +279,24 @@ class SpeakerControlViewModel(
             runCatching {
                 val startedAt = System.currentTimeMillis()
                 val pcm = getOrSynthesizeTtsPcm(trimmed)
-                if (pcm.isEmpty()) error("TTS 合成音频为空")
+                if (pcm.isEmpty()) error("文字语音合成音频为空")
                 val quality = _outputQuality.value
-                val processedPcm = SpeakerVoiceProcessor
+                val processedPcm = SpeakerCoreAudioEngine
                     .applyPlaybackTone(pcm, _toneSettings.value, quality.sampleRate)
-                    .withLeadingSilence(SpeakerAudioConfig.Voice.TTS_FILE_LEADING_SILENCE_MS, quality.sampleRate)
+                    .let {
+                        SpeakerCoreAudioEngine.prependSilencePcm16(
+                            pcm16le = it,
+                            durationMs = SpeakerAudioConfig.Voice.TTS_FILE_LEADING_SILENCE_MS,
+                            sampleRate = quality.sampleRate
+                        )
+                    }
                 val suffix = System.currentTimeMillis()
                 val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
                 val recordId = "TTS_PLAY_${cleanDeviceId}_$suffix"
                 val storeTaskId = "STORE_TTS_PLAY_${cleanDeviceId}_$suffix"
                 val createdAt = isoNow()
                 val recordName = "文字喊话 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"
-                val hadp = SpeakerHadpEncoder.encode(
+                val hadp = SpeakerCoreAudioEngine.encodeHadp(
                     pcm = processedPcm,
                     recordId = recordId,
                     sampleRate = quality.sampleRate,
@@ -326,10 +335,11 @@ class SpeakerControlViewModel(
             }.onFailure { throwable ->
                 pendingRecordSave = null
                 if (throwable !is CancellationException) {
-                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "文字语音失败")
+                    val message = throwable.toUserVisibleMessage("文字语音失败")
+                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = message)
                     _feedback.value = SpeakerCommandFeedback(
                         status = SpeakerCommandFeedbackStatus.Failed,
-                        text = throwable.message ?: "文字语音失败"
+                        text = message
                     )
                 }
             }
@@ -351,9 +361,9 @@ class SpeakerControlViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 val pcm = getOrSynthesizeTtsPcm(trimmed)
-                if (pcm.isEmpty()) error("TTS 合成音频为空")
+                if (pcm.isEmpty()) error("文字语音合成音频为空")
                 val quality = _outputQuality.value
-                val processedPcm = SpeakerVoiceProcessor.applyPlaybackTone(pcm, _toneSettings.value, quality.sampleRate)
+                val processedPcm = SpeakerCoreAudioEngine.applyPlaybackTone(pcm, _toneSettings.value, quality.sampleRate)
                 Log.d(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "tts phone preview engine=${_ttsEngine.value.name} bytes=${processedPcm.size} " +
@@ -372,10 +382,11 @@ class SpeakerControlViewModel(
                 clearFeedbackAfter(null)
             }.onFailure { throwable ->
                 if (throwable !is CancellationException) {
-                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "本机试听失败")
+                    val message = throwable.toUserVisibleMessage("本机试听失败")
+                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = message)
                     _feedback.value = SpeakerCommandFeedback(
                         status = SpeakerCommandFeedbackStatus.Failed,
-                        text = throwable.message ?: "本机试听失败"
+                        text = message
                     )
                 }
             }
@@ -389,7 +400,7 @@ class SpeakerControlViewModel(
             return
         }
         if (_ttsEngine.value != SpeakerTtsEngine.LocalKokoro) {
-            _feedback.value = SpeakerCommandFeedback(status = SpeakerCommandFeedbackStatus.Failed, text = "请先选择本地 TTS")
+            _feedback.value = SpeakerCommandFeedback(status = SpeakerCommandFeedbackStatus.Failed, text = "请先选择本地语音")
             return
         }
         stopLocalAudio()
@@ -423,10 +434,11 @@ class SpeakerControlViewModel(
                 clearFeedbackAfter(null)
             }.onFailure { throwable ->
                 if (throwable !is CancellationException) {
-                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "本地原声试听失败")
+                    val message = throwable.toUserVisibleMessage("本地原声试听失败")
+                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = message)
                     _feedback.value = SpeakerCommandFeedback(
                         status = SpeakerCommandFeedbackStatus.Failed,
-                        text = throwable.message ?: "本地原声试听失败"
+                        text = message
                     )
                 }
             }
@@ -474,7 +486,7 @@ class SpeakerControlViewModel(
         _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.SavingRecord, progress = 0.10f)
         _feedback.value = SpeakerCommandFeedback(
             status = SpeakerCommandFeedbackStatus.Pending,
-            text = "正在生成本地TTS"
+            text = "正在生成本地语音"
         )
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
@@ -484,10 +496,10 @@ class SpeakerControlViewModel(
                 val recordId = "TTS_LOCAL_${cleanDeviceId}_$suffix"
                 val storeTaskId = "STORE_TTS_LOCAL_${cleanDeviceId}_$suffix"
                 val createdAt = isoNow()
-                val recordName = "本地TTS测试 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"
+                val recordName = "本地语音 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"
                 val quality = _outputQuality.value
                 val localAudio = localKokoroTtsClient.synthesizePcm16Mono(trimmed, _kokoroTtsSettings.value, quality.sampleRate)
-                val hadp = SpeakerHadpEncoder.encode(
+                val hadp = SpeakerCoreAudioEngine.encodeHadp(
                     pcm = localAudio.pcm16,
                     recordId = recordId,
                     sampleRate = localAudio.sampleRate,
@@ -512,10 +524,10 @@ class SpeakerControlViewModel(
                     createdAt = createdAt,
                     recordName = recordName,
                     hadp = hadp,
-                    label = "本地TTS文件",
+                    label = "本地语音文件",
                     downloadMsgPrefix = "local-tts-download",
                     autoPlayVolume = volumePercent.coerceIn(0, 100),
-                    autoPlayLabel = "播放本地TTS",
+                    autoPlayLabel = "播放本地语音",
                     startedAt = startedAt,
                     temporary = true,
                     visible = false,
@@ -523,10 +535,11 @@ class SpeakerControlViewModel(
                 )
             }.onFailure { throwable ->
                 pendingRecordSave = null
-                _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "本地TTS失败")
+                val message = throwable.toUserVisibleMessage("本地语音失败")
+                _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = message)
                 _feedback.value = SpeakerCommandFeedback(
                     status = SpeakerCommandFeedbackStatus.Failed,
-                    text = throwable.message ?: "本地TTS失败"
+                    text = message
                 )
             }
         }
@@ -541,7 +554,7 @@ class SpeakerControlViewModel(
         )
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                val tonePcm = generateTonePcm(
+                val tonePcm = SpeakerCoreAudioEngine.generateTonePcm16(
                     frequencyHz = SpeakerAudioConfig.Tone.FREQUENCY_HZ,
                     durationMs = SpeakerAudioConfig.Tone.DURATION_MS,
                     amplitude = SpeakerAudioConfig.Tone.AMPLITUDE * _outputGain.value
@@ -562,10 +575,11 @@ class SpeakerControlViewModel(
                 )
                 clearFeedbackAfter(null)
             }.onFailure { throwable ->
-                _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "蜂鸣失败")
+                val message = throwable.toUserVisibleMessage("蜂鸣失败")
+                _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = message)
                 _feedback.value = SpeakerCommandFeedback(
                     status = SpeakerCommandFeedbackStatus.Failed,
-                    text = throwable.message ?: "蜂鸣失败"
+                    text = message
                 )
             }
         }
@@ -586,7 +600,10 @@ class SpeakerControlViewModel(
                 }
             }.onFailure { throwable ->
                 if (throwable !is CancellationException) {
-                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "实时喊话失败")
+                    _talkState.value = SpeakerTalkState(
+                        mode = SpeakerTalkMode.Idle,
+                        error = throwable.toUserVisibleMessage("实时喊话失败")
+                    )
                 }
             }
         }
@@ -614,7 +631,10 @@ class SpeakerControlViewModel(
                 }
             }.onFailure { throwable ->
                 if (throwable !is CancellationException) {
-                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "按住录音失败")
+                    _talkState.value = SpeakerTalkState(
+                        mode = SpeakerTalkMode.Idle,
+                        error = throwable.toUserVisibleMessage("按住录音失败")
+                    )
                 }
             }
         }
@@ -634,7 +654,10 @@ class SpeakerControlViewModel(
                 }
             }.onFailure { throwable ->
                 if (throwable !is CancellationException) {
-                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "保存录音失败")
+                    _talkState.value = SpeakerTalkState(
+                        mode = SpeakerTalkMode.Idle,
+                        error = throwable.toUserVisibleMessage("保存录音失败")
+                    )
                 }
             }
         }
@@ -654,6 +677,15 @@ class SpeakerControlViewModel(
             }
             _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Sending, recordedPcm = pcm)
             runCatching {
+                if (!SpeakerVoiceProcessor.hasPushToTalkSpeech(pcm)) {
+                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle)
+                    _feedback.value = SpeakerCommandFeedback(
+                        status = SpeakerCommandFeedbackStatus.Failed,
+                        text = "未检测到语音"
+                    )
+                    clearFeedbackAfter(null)
+                    return@runCatching
+                }
                 val processedPcm = SpeakerVoiceProcessor.processPushToTalk(pcm, _toneSettings.value)
                 logPttAudioStats(pcm, processedPcm)
                 audioRelay.sendRecordedPcm(
@@ -661,13 +693,17 @@ class SpeakerControlViewModel(
                     outputGain = _outputGain.value,
                     prebufferPackets = SpeakerAudioConfig.Timing.RECORDED_PREBUFFER_PACKETS,
                     leadingSilenceMs = SpeakerAudioConfig.Timing.RECORDED_LEADING_SILENCE_MS,
-                    streamContext = playbackStreamContext(serialNumber, "ptt")
+                    streamContext = playbackStreamContext(serialNumber, "ptt"),
+                    useNativePacketizer = false
                 ) {
                     incrementPacketCount(SpeakerTalkMode.Sending)
                 }
                 _talkState.value = _talkState.value.copy(mode = SpeakerTalkMode.Idle, recordedPcm = ByteArray(0))
             }.onFailure { throwable ->
-                _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "语音发送失败")
+                _talkState.value = SpeakerTalkState(
+                    mode = SpeakerTalkMode.Idle,
+                    error = throwable.toUserVisibleMessage("语音发送失败")
+                )
             }
         }
     }
@@ -690,18 +726,19 @@ class SpeakerControlViewModel(
             runCatching {
                 val startedAt = System.currentTimeMillis()
                 val quality = _outputQuality.value
-                val processedPcm = SpeakerVoiceProcessor.processPushToTalk(pcm, _toneSettings.value)
-                    .resamplePcm16(
-                        sourceSampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE,
-                        targetSampleRate = quality.sampleRate
-                    )
+                val pttPcm = SpeakerCoreAudioEngine.processPushToTalk(pcm, _toneSettings.value)
+                val processedPcm = SpeakerCoreAudioEngine.resamplePcm16(
+                    pcm16le = pttPcm,
+                    sourceSampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE,
+                    targetSampleRate = quality.sampleRate
+                )
                 _talkState.value = _talkState.value.copy(progress = 0.25f)
                 val suffix = System.currentTimeMillis()
                 val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
                 val recordId = "REC_${cleanDeviceId}_$suffix"
                 val storeTaskId = "STORE_${cleanDeviceId}_$suffix"
                 val createdAt = isoNow()
-                val hadp = SpeakerHadpEncoder.encode(
+                val hadp = SpeakerCoreAudioEngine.encodeHadp(
                     pcm = processedPcm,
                     recordId = recordId,
                     sampleRate = quality.sampleRate,
@@ -775,7 +812,10 @@ class SpeakerControlViewModel(
                 waitForRecordSaveEvent(serialNumber, upload.recordId, startedAt)
             }.onFailure { throwable ->
                 pendingRecordSave = null
-                _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = throwable.message ?: "保存录音失败")
+                _talkState.value = SpeakerTalkState(
+                    mode = SpeakerTalkMode.Idle,
+                    error = throwable.toUserVisibleMessage("保存录音失败")
+                )
             }
         }
     }
@@ -888,30 +928,6 @@ class SpeakerControlViewModel(
         waitForRecordSaveEvent(serialNumber, upload.recordId, startedAt)
     }
 
-    private fun generateTonePcm(
-        frequencyHz: Int,
-        durationMs: Int,
-        amplitude: Float
-    ): ByteArray {
-        val sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE
-        val sampleCount = sampleRate * durationMs.coerceAtLeast(SpeakerAdpcmPacketizer.PACKET_MS) / MILLIS_PER_SECOND
-        val fadeSamples = sampleRate * SpeakerAudioConfig.Tone.FADE_MS / MILLIS_PER_SECOND
-        val safeAmplitude = amplitude.coerceIn(0f, 1f)
-        val pcm = ByteArray(sampleCount * BYTES_PER_PCM16_SAMPLE)
-        for (index in 0 until sampleCount) {
-            val fadeIn = if (fadeSamples > 0) (index.toFloat() / fadeSamples).coerceIn(0f, 1f) else 1f
-            val fadeOut = if (fadeSamples > 0) ((sampleCount - index - 1).toFloat() / fadeSamples).coerceIn(0f, 1f) else 1f
-            val envelope = minOf(fadeIn, fadeOut)
-            val phase = TWO_PI * frequencyHz.toDouble() * index.toDouble() / sampleRate.toDouble()
-            val sample = (sin(phase) * Short.MAX_VALUE * safeAmplitude * envelope).roundToInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-            val offset = index * BYTES_PER_PCM16_SAMPLE
-            pcm[offset] = (sample and 0xFF).toByte()
-            pcm[offset + 1] = ((sample shr 8) and 0xFF).toByte()
-        }
-        return pcm
-    }
-
     private fun send(
         serialNumber: String,
         command: SpeakerCommand,
@@ -975,9 +991,12 @@ class SpeakerControlViewModel(
     }
 
     private fun handleRecordMutationEvent(serialNumber: String, event: SpeakerRecordEvent) {
-        if (!event.ok) return
+        val deleteAlreadyGone = event.type == "record_deleted" &&
+            !event.recordId.isNullOrBlank() &&
+            (event.code == 404 || event.message.contains("not found", ignoreCase = true))
+        if (!event.ok && !deleteAlreadyGone) return
         val shouldRefresh = when (event.type) {
-            "record_deleted",
+            "record_deleted" -> true
             "record_updated" -> true
             "record_saved" -> pendingRecordSave?.recordId != event.recordId
             else -> false
@@ -1146,8 +1165,25 @@ class SpeakerControlViewModel(
         pcm16le: ByteArray,
         recordId: String
     ) {
+        val kotlinHadp = runCatching {
+            SpeakerHadpEncoder.encode(
+                pcm = pcm16le,
+                recordId = recordId,
+                codec = hadp.codec,
+                sampleRate = hadp.sampleRate,
+                channels = hadp.channels,
+                packetMs = hadp.packetMs
+            )
+        }.getOrNull()
+        if (kotlinHadp == null) {
+            Log.d(
+                SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
+                "speakerCoreShadow status=kotlinUnavailable path=$label recordId=$recordId"
+            )
+            return
+        }
         val result = SpeakerCoreShadowVerifier.compareHadp(
-            kotlinHadp = hadp,
+            kotlinHadp = kotlinHadp,
             pcm16le = pcm16le,
             recordId = recordId
         )
@@ -1165,46 +1201,6 @@ class SpeakerControlViewModel(
     private fun isoNow(): String =
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.CHINA).format(Date())
 
-    private fun ByteArray.withLeadingSilence(durationMs: Int, sampleRate: Int): ByteArray {
-        val silenceBytes = sampleRate.coerceAtLeast(1) *
-            durationMs.coerceAtLeast(0) /
-            MILLIS_PER_SECOND *
-            BYTES_PER_PCM16_SAMPLE
-        if (silenceBytes <= 0) return this
-        return ByteArray(silenceBytes) + this
-    }
-
-    private fun ByteArray.resamplePcm16(sourceSampleRate: Int, targetSampleRate: Int): ByteArray {
-        if (sourceSampleRate == targetSampleRate) return this
-        require(sourceSampleRate > 0 && targetSampleRate > 0) { "录音重采样参数无效" }
-        val sourceSamples = size / BYTES_PER_PCM16_SAMPLE
-        if (sourceSamples <= 0) return ByteArray(0)
-        val targetSamples = (sourceSamples.toLong() * targetSampleRate / sourceSampleRate)
-            .toInt()
-            .coerceAtLeast(1)
-        val output = ByteArray(targetSamples * BYTES_PER_PCM16_SAMPLE)
-        for (index in 0 until targetSamples) {
-            val sourcePosition = index.toFloat() * sourceSampleRate.toFloat() / targetSampleRate.toFloat()
-            val left = sourcePosition.toInt().coerceIn(0, sourceSamples - 1)
-            val right = (left + 1).coerceAtMost(sourceSamples - 1)
-            val fraction = sourcePosition - left
-            val leftSample = readPcm16Sample(left)
-            val rightSample = readPcm16Sample(right)
-            val sample = (leftSample + (rightSample - leftSample) * fraction)
-                .roundToInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-            val offset = index * BYTES_PER_PCM16_SAMPLE
-            output[offset] = (sample and 0xFF).toByte()
-            output[offset + 1] = ((sample shr 8) and 0xFF).toByte()
-        }
-        return output
-    }
-
-    private fun ByteArray.readPcm16Sample(index: Int): Int {
-        val offset = index * BYTES_PER_PCM16_SAMPLE
-        return ((this[offset].toInt() and 0xFF) or (this[offset + 1].toInt() shl 8)).toShort().toInt()
-    }
-
     override fun onCleared() {
         stopLocalAudio()
         super.onCleared()
@@ -1220,11 +1216,6 @@ class SpeakerControlViewModel(
         const val RECORD_CONFIRM_PAGE_WAIT_MS = 700L
         const val RECORD_CONFIRM_MAX_RECORDS = 32
         const val RECORD_CONFIRM_MAX_PAGES = RECORD_CONFIRM_MAX_RECORDS / RECORD_LIST_PAGE_SIZE
-        const val MILLIS_PER_SECOND = 1_000
-        const val BYTES_PER_PCM16_SAMPLE = 2
-        const val HADP_HEADER_BYTES = 128
-        const val TWO_PI = 2.0 * PI
-
         fun percentToOutputGain(volume: Int): Float =
             (volume.coerceIn(0, 100) / 100f) * SpeakerAudioConfig.Gain.MAX_OUTPUT_GAIN
     }

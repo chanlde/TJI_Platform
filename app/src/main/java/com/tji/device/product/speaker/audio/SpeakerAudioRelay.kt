@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import com.tji.device.product.speaker.core.SpeakerCoreShadowVerifier
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -33,8 +34,9 @@ class SpeakerAudioRelay(
         onPacketSent: (Int) -> Unit
     ) {
         val packetizer = SpeakerAdpcmPacketizer()
+        val kotlinShadowPacketizer = SpeakerAdpcmPacketizer(useNative = false)
         val shadowSession = SpeakerCoreShadowVerifier.createUdpPacketSessionOrNull()
-        val voiceProcessor = SpeakerVoiceProcessor()
+        val voiceProcessor = SpeakerCoreAudioEngine.createLiveVoiceProcessor()
         var frameCount = 0
         var debugFrameCount = 0
         logUdpShadowAvailability(shadowSession, "live-legacy-udp")
@@ -55,10 +57,11 @@ class SpeakerAudioRelay(
                             debugFrameCount += 1
                         }
                         packetizer.packetize(processedFrame)?.let { packet ->
+                            val kotlinPacket = kotlinShadowPacketizer.packetize(processedFrame)
                             logUdpPacketShadowResult(
                                 session = shadowSession,
                                 path = "live-legacy-udp",
-                                kotlinPacket = packet,
+                                kotlinPacket = kotlinPacket,
                                 pcm16le = processedFrame,
                                 sequence = sequence,
                                 context = null,
@@ -71,6 +74,9 @@ class SpeakerAudioRelay(
                 )
             }
         } finally {
+            packetizer.close()
+            kotlinShadowPacketizer.close()
+            voiceProcessor.close()
             shadowSession?.close()
         }
     }
@@ -81,15 +87,21 @@ class SpeakerAudioRelay(
         prebufferPackets: Int = 0,
         leadingSilenceMs: Int = 0,
         streamContext: SpeakerUdpStreamContext? = null,
+        useNativePacketizer: Boolean = true,
         onPacketSent: (Int) -> Unit
     ) {
         val frameBytes = SpeakerAdpcmPacketizer.PCM_FRAME_BYTES
-        val packetizer = SpeakerAdpcmPacketizer(streamContext)
+        val packetizer = SpeakerAdpcmPacketizer(streamContext, useNative = useNativePacketizer)
+        val kotlinShadowPacketizer = SpeakerAdpcmPacketizer(streamContext, useNative = false)
         val shadowSession = SpeakerCoreShadowVerifier.createUdpPacketSessionOrNull()
         val shadowPath = if (streamContext == null) "recorded-legacy-udp" else "recorded-v2-udp"
-        val streamPcm = pcm
-            .withLeadingSilence(leadingSilenceMs)
-            .withTrailingFramePadding(frameBytes)
+        val streamPcm = SpeakerCoreAudioEngine
+            .prependSilencePcm16(
+                pcm16le = pcm,
+                durationMs = leadingSilenceMs,
+                sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE
+            )
+            .let { SpeakerCoreAudioEngine.padPcm16ToFrame(it, frameBytes) }
         logUdpShadowAvailability(shadowSession, shadowPath)
         try {
             DatagramSocket().use { socket ->
@@ -102,10 +114,11 @@ class SpeakerAudioRelay(
                     val frame = streamPcm.copyOfRange(offset, end)
                     val isLastPacket = end >= streamPcm.size
                     packetizer.packetize(frame, isLastPacket = isLastPacket)?.let { packet ->
+                        val kotlinPacket = kotlinShadowPacketizer.packetize(frame, isLastPacket = isLastPacket)
                         logUdpPacketShadowResult(
                             session = shadowSession,
                             path = shadowPath,
-                            kotlinPacket = packet,
+                            kotlinPacket = kotlinPacket,
                             pcm16le = frame,
                             sequence = sentFrames,
                             context = streamContext,
@@ -128,6 +141,8 @@ class SpeakerAudioRelay(
                 }
             }
         } finally {
+            packetizer.close()
+            kotlinShadowPacketizer.close()
             shadowSession?.close()
         }
     }
@@ -185,21 +200,6 @@ class SpeakerAudioRelay(
         }
     }
 
-    private fun ByteArray.withLeadingSilence(leadingSilenceMs: Int): ByteArray {
-        val silenceBytes = SpeakerAdpcmPacketizer.SAMPLE_RATE *
-            leadingSilenceMs.coerceAtLeast(0) /
-            MILLIS_PER_SECOND *
-            BYTES_PER_PCM16_SAMPLE
-        if (silenceBytes <= 0) return this
-        return ByteArray(silenceBytes) + this
-    }
-
-    private fun ByteArray.withTrailingFramePadding(frameBytes: Int): ByteArray {
-        val remainder = size % frameBytes
-        if (remainder == 0) return this
-        return copyOf(size + frameBytes - remainder)
-    }
-
     private fun logAudioStats(label: String, raw: ByteArray, processed: ByteArray) {
         val rawStats = SpeakerVoiceProcessor.measurePcm(raw)
         val processedStats = SpeakerVoiceProcessor.measurePcm(processed)
@@ -227,13 +227,14 @@ class SpeakerAudioRelay(
     private fun logUdpPacketShadowResult(
         session: SpeakerCoreShadowVerifier.UdpPacketSession?,
         path: String,
-        kotlinPacket: ByteArray,
+        kotlinPacket: ByteArray?,
         pcm16le: ByteArray,
         sequence: Int,
         context: SpeakerUdpStreamContext?,
         isLastPacket: Boolean
     ) {
         if (session == null) return
+        if (kotlinPacket == null) return
         if (sequence >= SpeakerAudioConfig.Debug.AUDIO_DEBUG_FRAME_LIMIT && !isLastPacket) return
         val result = if (context == null) {
             session.compareLegacyPacket(
@@ -260,7 +261,6 @@ class SpeakerAudioRelay(
     }
 
     private companion object {
-        const val MILLIS_PER_SECOND = 1_000
         const val BYTES_PER_PCM16_SAMPLE = 2
     }
 }

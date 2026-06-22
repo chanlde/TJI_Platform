@@ -33,8 +33,10 @@ App 当前覆盖：
 ## HADP 文件
 
 - App 生成或录制音频后封装为 `.hadp`。
+- Qt 上位机后续也必须生成同一格式的 `.hadp`，优先复用 `native/speaker-core`。
 - 临时上传服务返回下载 URL。
 - MCU 通过 URL 下载后播放或保存。
+- 具体字节布局、codec、CRC 和四端职责见 [hadp-file-format.md](hadp-file-format.md)。
 
 ## ACK 和事件
 

@@ -3,7 +3,7 @@ package com.tji.device.product.solarclean.model
 import com.tji.device.product.runtime.ProductRuntimePayload
 
 /**
- * 光伏清洗运行时状态。字段参考 Notion 光伏清洗文档，但不复用消防吊桶 Link/Switch 模型。
+ * 光伏清洗运行时状态。不复用消防吊桶 Link/Switch 模型。
  */
 data class SolarCleanDeviceState(
     val serialNumber: String,

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.tji.device.product.firebucket.model.SwitchControlParms
 import com.tji.device.product.firebucket.model.SwitchUiState
 import com.tji.device.product.firebucket.repository.FireBucketSwitchRepository
+import com.tji.device.util.toUserVisibleMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +26,9 @@ class SwitchViewModel(private val repository: FireBucketSwitchRepository) : View
 
                 _uiState.value = _uiState.value.copy(errorMessage = null)
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(errorMessage = "设置角度失败: ${e.message}")
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = e.toUserVisibleMessage("设置角度失败")
+                )
             }
         }
     }

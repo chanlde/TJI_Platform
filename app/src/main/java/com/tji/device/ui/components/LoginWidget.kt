@@ -101,10 +101,6 @@ fun LoginWidget(
     val savedPassword = sharedPreferences.getString("password", "")
     val savedRememberMe = sharedPreferences.getBoolean("rememberMe", false)
 
- //   account = "HydroLink_V2-70037A73"
-   // password = "admin"
-
-
     LaunchedEffect(Unit) {
         if (savedRememberMe) {
             account = savedAccount ?: ""
@@ -149,7 +145,7 @@ fun LoginWidget(
                     accountError = "登录失败，请重试"
                     passwordError = "登录失败，请重试"
                 }
-                ToastUtils.showToast("登录失败: $errorMsg")
+                ToastUtils.showToast(errorMsg ?: "登录失败，请稍后重试")
             }
         }
     }
@@ -181,159 +177,6 @@ fun LoginWidget(
         )
     }
 }
-//
-//@Composable
-//fun LoginWidget(
-//    modifier: Modifier = Modifier,
-//    isLoading: Boolean = false,
-//    onLogin: (Login) -> Unit = {},
-//    onDeveloperModeClick: () -> Unit,
-//    onForgotPassword: () -> Unit = {},
-//    context: Context
-//) {
-//    var account by remember { mutableStateOf("1234567") }
-//    var password by remember { mutableStateOf("1234567") }
-//    var rememberMe by remember { mutableStateOf(false) }
-//    var passwordVisible by remember { mutableStateOf(false) }
-//    var accountError by remember { mutableStateOf("") }
-//    var passwordError by remember { mutableStateOf("") }
-//    var showAccountDropdown by remember { mutableStateOf(false) }
-//    val mainViewModel = LocalMainViewModel.current
-//
-//    // 获取 SharedPreferences
-//    val sharedPreferences = context.getSharedPreferences("user_preferences", Context.MODE_PRIVATE)
-//    val savedAccount = sharedPreferences.getString("account", "")
-//    val savedPassword = sharedPreferences.getString("password", "")
-//    val savedRememberMe = sharedPreferences.getBoolean("rememberMe", false)
-//
-//    LaunchedEffect(Unit) {
-//        if (savedRememberMe) {
-//            account = savedAccount ?: ""
-//            password = savedPassword ?: ""
-//            rememberMe = savedRememberMe
-//        }
-//    }
-//
-//    val testAccounts = listOf("12345678", "HydroLink_V3-7003BBF5", "TestAccount_2")
-//
-//    fun handleLogin() {
-//        mainViewModel.login(account, password, rememberMe) { loginSuccess, errorMsg ->
-//            if (loginSuccess) {
-//
-//                if (rememberMe) {
-//                    sharedPreferences.edit().apply {
-//                        putString("account", account)
-//                        putString("password", password)
-//                        putBoolean("rememberMe", true)
-//                        apply()
-//                    }
-//                }
-//                onLogin(Login(account, password, rememberMe))
-//                updateMqttConfig(username = account)
-//            } else {
-//                if (errorMsg != null) {
-//                    if (errorMsg.contains("账号")) {
-//                        accountError = errorMsg
-//                        passwordError = ""
-//                    } else if (errorMsg.contains("密码")) {
-//                        passwordError = errorMsg
-//                        accountError = ""
-//                    } else {
-//                        accountError = errorMsg
-//                        passwordError = errorMsg
-//                    }
-//                } else {
-//                    accountError = "登录失败，请重试"
-//                    passwordError = "登录失败，请重试"
-//                }
-//                ToastUtils.showToast("登录失败: $errorMsg")
-//            }
-//        }
-//    }
-//
-//    LoginBackground(modifier = modifier) {
-//        LoginCard {
-//            Column {
-//                 //账号选择下拉框
-//                Box(modifier = Modifier.fillMaxWidth()) {
-//                    OutlinedTextField(
-//                        value = account,
-//                        onValueChange = {
-//                            account = it
-//                            accountError = ""
-//                        },
-//                        label = { Text("账号") },
-//                        isError = accountError.isNotEmpty(),
-//                        readOnly = true, // 设置为只读，只能通过下拉选择
-//                        trailingIcon = {
-//                            IconButton(onClick = { showAccountDropdown = !showAccountDropdown }) {
-//                                Icon(
-//                                    imageVector = if (showAccountDropdown)
-//                                        Icons.Default.ArrowDropDown
-//                                    else
-//                                        Icons.Default.ArrowDropDown,
-//                                    contentDescription = "选择测试账号"
-//                                )
-//                            }
-//                        },
-//                        modifier = Modifier.fillMaxWidth()
-//                    )
-//
-//                    // 下拉菜单
-//                    DropdownMenu(
-//                        expanded = showAccountDropdown,
-//                        onDismissRequest = { showAccountDropdown = false }
-//                    ) {
-//                        testAccounts.forEach { testAccount ->
-//                            DropdownMenuItem(
-//                                text = { Text(testAccount) },
-//                                onClick = {
-//                                    account = testAccount
-//                                    showAccountDropdown = false
-//                                }
-//                            )
-//                        }
-//                    }
-//                }
-//
-//                if (accountError.isNotEmpty()) {
-//                    Text(
-//                        text = accountError,
-//                        color = MaterialTheme.colorScheme.error,
-//                        style = MaterialTheme.typography.bodySmall,
-//                        modifier = Modifier.padding(start = 16.dp, top = 4.dp)
-//                    )
-//                }
-//
-//                Spacer(modifier = Modifier.height(16.dp))
-//
-//                // 其他原有的 UI 组件
-//                LoginLayout(
-//                    account = account,
-//                    password = password,
-//                    accountError = accountError,
-//                    passwordError = passwordError,
-//                    passwordVisible = passwordVisible,
-//                    rememberMe = rememberMe,
-//                    isLoading = isLoading,
-//                    onAccountChange = {
-//                        account = it
-//                        accountError = ""
-//                    },
-//                    onPasswordChange = {
-//                        password = it
-//                        passwordError = ""
-//                    },
-//                    onPasswordVisibilityToggle = { passwordVisible = !passwordVisible },
-//                    onRememberMeChange = { rememberMe = it },
-//                    onLogin = { handleLogin() },
-//                    onForgotPassword = onForgotPassword,
-//                    onDeveloperModeClick = onDeveloperModeClick
-//                )
-//            }
-//        }
-//    }
-//}
 
 @Composable
 private fun LoginBackground(
@@ -633,7 +476,7 @@ fun LoginForm(
 
         TextButton(onClick = onDeveloperModeClick) {
             Text(
-                text = "Wifi模式",
+                text = "Wi-Fi 模式",
                 style = MaterialTheme.typography.bodyMedium,
                 color = LoginColors.OnSurfaceVariant
             )

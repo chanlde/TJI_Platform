@@ -1,18 +1,17 @@
 package com.tji.device.product.speaker.audio
 
 import android.content.Context
-import android.content.res.AssetManager
 import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.math.roundToInt
 
 class SpeakerLocalKokoroTtsClient(context: Context) {
     private val appContext = context.applicationContext
@@ -38,16 +37,11 @@ class SpeakerLocalKokoroTtsClient(context: Context) {
         val sourceSampleRate = audio.sampleRate
         require(samples.isNotEmpty()) { "本地 Kokoro 返回空音频" }
         val outputSampleRate = targetSampleRate ?: sourceSampleRate
-        val targetSamples = if (sourceSampleRate == outputSampleRate) {
-            samples
-        } else {
-            samples.resampleLinear(sourceSampleRate, outputSampleRate)
-        }
-        val pcm16 = targetSamples.toPcm16Le()
+        val pcm16 = SpeakerCoreAudioEngine.float32ToPcm16(samples, sourceSampleRate, outputSampleRate)
         Log.d(
             TAG,
             "local kokoro generated sourceRate=$sourceSampleRate targetRate=$outputSampleRate " +
-                "sourceSamples=${samples.size} targetSamples=${targetSamples.size} bytes=${pcm16.size}"
+                "sourceSamples=${samples.size} targetSamples=${pcm16.size / 2} bytes=${pcm16.size}"
         )
         SpeakerLocalTtsAudio(
             pcm16 = pcm16,
@@ -133,36 +127,6 @@ data class SpeakerLocalTtsAudio(
     val sourceSampleRate: Int,
     val sourceSamples: Int
 )
-
-private fun FloatArray.resampleLinear(sourceRate: Int, targetRate: Int): FloatArray {
-    require(sourceRate > 0 && targetRate > 0) { "采样率无效: $sourceRate -> $targetRate" }
-    if (isEmpty() || sourceRate == targetRate) return this
-    val outSize = (size.toLong() * targetRate / sourceRate).toInt().coerceAtLeast(1)
-    val output = FloatArray(outSize)
-    for (i in output.indices) {
-        val sourcePos = i.toDouble() * sourceRate.toDouble() / targetRate.toDouble()
-        val base = sourcePos.toInt().coerceIn(0, lastIndex)
-        val next = (base + 1).coerceAtMost(lastIndex)
-        val fraction = sourcePos - base
-        output[i] = (this[base] + (this[next] - this[base]) * fraction).toFloat()
-    }
-    return output
-}
-
-private fun FloatArray.toPcm16Le(): ByteArray {
-    val pcm = ByteArray(size * 2)
-    for (i in indices) {
-        val clamped = this[i].coerceIn(-1f, 1f)
-        val value = if (clamped < 0f) {
-            (clamped * SpeakerAudioConfig.Pcm.PCM_I16_NEGATIVE_SCALE).roundToInt()
-        } else {
-            (clamped * SpeakerAudioConfig.Pcm.PCM_I16_POSITIVE_SCALE).roundToInt()
-        }.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-        pcm[i * 2] = (value and 0xFF).toByte()
-        pcm[i * 2 + 1] = ((value shr 8) and 0xFF).toByte()
-    }
-    return pcm
-}
 
 private fun Throwable.rootMessage(): String {
     var current: Throwable = this

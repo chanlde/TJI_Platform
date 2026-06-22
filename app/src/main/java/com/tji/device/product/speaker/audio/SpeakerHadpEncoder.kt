@@ -80,17 +80,21 @@ object SpeakerHadpEncoder {
     }
 
     private fun encodeAdpcmFrames(pcm: ByteArray): List<ByteArray> {
-        val packetizer = SpeakerAdpcmPacketizer()
+        val packetizer = SpeakerAdpcmPacketizer(useNative = false)
         val payloads = ArrayList<ByteArray>()
-        var offset = 0
-        while (offset < pcm.size) {
-            val end = minOf(offset + SpeakerAdpcmPacketizer.PCM_FRAME_BYTES, pcm.size)
-            val frame = pcm.copyOfRange(offset, end).padPcmFrame()
-            val packet = packetizer.packetize(frame) ?: error("ADPCM 编码失败")
-            payloads += packet.copyOfRange(LEGACY_HEADER_BYTES, packet.size)
-            offset = end
+        try {
+            var offset = 0
+            while (offset < pcm.size) {
+                val end = minOf(offset + SpeakerAdpcmPacketizer.PCM_FRAME_BYTES, pcm.size)
+                val frame = pcm.copyOfRange(offset, end).padPcmFrame()
+                val packet = packetizer.packetize(frame) ?: error("ADPCM 编码失败")
+                payloads += packet.copyOfRange(LEGACY_HEADER_BYTES, packet.size)
+                offset = end
+            }
+            return payloads
+        } finally {
+            packetizer.close()
         }
-        return payloads
     }
 
     private fun encodePcm16Frames(pcm: ByteArray, pcmFrameBytes: Int): List<ByteArray> {

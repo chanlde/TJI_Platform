@@ -196,7 +196,7 @@ private fun TtsEngineSelector(
     onSelect: (SpeakerTtsEngine) -> Unit
 ) {
     Text(
-        text = "TTS 引擎",
+        text = "语音引擎",
         style = MaterialTheme.typography.bodyMedium,
         color = SpeakerMuted
     )
@@ -319,7 +319,7 @@ private fun TtsVoicePresetSelector(
     onSelect: (SpeakerTtsVoicePreset) -> Unit
 ) {
     Text(
-        text = "TTS 音色",
+        text = "语音音色",
         style = MaterialTheme.typography.bodyMedium,
         color = SpeakerMuted
     )

@@ -19,7 +19,11 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +42,7 @@ import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
 import com.tji.device.ui.theme.TjiError
 import com.tji.device.ui.theme.TjiOnline
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Composable
 internal fun SpeakerHeaderCard(
@@ -141,6 +146,10 @@ internal fun OutputVolumeCard(
     onStop: () -> Unit,
     onGetStatus: () -> Unit
 ) {
+    var sliderVolumeGain by remember { mutableFloatStateOf(volumeGain.coerceIn(0f, 1f)) }
+    LaunchedEffect(volumeGain) {
+        sliderVolumeGain = volumeGain.coerceIn(0f, 1f)
+    }
     SpeakerCard(title = "输出音量") {
         Row(
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -153,19 +162,24 @@ internal fun OutputVolumeCard(
                 color = SpeakerMuted
             )
             Text(
-                text = "${(volumeGain * 100f).toInt()}%",
+                text = "${(sliderVolumeGain * 100f).roundToInt()}%",
                 style = MaterialTheme.typography.titleMedium,
                 color = SpeakerFg,
                 fontWeight = FontWeight.Bold
             )
         }
         SpeakerSmoothSlider(
-            value = volumeGain,
-            onValueChange = { onVolumeGainChange(it.coerceIn(0f, 1f)) },
+            value = sliderVolumeGain,
+            onValueChange = {
+                val next = it.coerceIn(0f, 1f)
+                sliderVolumeGain = next
+                onVolumeGainChange(next)
+            },
             onValueChangeFinished = {
-                onVolumeCommitted((volumeGain * 100f).toInt())
+                onVolumeCommitted((sliderVolumeGain * 100f).roundToInt())
             },
             valueRange = 0f..1f,
+            enabled = enabled,
             modifier = Modifier.fillMaxWidth()
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {

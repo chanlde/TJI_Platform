@@ -63,6 +63,9 @@ internal fun ProductHome(
                 it.isOnline
         }
     }
+    val accountProductTypes = boundAccountDevices
+        .map { it.productType }
+        .distinct()
 
     LazyColumn(
         modifier = modifier
@@ -75,7 +78,7 @@ internal fun ProductHome(
             PlatformHomeHeader(
                 totalDeviceCount = boundAccountDevices.size,
                 onlineDeviceCount = onlineCount,
-                productCount = ProductCatalog.allTypes.size,
+                productCount = accountProductTypes.size,
                 onSettingsClick = onSettingsClick
             )
         }
@@ -90,7 +93,7 @@ internal fun ProductHome(
         }
         item {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val products = ProductCatalog.allTypes
+                val products = accountProductTypes
                 if (maxWidth >= 620.dp) {
                     Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
                         products.chunked(2).forEach { rowProducts ->
@@ -124,6 +127,41 @@ internal fun ProductHome(
                     }
                 }
             }
+        }
+        if (accountProductTypes.isEmpty()) {
+            item {
+                EmptyProductHomeCard()
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyProductHomeCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(PayloadDimens.CardRadius),
+        colors = CardDefaults.cardColors(containerColor = PayloadColors.Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, PayloadColors.Border)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(PayloadDimens.CardPadding),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "暂无绑定设备",
+                style = MaterialTheme.typography.titleMedium,
+                color = PlatformInk,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "当前账号下没有可显示的设备",
+                style = MaterialTheme.typography.bodyMedium,
+                color = PlatformMuted
+            )
         }
     }
 }

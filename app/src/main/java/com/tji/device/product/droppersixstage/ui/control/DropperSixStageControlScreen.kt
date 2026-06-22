@@ -385,7 +385,7 @@ internal fun SelectedStageControlCard(
                     modifier = Modifier.weight(1f)
                 )
                 TjiActionButton(
-                    text = if (isTesting) "停止测试" else "测试循环",
+                    text = if (isTesting) "停止循环" else "循环动作",
                     enabled = testEnabled,
                     color = if (isTesting) PayloadColors.Warning else PayloadColors.Primary,
                     onClick = onToggleTest,

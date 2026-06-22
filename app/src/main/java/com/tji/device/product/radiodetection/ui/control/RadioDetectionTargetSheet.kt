@@ -133,7 +133,7 @@ private fun EmptyCompactTargetRow(
     ) {
         StatusChip("目标 0", true, Blue)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("等待真实 RID 数据", color = TextPrimary, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text("等待真实远程识别数据", color = TextPrimary, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             Text("收到无人机和飞手位置后会自动刷新", color = TextMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         OutlineAction("回放", onClick = onReplayLatestRid)
@@ -155,7 +155,7 @@ private fun EmptyRealtimeTargetCard(onReplayLatestRid: () -> Unit) {
         verticalArrangement = Arrangement.Center
     ) {
         Text("暂无实时目标", color = TextMuted, style = MaterialTheme.typography.bodyMedium)
-        Text("真实 RID 数据到达后会显示在这里", color = TextMuted, style = MaterialTheme.typography.labelSmall)
+        Text("真实远程识别数据到达后会显示在这里", color = TextMuted, style = MaterialTheme.typography.labelSmall)
         OutlineAction("回放缓存", onClick = onReplayLatestRid)
     }
 }

@@ -5,7 +5,7 @@
 - 状态：active
 - 说明：当前 App 采用的光伏清洗 MQTT topic 和 payload 口径，协议变更需同步产品线文档。
 
-本文记录 App 当前采用的光伏清洗 MQTT 落地口径。Notion 中的光伏清洗文档用于参考字段和控制语义，但 topic 命名以本项目为准。
+本文记录 App 当前采用的光伏清洗 MQTT 落地口径。光伏清洗统一使用平台三主题，不保留旧版分 topic 命名。
 
 ## Topic 规则
 
@@ -17,20 +17,11 @@ SolarClean/devices/{deviceId}/status
 SolarClean/devices/{deviceId}/control
 ```
 
-历史固件文档里的四主题：
-
-```text
-solarclean/{deviceId}/cmd
-solarclean/{deviceId}/ack
-solarclean/{deviceId}/state
-solarclean/{deviceId}/event
-```
-
-已经在 Notion 中修订为平台三主题。App 与文档现在统一：**控制只发布到 `control`，状态/应答走 `status`，异步事件走 `lifecycle`**。
+App 与协议统一：**控制只发布到 `control`，状态/应答走 `status`，异步事件走 `lifecycle`**。
 
 ## Payload 语义
 
-字段语义参考 Notion 光伏清洗文档：
+字段语义：
 
 - `control` 发布命令：统一使用数字 `cmd` 命令码；`cmdName` 只作为调试字段，单片机不要依赖它做业务判断。
 - `status` 接收 `type=ack`：命令立即应答，包含 `msgId`、`ofType`、`ok`、`code`、`msg`、`data`。
@@ -68,7 +59,7 @@ App 当前下发命令码：
 }
 ```
 
-`MqttEventHandler` 会优先读取 `event_type`，如果没有则读取 `type`。这让 FireBucket 继续走旧 `event_type`，SolarClean 可以按 Notion 文档里的 `type` 字段表达 ack/state/event。
+`MqttEventHandler` 会优先读取 `event_type`，如果没有则读取 `type`。这让 FireBucket 继续走旧 `event_type`，SolarClean 可以用 `type` 字段表达 ack/state/event。
 
 ## 代码落点
 

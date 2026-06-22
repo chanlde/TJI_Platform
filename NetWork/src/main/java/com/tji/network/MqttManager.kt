@@ -250,7 +250,7 @@ class MqttManager private constructor(private val config: MQTTConfig) {
                 "MQTT not connected before publish: topic=$topic, queueWhenDisconnected=$queueWhenDisconnected, state=${client.config.state.name}"
             )
             if (!queueWhenDisconnected) {
-                val throwable = IllegalStateException("MQTT not connected, realtime publish dropped")
+                val throwable = IllegalStateException("MQTT 未连接，实时指令已取消发送")
                 Log.d(TAG, "MQTT realtime publish dropped: topic=$topic")
                 onError?.invoke(throwable)
                 connect()

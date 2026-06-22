@@ -28,6 +28,12 @@ app/src/main/java/com/tji/device/product/speaker/
 - 音量、音质、音色设置。
 - 客户界面隐藏底层包数和调试入口。
 
+## HADP 协议
+
+App 生成 `.hadp` 必须遵守 [hadp-file-format.md](hadp-file-format.md)。当前主路径通过 `SpeakerCoreAudioEngine` 调用 native `speaker-core`，Kotlin 实现只作为 fallback 和影子对照。
+
+后续 Qt 上位机接入时，应复用同一套 `native/speaker-core`，不要按 Kotlin 或 UI 代码重新实现一份 HADP 编码。
+
 ## 本地模型资源
 
 本地 Kokoro TTS 需要额外准备模型资源：

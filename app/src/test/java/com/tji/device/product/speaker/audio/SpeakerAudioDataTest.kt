@@ -8,6 +8,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.log10
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -38,6 +39,30 @@ class SpeakerAudioDataTest {
 
         assertEquals(0f, stats(output).rms, 0.000001f)
         assertEquals(0f, stats(output).peak, 0.000001f)
+    }
+
+    @Test
+    fun pushToTalkSpeechDetectorRejectsSilenceAndSteadyNoise() {
+        val silence = ByteArray(SpeakerAdpcmPacketizer.SAMPLE_RATE * 2)
+        val steadyNoise = syntheticVoicePcm(
+            amplitude = 0.006f,
+            sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        )
+
+        assertTrue(!SpeakerVoiceProcessor.hasPushToTalkSpeech(silence))
+        assertTrue(!SpeakerVoiceProcessor.hasPushToTalkSpeech(steadyNoise))
+    }
+
+    @Test
+    fun pushToTalkSpeechDetectorAcceptsSpeechOverNoise() {
+        val input = syntheticNoiseThenVoicePcm(
+            noiseAmplitude = 0.003f,
+            voiceAmplitude = 0.050f,
+            noiseSamples = SpeakerAdpcmPacketizer.SAMPLE_RATE / 2,
+            voiceSamples = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        )
+
+        assertTrue(SpeakerVoiceProcessor.hasPushToTalkSpeech(input))
     }
 
     @Test
@@ -164,6 +189,48 @@ class SpeakerAudioDataTest {
                 "processed rms=${outputStats.rms} peak=${outputStats.peak}"
         )
         assertTrue("live mode should not amplify low-level background into a blast", outputStats.rms <= inputStats.rms)
+    }
+
+    @Test
+    fun pushToTalkOfflineNoiseDiagnostics() {
+        val cases = listOf(
+            "silence" to ByteArray(SpeakerAdpcmPacketizer.SAMPLE_RATE * 2),
+            "low_hum" to syntheticHumPcm(
+                amplitude = 0.004f,
+                sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE
+            ),
+            "low_noise_with_click" to (
+                syntheticHumPcm(amplitude = 0.003f, sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE / 2) +
+                    syntheticClickPcm(amplitude = 0.16f, sampleCount = 80) +
+                    syntheticHumPcm(amplitude = 0.003f, sampleCount = SpeakerAdpcmPacketizer.SAMPLE_RATE / 2)
+                ),
+            "speech_over_noise" to syntheticNoiseThenVoicePcm(
+                noiseAmplitude = 0.003f,
+                voiceAmplitude = 0.050f,
+                noiseSamples = SpeakerAdpcmPacketizer.SAMPLE_RATE / 2,
+                voiceSamples = SpeakerAdpcmPacketizer.SAMPLE_RATE
+            )
+        )
+
+        cases.forEach { (name, raw) ->
+            val hasSpeech = SpeakerVoiceProcessor.hasPushToTalkSpeech(raw)
+            val processed = SpeakerVoiceProcessor.processPushToTalk(raw)
+            val roundTrip = adpcmRoundTrip(processed)
+            val rawMetrics = metrics(raw)
+            val processedMetrics = metrics(processed)
+            val roundTripMetrics = metrics(roundTrip)
+            val snr = snrDb(processed, roundTrip)
+
+            println(
+                "ptt diagnostic[$name] hasSpeech=$hasSpeech " +
+                    "raw=${rawMetrics.compact()} processed=${processedMetrics.compact()} " +
+                    "adpcm=${roundTripMetrics.compact()} snrDb=$snr"
+            )
+
+            assertTrue("processed audio must not clip for $name", processedMetrics.clippingRatio <= 0.0001f)
+            assertTrue("ADPCM roundtrip must not clip for $name", roundTripMetrics.clippingRatio <= 0.0001f)
+            assertTrue("frame boundary jumps should stay bounded for $name", processedMetrics.maxFrameJump <= 1.2f)
+        }
     }
 
     @Test
@@ -372,6 +439,132 @@ class SpeakerAudioDataTest {
         return pcm
     }
 
+    private fun syntheticHumPcm(amplitude: Float, sampleCount: Int): ByteArray {
+        val pcm = ByteArray(sampleCount * 2)
+        var seed = 0x13579BDF
+        for (i in 0 until sampleCount) {
+            seed = seed * 1103515245 + 12345
+            val random = (((seed ushr 16) and 0x7FFF) / 16_383.5f) - 1f
+            val t = i.toFloat() / SpeakerAdpcmPacketizer.SAMPLE_RATE
+            val hum = sin(2f * PI.toFloat() * 180f * t) * 0.65f +
+                sin(2f * PI.toFloat() * 900f * t) * 0.25f +
+                random * 0.10f
+            val value = (hum * amplitude).coerceIn(-1f, 1f).toPcm16()
+            pcm[i * 2] = (value and 0xFF).toByte()
+            pcm[i * 2 + 1] = ((value shr 8) and 0xFF).toByte()
+        }
+        return pcm
+    }
+
+    private fun syntheticClickPcm(amplitude: Float, sampleCount: Int): ByteArray {
+        val pcm = ByteArray(sampleCount * 2)
+        for (i in 0 until sampleCount) {
+            val envelope = 1f - (i.toFloat() / sampleCount.toFloat()).coerceIn(0f, 1f)
+            val value = (amplitude * envelope * if (i % 2 == 0) 1f else -1f).toPcm16()
+            pcm[i * 2] = (value and 0xFF).toByte()
+            pcm[i * 2 + 1] = ((value shr 8) and 0xFF).toByte()
+        }
+        return pcm
+    }
+
+    private fun adpcmRoundTrip(pcm: ByteArray): ByteArray {
+        val packetizer = SpeakerAdpcmPacketizer(useNative = false)
+        val output = ArrayList<ByteArray>()
+        var offset = 0
+        while (offset < pcm.size) {
+            val end = minOf(offset + SpeakerAdpcmPacketizer.PCM_FRAME_BYTES, pcm.size)
+            val frame = pcm.copyOfRange(offset, end)
+            val packet = packetizer.packetize(frame, isLastPacket = end >= pcm.size)
+            if (packet != null) {
+                output += SpeakerAdpcmDecoder.decodeBlock(
+                    block = packet,
+                    offset = 20,
+                    expectedSamples = frame.size / 2
+                )
+            }
+            offset = end
+        }
+        packetizer.close()
+        return output.flattenToByteArray()
+    }
+
+    private fun List<ByteArray>.flattenToByteArray(): ByteArray {
+        val output = ByteArray(sumOf { it.size })
+        var offset = 0
+        forEach {
+            it.copyInto(output, destinationOffset = offset)
+            offset += it.size
+        }
+        return output
+    }
+
+    private fun metrics(pcm: ByteArray): AudioDiagnostics {
+        var peak = 0f
+        var sumSq = 0f
+        var diffSq = 0f
+        var clipping = 0
+        var count = 0
+        var previous: Float? = null
+        var maxFrameJump = 0f
+        var frameEndSample: Float? = null
+        var offset = 0
+        while (offset + 1 < pcm.size) {
+            val sampleIndex = count
+            val sample = pcm.readPcm16(offset) / 32768f
+            val absSample = abs(sample)
+            peak = maxOf(peak, absSample)
+            sumSq += sample * sample
+            if (absSample >= 0.999f) clipping += 1
+            previous?.let {
+                val diff = sample - it
+                diffSq += diff * diff
+            }
+            if (sampleIndex % (SpeakerAdpcmPacketizer.PCM_FRAME_BYTES / 2) == 0) {
+                frameEndSample?.let {
+                    maxFrameJump = maxOf(maxFrameJump, abs(sample - it))
+                }
+            }
+            if ((sampleIndex + 1) % (SpeakerAdpcmPacketizer.PCM_FRAME_BYTES / 2) == 0) {
+                frameEndSample = sample
+            }
+            previous = sample
+            count += 1
+            offset += 2
+        }
+        val rms = if (count == 0) 0f else sqrt(sumSq / count)
+        val diffRms = if (count <= 1) 0f else sqrt(diffSq / (count - 1))
+        return AudioDiagnostics(
+            rms = rms,
+            peak = peak,
+            crest = if (rms > 0f) peak / rms else 0f,
+            highFrequencyProxy = if (rms > 0f) diffRms / rms else 0f,
+            clippingRatio = if (count == 0) 0f else clipping.toFloat() / count.toFloat(),
+            maxFrameJump = maxFrameJump
+        )
+    }
+
+    private fun snrDb(reference: ByteArray, candidate: ByteArray): Float {
+        val sampleCount = minOf(reference.size, candidate.size) / 2
+        if (sampleCount <= 0) return 0f
+        var signal = 0f
+        var noise = 0f
+        for (i in 0 until sampleCount) {
+            val a = reference.readPcm16(i * 2) / 32768f
+            val b = candidate.readPcm16(i * 2) / 32768f
+            signal += a * a
+            val error = a - b
+            noise += error * error
+        }
+        if (noise <= 0f) return 99f
+        return 10f * log10((signal / noise).coerceAtLeast(Float.MIN_VALUE))
+    }
+
+    private fun ByteArray.readPcm16(offset: Int): Int =
+        ((this[offset].toInt() and 0xFF) or (this[offset + 1].toInt() shl 8)).toShort().toInt()
+
+    private fun Float.toPcm16(): Int =
+        (coerceIn(-1f, 1f) * Short.MAX_VALUE).roundToInt()
+
     private fun stats(pcm: ByteArray): AudioStats {
         var peak = 0f
         var sumSq = 0f
@@ -397,4 +590,16 @@ class SpeakerAudioDataTest {
         val rms: Float,
         val peak: Float
     )
+
+    private data class AudioDiagnostics(
+        val rms: Float,
+        val peak: Float,
+        val crest: Float,
+        val highFrequencyProxy: Float,
+        val clippingRatio: Float,
+        val maxFrameJump: Float
+    ) {
+        fun compact(): String =
+            "rms=$rms peak=$peak crest=$crest hf=$highFrequencyProxy clip=$clippingRatio jump=$maxFrameJump"
+    }
 }

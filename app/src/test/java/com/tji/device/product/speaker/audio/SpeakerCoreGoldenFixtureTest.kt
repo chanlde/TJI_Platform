@@ -65,6 +65,7 @@ class SpeakerCoreGoldenFixtureTest {
             recordId = ADPCM_RECORD_ID,
             codec = SpeakerHadpCodec.ImaAdpcm
         )
+        val pttProcessed = SpeakerVoiceProcessor.processPushToTalk(pcm)
 
         val metadata = linkedMapOf(
             "adpcm.audioBytes" to adpcmHadp.audioBytes.toString(),
@@ -86,6 +87,7 @@ class SpeakerCoreGoldenFixtureTest {
             "pcm16.frameBytes" to pcm16Hadp.frameBytes.toString(),
             "pcm16.frameCount" to pcm16Hadp.frameCount.toString(),
             "pcm16.samplesPerFrame" to pcm16Hadp.samplesPerFrame.toString(),
+            "pttProcessed.bytes" to pttProcessed.size.toString(),
             "recordStoreLast.bytes" to recordStoreLast.size.toString()
         )
 
@@ -96,7 +98,8 @@ class SpeakerCoreGoldenFixtureTest {
                 LEGACY_FRAME1_FILE to legacyFrame1,
                 RECORD_STORE_LAST_FILE to recordStoreLast,
                 PCM16_HADP_FILE to pcm16Hadp.data,
-                ADPCM_HADP_FILE to adpcmHadp.data
+                ADPCM_HADP_FILE to adpcmHadp.data,
+                PTT_PROCESSED_FILE to pttProcessed
             ),
             metadata = metadata
         )
@@ -155,6 +158,7 @@ class SpeakerCoreGoldenFixtureTest {
         const val RECORD_STORE_LAST_FILE = "v2_record_store_last_packet.bin"
         const val PCM16_HADP_FILE = "hadp_pcm16_1s.hadp"
         const val ADPCM_HADP_FILE = "hadp_ima_adpcm_1s.hadp"
+        const val PTT_PROCESSED_FILE = "voice_1s_8k_ptt_processed.raw"
         const val METADATA_FILE = "metadata.properties"
     }
 }

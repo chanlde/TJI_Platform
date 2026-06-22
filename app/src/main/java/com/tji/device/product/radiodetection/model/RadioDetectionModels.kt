@@ -40,7 +40,7 @@ data class RadioCoordinate(
     val altitudeMeters: Double
 ) {
     fun compactText(): String =
-        "LAT %.6f / LNG %.6f".format(latitude, longitude)
+        "纬度 %.6f / 经度 %.6f".format(latitude, longitude)
 }
 
 data class RadioDetectionTarget(

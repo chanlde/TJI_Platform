@@ -8,6 +8,7 @@ import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerRecordEvent
 import com.tji.device.product.speaker.model.SpeakerStorageStatus
+import com.tji.device.product.speaker.core.SpeakerCommandJson
 import com.tji.device.product.speaker.mqtt.SpeakerMqttTopics
 import com.tji.network.MqttManager
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -17,8 +18,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import org.json.JSONObject
-import org.json.JSONArray
 
 interface SpeakerRepository {
     val devices: StateFlow<List<SpeakerDeviceState>>
@@ -104,6 +103,7 @@ class SpeakerRepo : SpeakerRepository {
                     existing = it.records,
                     incoming = records,
                     offset = offset,
+                    limit = limit,
                     hasMore = hasMore
                 )
                 it.copy(
@@ -130,19 +130,25 @@ class SpeakerRepo : SpeakerRepository {
     override suspend fun updateRecordEvent(serialNumber: String, event: SpeakerRecordEvent) {
         _devices.update { current ->
             current.updateOrCreate(serialNumber, { SpeakerDeviceState(serialNumber = serialNumber, lastRecordEvent = event) }) {
-                val records = if (event.ok && !event.recordId.isNullOrBlank()) {
+                val isDeleteGone = event.isDeleteAlreadyGone()
+                val records = if (!event.recordId.isNullOrBlank()) {
                     when (event.type) {
-                        "record_saved" -> it.records.upsertSavedRecord(event)
-                        "record_deleted" -> it.records.filterNot { record -> record.recordId == event.recordId }
+                        "record_saved" -> if (event.ok) it.records.upsertSavedRecord(event) else it.records
+                        "record_deleted" -> if (event.ok || isDeleteGone) {
+                            it.records.filterNot { record -> record.recordId == event.recordId }
+                        } else {
+                            it.records
+                        }
                         else -> it.records
                     }
                 } else {
                     it.records
                 }
-                val recordTotal = if (records.size > it.records.size) {
-                    maxOf(it.recordTotal, records.size)
-                } else {
-                    it.recordTotal
+                val recordTotal = when {
+                    event.type == "record_deleted" && (event.ok || isDeleteGone) && records.size < it.records.size ->
+                        (it.recordTotal - 1).coerceAtLeast(records.size)
+                    records.size > it.records.size -> maxOf(it.recordTotal, records.size)
+                    else -> it.recordTotal.coerceAtLeast(records.size)
                 }
                 it.copy(
                     records = records,
@@ -229,12 +235,23 @@ class SpeakerRepo : SpeakerRepository {
         existing: List<SpeakerRecord>,
         incoming: List<SpeakerRecord>,
         offset: Int,
+        limit: Int,
         hasMore: Boolean
     ): List<SpeakerRecord> {
         if (offset == 0 && !hasMore) return incoming.sortedForSpeakerRecordList()
-        val existingById = existing.associateBy { it.recordId }.toMutableMap()
-        incoming.forEach { existingById[it.recordId] = it }
-        return existingById.values.sortedForSpeakerRecordList()
+        val sortedExisting = existing.sortedForSpeakerRecordList()
+        val safeOffset = offset.coerceAtLeast(0)
+        val safeLimit = limit.coerceAtLeast(incoming.size).coerceAtLeast(1)
+        val prefix = sortedExisting.take(safeOffset)
+        val suffixStart = (safeOffset + safeLimit).coerceAtMost(sortedExisting.size)
+        val suffix = if (hasMore && suffixStart < sortedExisting.size) {
+            sortedExisting.drop(suffixStart)
+        } else {
+            emptyList()
+        }
+        return (prefix + incoming + suffix)
+            .distinctBy { it.recordId }
+            .sortedForSpeakerRecordList()
     }
 
     private fun Collection<SpeakerRecord>.sortedForSpeakerRecordList(): List<SpeakerRecord> =
@@ -245,6 +262,11 @@ class SpeakerRepo : SpeakerRepository {
 
     private fun extractTrailingTimestamp(recordId: String): Long =
         recordId.substringAfterLast('_').toLongOrNull() ?: 0L
+
+    private fun SpeakerRecordEvent.isDeleteAlreadyGone(): Boolean =
+        type == "record_deleted" &&
+            !recordId.isNullOrBlank() &&
+            (code == 404 || message.contains("not found", ignoreCase = true))
 }
 
 interface SpeakerControlRepository {
@@ -254,7 +276,7 @@ interface SpeakerControlRepository {
 class SpeakerControlRepo : SpeakerControlRepository {
     override suspend fun sendCommand(serialNumber: String, command: SpeakerCommand) {
         val topic = SpeakerMqttTopics.controlTopic(serialNumber)
-        val message = command.toJson(deviceId = serialNumber).toString()
+        val message = SpeakerCommandJson.encode(command = command, deviceId = serialNumber).toString()
         val messageBytes = message.toByteArray(Charsets.UTF_8).size
         val requestAt = System.currentTimeMillis()
         MqttManager.getInstance().publish(
@@ -274,147 +296,6 @@ class SpeakerControlRepo : SpeakerControlRepository {
             }
         )
     }
-
-    private fun SpeakerCommand.toJson(deviceId: String): JSONObject =
-        when (this) {
-            is SpeakerCommand.RecordDownload -> toRecordDownloadJson(deviceId)
-            else -> toStandardJson(deviceId)
-        }
-
-    private fun SpeakerCommand.RecordDownload.toRecordDownloadJson(deviceId: String): JSONObject =
-        JSONObject().apply {
-            put("v", 1)
-            put("deviceId", deviceId)
-            put("cmdId", msgId)
-            put("cmdName", commandName)
-            put("recordId", recordId)
-            put("storeTaskId", storeTaskId)
-            put("createdAt", createdAt)
-            put("name", name)
-            put("downloadUrl", downloadUrl)
-            put("fileSize", fileSize)
-            put("crc32", crc32)
-            put("durationMs", durationMs)
-            put("codec", codec)
-            put("sampleRate", sampleRate)
-            put("channels", channels)
-            put("packetMs", packetMs)
-            put("frameBytes", frameBytes)
-            put("samplesPerFrame", samplesPerFrame)
-            if (temporary) {
-                put("temporary", true)
-                put("visible", visible)
-                put("autoPlay", autoPlay)
-                playbackVolume?.let { put("playbackVolume", it.coerceIn(0, 100)) }
-            }
-            if (verifyOnly) {
-                put("verifyOnly", true)
-                verifyKind?.let { put("verifyKind", it) }
-                expectedAudioCrc32?.let { put("expectedAudioCrc32", it) }
-                put("expectedFirstSamples", JSONArray(expectedFirstSamples))
-            }
-        }
-
-    private fun SpeakerCommand.toStandardJson(deviceId: String): JSONObject =
-        JSONObject().apply {
-            put("v", 1)
-            put("deviceId", deviceId)
-            put("cmdId", msgId)
-            put("msgId", msgId)
-            put("ts", System.currentTimeMillis())
-            put("cmd", code)
-            put("cmdName", commandName)
-            when (this@toStandardJson) {
-                is SpeakerCommand.SpeakText -> put("params", JSONObject().apply {
-                    put("text", text)
-                    put("volume", volume.coerceIn(0, 100))
-                })
-                is SpeakerCommand.PrepareText -> put("params", JSONObject().apply {
-                    put("text", text)
-                })
-                is SpeakerCommand.PlayFile -> put("params", JSONObject().apply {
-                    put("file", file)
-                    put("volume", volume.coerceIn(0, 100))
-                })
-                is SpeakerCommand.SetVolume -> put("params", JSONObject().apply {
-                    put("volume", volume.coerceIn(0, 100))
-                })
-                is SpeakerCommand.SetAudioQuality -> {
-                    put("quality", quality)
-                    put("audioQuality", quality)
-                    put("sampleRate", sampleRate)
-                    put("packetMs", packetMs)
-                    put("frameBytes", frameBytes)
-                    put("samplesPerFrame", samplesPerFrame)
-                    put("params", JSONObject().apply {
-                        put("quality", quality)
-                        put("audioQuality", quality)
-                        put("sampleRate", sampleRate)
-                        put("packetMs", packetMs)
-                        put("frameBytes", frameBytes)
-                        put("samplesPerFrame", samplesPerFrame)
-                    })
-                }
-                is SpeakerCommand.SetServoAngle -> put("params", JSONObject().apply {
-                    put("angle", angle.coerceIn(-90, 90))
-                })
-                is SpeakerCommand.StartRecordStore -> {
-                    put("recordId", recordId)
-                    put("storeTaskId", storeTaskId)
-                    put("createdAt", createdAt)
-                    put("name", name)
-                    put("codec", "ima_adpcm")
-                    put("sampleRate", 8_000)
-                    put("channels", 1)
-                    put("packetMs", 40)
-                    expectedDurationMs?.let { put("expectedDurationMs", it) }
-                    expectedFileSize?.let { put("expectedFileSize", it) }
-                    put("params", JSONObject().apply {
-                        put("recordId", recordId)
-                        put("storeTaskId", storeTaskId)
-                        put("createdAt", createdAt)
-                        put("name", name)
-                        put("codec", "ima_adpcm")
-                        put("sampleRate", 8_000)
-                        put("channels", 1)
-                        put("packetMs", 40)
-                        expectedDurationMs?.let { put("expectedDurationMs", it) }
-                        expectedFileSize?.let { put("expectedFileSize", it) }
-                    })
-                }
-                is SpeakerCommand.PlayRecord -> {
-                    put("recordId", recordId)
-                    put("volume", volume.coerceIn(0, 100))
-                    put("params", JSONObject().apply {
-                        put("recordId", recordId)
-                        put("volume", volume.coerceIn(0, 100))
-                    })
-                }
-                is SpeakerCommand.ListRecords -> {
-                    put("offset", offset.coerceAtLeast(0))
-                    put("limit", limit.coerceIn(1, 4))
-                    put("order", order)
-                }
-                is SpeakerCommand.DeleteRecord -> {
-                    put("recordId", recordId)
-                    put("params", JSONObject().apply {
-                        put("recordId", recordId)
-                    })
-                }
-                is SpeakerCommand.UpdateRecord -> {
-                    put("recordId", recordId)
-                    put("name", name)
-                    put("params", JSONObject().apply {
-                        put("recordId", recordId)
-                        put("name", name)
-                    })
-                }
-                is SpeakerCommand.GetStorageStatus -> Unit
-                is SpeakerCommand.GetStatus,
-                is SpeakerCommand.RecordDownload,
-                is SpeakerCommand.Stop -> Unit
-            }
-        }
 
     private companion object {
         const val TAG = "SpeakerControlRepo"

@@ -18,8 +18,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerStorageStatus
+import com.tji.device.util.toUserVisibleDeviceMessage
 import com.tji.device.ui.theme.TjiError
 import com.tji.device.ui.theme.TjiOnline
 
@@ -61,7 +64,7 @@ internal fun StorageCapacityCard(
                 )
                 status?.takeIf { !it.ok }?.let {
                     Text(
-                        text = it.message.ifBlank { "容量查询失败" },
+                        text = it.message.toUserVisibleDeviceMessage("容量查询失败"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TjiError
                     )
@@ -141,6 +144,9 @@ private fun SpeakerMiniMetric(
 @Composable
 internal fun RecordEventText(state: SpeakerDeviceState?) {
     val event = state?.lastRecordEvent ?: return
+    val deleteAlreadyGone = event.type == "record_deleted" &&
+        !event.recordId.isNullOrBlank() &&
+        (event.code == 404 || event.message.contains("not found", ignoreCase = true))
     val label = when (event.type) {
         "record_saved" -> "保存完成"
         "record_failed" -> "保存失败"
@@ -149,9 +155,10 @@ internal fun RecordEventText(state: SpeakerDeviceState?) {
         "record_playback" -> "播放结果"
         else -> "设备反馈"
     }
+    val message = if (deleteAlreadyGone) "" else event.message.toUserVisibleDeviceMessage("")
     SpeakerStatusBadge(
-        text = listOf(label, event.message).filter { it.isNotBlank() }.joinToString(" ").ifBlank { label },
-        color = if (event.ok) TjiOnline else TjiError
+        text = listOf(label, message).filter { it.isNotBlank() }.joinToString(" ").ifBlank { label },
+        color = if (event.ok || deleteAlreadyGone) TjiOnline else TjiError
     )
 }
 
@@ -191,14 +198,16 @@ internal fun RecordList(
         color = SpeakerMuted
     )
     records.forEach { record ->
-        RecordRow(
-            record = record,
-            enabled = enabled,
-            currentVolume = currentVolume,
-            onPlay = onPlay,
-            onRename = onRename,
-            onDelete = onDelete
-        )
+        key(record.recordId) {
+            RecordRow(
+                record = record,
+                enabled = enabled,
+                currentVolume = currentVolume,
+                onPlay = onPlay,
+                onRename = onRename,
+                onDelete = onDelete
+            )
+        }
     }
     if (hasMore) {
         SpeakerActionButton(
@@ -320,13 +329,14 @@ internal fun TextButtonLike(
     color: Color,
     onClick: () -> Unit
 ) {
+    val latestOnClick by rememberUpdatedState(onClick)
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
         color = if (enabled) color else SpeakerMuted.copy(alpha = 0.42f),
         fontWeight = FontWeight.Bold,
         modifier = Modifier.pointerInput(enabled) {
-            detectTapGestures(onTap = { if (enabled) onClick() })
+            detectTapGestures(onTap = { if (enabled) latestOnClick() })
         }
     )
 }

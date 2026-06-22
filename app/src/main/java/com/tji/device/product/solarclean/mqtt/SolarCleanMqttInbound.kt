@@ -23,7 +23,7 @@ import org.json.JSONObject
  * 光伏清洗 MQTT 入站。
  *
  * Topic 采用平台统一布局：`SolarClean/devices/{deviceId}/lifecycle|status|control`。
- * Payload 字段参考 Notion 光伏清洗文档：ack/state/event 语义保留，但不采用文档中的 topic 名。
+ * Payload 使用 type 字段区分 ack/state/event，topic 固定走平台三主题。
  */
 class SolarCleanMqttInbound(
     private val repository: SolarCleanRepository

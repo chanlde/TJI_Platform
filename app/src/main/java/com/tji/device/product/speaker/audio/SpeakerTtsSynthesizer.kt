@@ -6,17 +6,15 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.Locale
 import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.math.roundToInt
 
 class SpeakerTtsSynthesizer(context: Context) {
     private val appContext = context.applicationContext
@@ -31,7 +29,7 @@ class SpeakerTtsSynthesizer(context: Context) {
         return try {
             synthesizeToWav(text, voicePreset, wavFile)
             withContext(Dispatchers.IO) {
-                wavFile.readPcm16Mono(targetSampleRate)
+                SpeakerCoreAudioEngine.decodeWavPcm16Mono(wavFile.readBytes(), targetSampleRate)
             }
         } finally {
             wavFile.delete()
@@ -212,117 +210,6 @@ private fun TextToSpeech.applyConfiguredVoice(locale: Locale, voicePreset: Speak
         voice = preferredVoice
     }
 }
-
-private fun File.readPcm16Mono(targetRate: Int): ByteArray {
-    require(targetRate > 0) { "TTS 目标采样率无效: $targetRate" }
-    val bytes = readBytes()
-    require(bytes.size >= 44) { "TTS 音频为空" }
-    require(String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF") { "TTS 音频格式不是 WAV" }
-    require(String(bytes, 8, 4, Charsets.US_ASCII) == "WAVE") { "TTS 音频格式不是 WAVE" }
-
-    var channels = 1
-    var sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE
-    var bitsPerSample = 16
-    var dataOffset = -1
-    var dataSize = 0
-    var offset = 12
-    while (offset + 8 <= bytes.size) {
-        val chunkId = String(bytes, offset, 4, Charsets.US_ASCII)
-        val chunkSize = bytes.readLe32(offset + 4)
-        val chunkData = offset + 8
-        if (chunkData + chunkSize > bytes.size) break
-        when (chunkId) {
-            "fmt " -> {
-                val audioFormat = bytes.readLe16(chunkData)
-                require(audioFormat == 1) { "TTS WAV 不是 PCM 格式" }
-                channels = bytes.readLe16(chunkData + 2).coerceAtLeast(1)
-                sampleRate = bytes.readLe32(chunkData + 4).coerceAtLeast(1)
-                bitsPerSample = bytes.readLe16(chunkData + 14)
-            }
-            "data" -> {
-                dataOffset = chunkData
-                dataSize = chunkSize
-                break
-            }
-        }
-        offset = chunkData + chunkSize + (chunkSize and 1)
-    }
-    require(dataOffset >= 0 && dataSize > 0) { "TTS WAV 没有音频数据" }
-    require(bitsPerSample == 16) { "TTS WAV 不是 16bit PCM" }
-
-    val inputFrames = dataSize / (channels * 2)
-    if (inputFrames <= 0) return ByteArray(0)
-    val samples = ShortArray(inputFrames)
-    var cursor = dataOffset
-    for (frame in 0 until inputFrames) {
-        var mixed = 0
-        repeat(channels) {
-            mixed += bytes.readLeI16(cursor)
-            cursor += 2
-        }
-        samples[frame] = (mixed / channels).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
-    }
-
-    val outFrames = (inputFrames.toLong() * targetRate / sampleRate)
-        .toInt()
-        .coerceAtLeast(1)
-    val output = ByteArray(outFrames * 2)
-    if (sampleRate == targetRate) {
-        for (i in 0 until outFrames) {
-            val value = samples[i.coerceAtMost(samples.lastIndex)].toInt()
-            output.writeLeI16(i * 2, value)
-        }
-    } else if (sampleRate > targetRate) {
-        val ratio = sampleRate.toFloat() / targetRate.toFloat()
-        var sourceIndex = 0
-        for (i in 0 until outFrames) {
-            val lowerBound = (sourceIndex + 1).coerceAtMost(samples.size)
-            val nextIndex = ((i + 1) * ratio).roundToInt().coerceIn(lowerBound, samples.size)
-            var sum = 0L
-            var count = 0
-            while (sourceIndex < nextIndex) {
-                sum += samples[sourceIndex].toLong()
-                sourceIndex += 1
-                count += 1
-            }
-            val value = if (count > 0) {
-                (sum / count).toInt()
-            } else {
-                samples[sourceIndex.coerceIn(0, samples.lastIndex)].toInt()
-            }
-            output.writeLeI16(i * 2, value)
-        }
-    } else {
-        for (i in 0 until outFrames) {
-            val sourcePos = i.toFloat() * sampleRate.toFloat() / targetRate.toFloat()
-            val base = sourcePos.toInt().coerceIn(0, samples.lastIndex)
-            val next = (base + 1).coerceAtMost(samples.lastIndex)
-            val frac = sourcePos - base
-            val value = (samples[base] + (samples[next] - samples[base]) * frac)
-                .roundToInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-            output.writeLeI16(i * 2, value)
-        }
-    }
-    return output
-}
-
-private fun ByteArray.writeLeI16(offset: Int, value: Int) {
-    val clamped = value.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-    this[offset] = (clamped and 0xFF).toByte()
-    this[offset + 1] = ((clamped shr 8) and 0xFF).toByte()
-}
-
-private fun ByteArray.readLe16(offset: Int): Int =
-    ByteBuffer.wrap(this, offset, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 0xFFFF
-
-private fun ByteArray.readLeI16(offset: Int): Int =
-    ByteBuffer.wrap(this, offset, 2).order(ByteOrder.LITTLE_ENDIAN).short.toInt()
-
-private fun ByteArray.readLe32(offset: Int): Int =
-    ByteBuffer.wrap(this, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int
-
-private const val BYTES_PER_PCM16_SAMPLE = 2
 
 data class SpeakerTtsVoiceInventory(
     val engineName: String,

@@ -819,10 +819,10 @@ private fun TargetDetailSheet(
                 MiniMetric("信号", target.signalLevel.label, Modifier.weight(1f))
             }
             HorizontalDivider(color = Border)
-            DetailLine("目标位置", "LAT %.6f / LNG %.6f".format(target.latitude, target.longitude))
-            DetailLine("飞手位置", "LAT %.6f / LNG %.6f".format(target.pilotLatitude, target.pilotLongitude))
+            DetailLine("目标位置", "纬度 %.6f / 经度 %.6f".format(target.latitude, target.longitude))
+            DetailLine("飞手位置", "纬度 %.6f / 经度 %.6f".format(target.pilotLatitude, target.pilotLongitude))
             DetailLine("目标配对", "${target.pilotName} · 距目标 ${target.pilotDistanceText}")
-            DetailLine("原始数据摘要", "Remote ID 持续广播，最近更新时间 ${target.lastSeenText}")
+            DetailLine("原始数据摘要", "远程识别持续广播，最近更新时间 ${target.lastSeenText}")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlineAction("地图定位", Modifier.weight(1f)) { onConfirm("地图已定位到 ${target.name}") }

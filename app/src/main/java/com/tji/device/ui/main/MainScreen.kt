@@ -16,10 +16,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductType
-import com.tji.device.data.model.TestDeviceFallbacks
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.firebucket.model.Switch
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
@@ -51,27 +49,11 @@ fun MainScreen(
     val selectedBoundDevice = remember(selectedLinkSerial, boundAccountDevices) {
         val sn = selectedLinkSerial ?: return@remember null
         boundAccountDevices.firstOrNull { it.serialNumber == sn }
-            ?: TestDeviceFallbacks.demoDeviceFor(activeProductPage ?: return@remember null).takeIf {
-                BuildConfig.TJI_ENABLE_LOCAL_DEMO_DEVICES && it?.serialNumber == sn
-            }
-            ?: radioDetectionDemoDevice().takeIf {
-                activeProductPage == ProductType.RadioDetection && it.serialNumber == sn
-            }
     }
     val selectedRuntimeDevice = remember(runtimeDevices, selectedBoundDevice) {
         val info = selectedBoundDevice ?: return@remember null
         runtimeDevices.firstOrNull {
             it.serialNumber == info.serialNumber && it.productType == info.productType
-        } ?: if (info.productType == ProductType.RadioDetection && info.serialNumber == radioDetectionDemoDevice().serialNumber) {
-            ProductDeviceRuntimeSnapshot(
-                serialNumber = info.serialNumber,
-                name = info.name,
-                productType = info.productType,
-                isOnline = true,
-                childCount = null
-            )
-        } else {
-            null
         }
     }
     val selectedFireBucketLink = remember(selectedRuntimeDevice, selectedBoundDevice) {

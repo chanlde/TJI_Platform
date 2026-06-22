@@ -77,7 +77,7 @@ internal fun TacticalMap(
         }
         if (state.currentCoordinate.hasUsableCoordinate()) {
             Text(
-                text = "LAT %.6f\nLNG %.6f\nALT %.1fm".format(
+                text = "纬度 %.6f\n经度 %.6f\n高度 %.1fm".format(
                     state.currentCoordinate.latitude,
                     state.currentCoordinate.longitude,
                     state.currentCoordinate.altitudeMeters
@@ -95,7 +95,7 @@ internal fun TacticalMap(
             )
         } else {
             Text(
-                text = "等待 RID 位置",
+                text = "等待远程识别位置",
                 color = Color.White,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,

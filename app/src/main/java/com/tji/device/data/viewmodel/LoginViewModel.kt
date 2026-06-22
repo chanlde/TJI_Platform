@@ -11,6 +11,8 @@ import com.tji.device.data.repository.AuthRepository
 import com.tji.device.data.vminterface.LoginViewModelInterface
 import com.tji.device.di.AppContainer.mqttSubscriptionManager
 import com.tji.device.service.mqtt.ProductMqttRouter
+import com.tji.device.util.toUserVisibleMessage
+import com.tji.device.util.toUserVisibleServerMessage
 import com.tji.device.util.userData
 import com.tji.network.data.ApiResponse
 import com.tji.network.DataReportManager
@@ -83,7 +85,7 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
                 if (response.code == 200) {
                     handleLoginSuccess(account = account, response = response, callback = callback)
                 } else {
-                    handleLoginFailure(message = response.message, callback = callback)
+                    handleLoginFailure(message = response.message.toUserVisibleServerMessage("登录失败，请检查账号或密码"), callback = callback)
                 }
             } catch (e: Exception) {
                 handleLoginException(e, callback)
@@ -211,9 +213,9 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
         Log.e(TAG, "登录或认证异常: ${exception.message}")
         _uiState.value = _uiState.value.copy(
             isLoading = false,
-            errorMessage = exception.message
+            errorMessage = exception.toUserVisibleMessage("登录失败，请稍后重试")
         )
-        callback(false, exception.message)
+        callback(false, exception.toUserVisibleMessage("登录失败，请稍后重试"))
     }
     /**
      * 执行用户登出

@@ -3,10 +3,8 @@ package com.tji.device.data.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductType
-import com.tji.device.data.model.TestDeviceFallbacks
 import com.tji.device.data.repository.AuthRepository
 import com.tji.device.data.viewmodel.LoginViewModel.Companion.TAG
 import com.tji.device.data.vminterface.LoginViewModelInterface
@@ -14,6 +12,7 @@ import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.product.runtime.ProductRuntimeRegistry
 import com.tji.device.service.MqttSubscriptionManager
 import com.tji.device.service.SubscriptionTarget
+import com.tji.device.util.toUserVisibleServerMessage
 import com.tji.device.util.userData
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -114,7 +113,7 @@ class MainViewModel(
                     }
                     callback(true, null)
                 } else {
-                    callback(false, response.message ?: "修改设备名失败")
+                    callback(false, response.message.toUserVisibleServerMessage("修改设备名失败"))
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "修改设备名异常: ${device.serialNumber}", e)
@@ -135,13 +134,6 @@ class MainViewModel(
                     .orEmpty()
                     .filter { it.productType == productType }
                     .map { it.serialNumber }
-                    .ifEmpty {
-                        if (BuildConfig.TJI_ENABLE_LOCAL_DEMO_DEVICES) {
-                            TestDeviceFallbacks.demoDeviceFor(productType)?.let { listOf(it.serialNumber) }.orEmpty()
-                        } else {
-                            emptyList()
-                        }
-                    }
 
                 val desiredTargets = targetSerials.map { SubscriptionTarget(it, productType) }
                 val currentTargets = mqttSubscriptionManager.getSubscribedTargets()
@@ -179,16 +171,6 @@ class MainViewModel(
                     .orEmpty()
                     .filter { it.productType == device.productType }
                     .map { SubscriptionTarget(it.serialNumber, it.productType) }
-                    .ifEmpty {
-                        when (device.productType) {
-                            ProductType.DropperSixStage,
-                            ProductType.RadioDetection,
-                            ProductType.Speaker,
-                            ProductType.BreakWindowProjectile,
-                            ProductType.Searchlight -> listOf(SubscriptionTarget(device.serialNumber, device.productType))
-                            else -> emptyList()
-                        }
-                    }
 
                 val currentTargets = mqttSubscriptionManager.getSubscribedTargets()
                 val targetsToUnsubscribe = currentTargets.filter { it !in desiredTargets }

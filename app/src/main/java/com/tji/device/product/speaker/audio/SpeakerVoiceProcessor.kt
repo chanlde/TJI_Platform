@@ -78,6 +78,13 @@ class SpeakerVoiceProcessor {
                 passes = SpeakerAudioConfig.Voice.TTS_LOW_PASS_PASSES,
                 sampleRate = sampleRate
             )
+        } else if (profile == VoiceProfile.PushToTalk) {
+            lowPass(
+                samples = samples,
+                cutoffHz = SpeakerAudioConfig.Voice.PTT_LOW_PASS_CUTOFF_HZ,
+                passes = SpeakerAudioConfig.Voice.PTT_LOW_PASS_PASSES,
+                sampleRate = sampleRate
+            )
         }
         pttNoiseGate?.applyTo(samples)
         if (profile == VoiceProfile.Live) {
@@ -334,6 +341,20 @@ class SpeakerVoiceProcessor {
                 .trimLongPostSpeechSilence()
             val processed = SpeakerVoiceProcessor().processPcm(guardedPcm, toneSettings = toneSettings)
             return processed.withPushToTalkTailSmoothing()
+        }
+
+        fun hasPushToTalkSpeech(pcm16le: ByteArray): Boolean {
+            val guardedPcm = pcm16le
+                .dropReleaseGuardTail(SpeakerAudioConfig.Voice.PTT_RELEASE_GUARD_MS)
+                .trimLongPostSpeechSilence()
+            val samples = guardedPcm.toFloatSamples()
+            if (samples.isEmpty()) return false
+            val processor = SpeakerVoiceProcessor()
+            processor.removeDc(samples)
+            processor.highPass(samples, stateful = false, sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE)
+            val gate = processor.createPushToTalkNoiseGate(samples) ?: return false
+            val activeWindows = samples.countActiveSpeechWindows(gate.openRms, gate.windowSamples)
+            return activeWindows >= SpeakerAudioConfig.Voice.PTT_MIN_SPEECH_WINDOWS
         }
 
         fun applyPlaybackTone(
@@ -700,4 +721,17 @@ private fun FloatArray.windowRms(start: Int, end: Int): Float {
         count += 1
     }
     return if (count == 0) 0f else sqrt(sumSq / count)
+}
+
+private fun FloatArray.countActiveSpeechWindows(openRms: Float, windowSamples: Int): Int {
+    var active = 0
+    var offset = 0
+    while (offset < size) {
+        val end = min(offset + windowSamples, size)
+        if (windowRms(offset, end) >= openRms) {
+            active += 1
+        }
+        offset = end
+    }
+    return active
 }

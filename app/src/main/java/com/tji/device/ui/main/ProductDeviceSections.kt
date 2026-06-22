@@ -29,11 +29,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
-import com.tji.device.data.model.TestDeviceFallbacks
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.ui.components.TjiOnlineStatus
 import com.tji.device.ui.components.productEmptyIllustrationRes
@@ -55,38 +53,18 @@ internal fun ProductDevicesScreen(
 ) {
     val scopedLive = runtimeDevices.filter { it.productType == productType }
     val accountDevices = knownLinks.filter { it.productType == productType }
-    val displayAccountDevices = when {
-        accountDevices.isNotEmpty() -> accountDevices
-        BuildConfig.TJI_ENABLE_LOCAL_DEMO_DEVICES -> listOfNotNull(TestDeviceFallbacks.demoDeviceFor(productType))
-        else -> emptyList()
-    }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = PayloadDimens.ScreenPadding, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
     ) {
         when {
-            displayAccountDevices.isNotEmpty() -> {
-                items(displayAccountDevices, key = { it.serialNumber }) { info ->
+            accountDevices.isNotEmpty() -> {
+                items(accountDevices, key = { it.serialNumber }) { info ->
                     val live = scopedLive.firstOrNull { it.serialNumber == info.serialNumber }
                     PlatformDeviceCard(
                         device = info,
                         live = live,
-                        onClick = { onLinkSelected(info) }
-                    )
-                }
-            }
-
-            scopedLive.isNotEmpty() -> {
-                items(scopedLive, key = { it.serialNumber }) { link ->
-                    val info = BoundAccountDevice(
-                        serialNumber = link.serialNumber,
-                        name = link.name,
-                        productType = link.productType
-                    )
-                    PlatformDeviceCard(
-                        device = info,
-                        live = link,
                         onClick = { onLinkSelected(info) }
                     )
                 }
@@ -102,14 +80,6 @@ internal fun ProductDevicesScreen(
             }
         }
     }
-}
-
-internal fun radioDetectionDemoDevice(): BoundAccountDevice {
-    return BoundAccountDevice(
-        serialNumber = "T1640618D",
-        name = "频谱检测仪",
-        productType = ProductType.RadioDetection
-    )
 }
 
 @Composable

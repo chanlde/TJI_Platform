@@ -39,6 +39,44 @@ std::vector<uint8_t> synthetic_voice_pcm(double amplitude, int sample_count, int
     return pcm;
 }
 
+void append_u16le(std::vector<uint8_t> &out, uint16_t value) {
+    out.push_back(static_cast<uint8_t>(value & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+}
+
+void append_u32le(std::vector<uint8_t> &out, uint32_t value) {
+    out.push_back(static_cast<uint8_t>(value & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    out.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+}
+
+void append_ascii(std::vector<uint8_t> &out, const char *text) {
+    out.insert(out.end(), text, text + 4);
+}
+
+std::vector<uint8_t> build_pcm16_wav(int sample_rate, int channels, const std::vector<int16_t> &interleaved_samples) {
+    const uint32_t data_bytes = static_cast<uint32_t>(interleaved_samples.size() * 2);
+    std::vector<uint8_t> out;
+    append_ascii(out, "RIFF");
+    append_u32le(out, 36 + data_bytes);
+    append_ascii(out, "WAVE");
+    append_ascii(out, "fmt ");
+    append_u32le(out, 16);
+    append_u16le(out, 1);
+    append_u16le(out, static_cast<uint16_t>(channels));
+    append_u32le(out, static_cast<uint32_t>(sample_rate));
+    append_u32le(out, static_cast<uint32_t>(sample_rate * channels * 2));
+    append_u16le(out, static_cast<uint16_t>(channels * 2));
+    append_u16le(out, 16);
+    append_ascii(out, "data");
+    append_u32le(out, data_bytes);
+    for (int16_t sample : interleaved_samples) {
+        append_u16le(out, static_cast<uint16_t>(sample));
+    }
+    return out;
+}
+
 void require_true(bool value, const std::string &message) {
     if (!value) throw std::runtime_error(message);
 }
@@ -369,6 +407,279 @@ void test_kotlin_golden_hadp_files() {
     require_true(std::string(adpcm_metadata.audio_crc32) == metadata_value(metadata, "adpcm.audioCrc32"), "golden adpcm audio crc");
 }
 
+void test_voice_processing_ptt_boosts_quiet_audio() {
+    auto pcm = synthetic_voice_pcm(0.004, 1600);
+    OwnedBuffer processed;
+    require_eq(
+        tji_sc_process_voice(
+            pcm.data(),
+            pcm.size(),
+            TJI_SC_VOICE_PROFILE_PUSH_TO_TALK,
+            8000,
+            0.0f,
+            0.0f,
+            &processed.buffer
+        ),
+        TJI_SC_OK,
+        "process ptt voice"
+    );
+    require_true(processed.buffer.size > pcm.size(), "ptt processing appends settle silence");
+    require_true(processed.buffer.size % 2 == 0, "ptt output remains pcm16 aligned");
+}
+
+void test_kotlin_golden_ptt_voice_processing() {
+    const auto pcm = read_binary("../../app/src/test/resources/speaker-core-golden/voice_1s_8k_pcm16le.raw");
+    const auto expected = read_binary("../../app/src/test/resources/speaker-core-golden/voice_1s_8k_ptt_processed.raw");
+    OwnedBuffer processed;
+    require_eq(
+        tji_sc_process_voice(
+            pcm.data(),
+            pcm.size(),
+            TJI_SC_VOICE_PROFILE_PUSH_TO_TALK,
+            8000,
+            0.0f,
+            0.0f,
+            &processed.buffer
+        ),
+        TJI_SC_OK,
+        "golden ptt voice processing"
+    );
+    require_bytes_eq(processed.buffer.data, processed.buffer.size, expected, "golden ptt processed pcm");
+}
+
+void test_stateful_live_voice_processor() {
+    auto pcm = synthetic_voice_pcm(0.03, 320);
+    TjiScVoiceProcessor *processor = nullptr;
+    require_eq(tji_sc_voice_processor_create(&processor), TJI_SC_OK, "create voice processor");
+    OwnedBuffer processed;
+    require_eq(
+        tji_sc_voice_processor_process_frame(
+            processor,
+            pcm.data(),
+            pcm.size(),
+            0.0f,
+            0.0f,
+            &processed.buffer
+        ),
+        TJI_SC_OK,
+        "process live frame"
+    );
+    tji_sc_voice_processor_free(processor);
+    require_eq(processed.buffer.size, pcm.size(), "live frame size remains unchanged");
+}
+
+void test_command_json_standard_envelope() {
+    OwnedBuffer json;
+    require_eq(
+        tji_sc_build_standard_command_json(
+            "T12345678",
+            "speaker-volume-1",
+            105,
+            "SET_VOLUME",
+            123456789,
+            "{\"volume\":35}",
+            "",
+            &json.buffer
+        ),
+        TJI_SC_OK,
+        "build standard command json"
+    );
+    const std::string actual(reinterpret_cast<char *>(json.buffer.data), json.buffer.size);
+    const std::string expected =
+        "{\"v\":1,\"deviceId\":\"T12345678\",\"cmdId\":\"speaker-volume-1\","
+        "\"msgId\":\"speaker-volume-1\",\"ts\":123456789,\"cmd\":105,"
+        "\"cmdName\":\"SET_VOLUME\",\"params\":{\"volume\":35}}";
+    require_true(actual == expected, "standard command json matches");
+}
+
+void test_command_json_record_download() {
+    OwnedBuffer json;
+    require_eq(
+        tji_sc_build_record_download_command_json(
+            "T12345678",
+            "speaker-record-download-1",
+            "REC_1",
+            "STORE_1",
+            "2026-06-21T09:00:00+08:00",
+            "录音 09:00",
+            "http://example.com/REC_1.hadp",
+            4228,
+            "0x1234ABCD",
+            1000,
+            "ima_adpcm",
+            8000,
+            1,
+            40,
+            164,
+            320,
+            1,
+            "hadp",
+            "0x00000001",
+            "[1,2,3]",
+            1,
+            0,
+            1,
+            88,
+            1,
+            &json.buffer
+        ),
+        TJI_SC_OK,
+        "build record download command json"
+    );
+    const std::string actual(reinterpret_cast<char *>(json.buffer.data), json.buffer.size);
+    require_true(actual.find("\"cmdName\":\"RECORD_DOWNLOAD\"") != std::string::npos, "record download command name");
+    require_true(actual.find("\"name\":\"录音 09:00\"") != std::string::npos, "record download utf8 name");
+    require_true(actual.find("\"temporary\":true") != std::string::npos, "record download temporary");
+    require_true(actual.find("\"visible\":false") != std::string::npos, "record download visible");
+    require_true(actual.find("\"playbackVolume\":88") != std::string::npos, "record download playback volume");
+    require_true(actual.find("\"expectedFirstSamples\":[1,2,3]") != std::string::npos, "record download first samples");
+}
+
+void test_resample_pcm16_linear_length() {
+    auto pcm = synthetic_voice_pcm(0.08, 8000, 8000);
+    OwnedBuffer resampled;
+    require_eq(
+        tji_sc_resample_pcm16(pcm.data(), pcm.size(), 8000, 16000, &resampled.buffer),
+        TJI_SC_OK,
+        "resample pcm16"
+    );
+    require_eq(resampled.buffer.size, pcm.size() * 2, "resampled 8k to 16k size");
+    require_true(resampled.buffer.size % 2 == 0, "resampled pcm16 aligned");
+}
+
+void test_generate_tone_pcm16() {
+    OwnedBuffer tone;
+    require_eq(
+        tji_sc_generate_tone_pcm16(1000, 640, 8000, 40, 12, 0.35f, &tone.buffer),
+        TJI_SC_OK,
+        "generate tone"
+    );
+    require_eq(tone.buffer.size, 8000 * 640 / 1000 * 2, "tone pcm size");
+    require_eq(static_cast<size_t>(tone.buffer.data[0]), static_cast<size_t>(0), "tone starts at zero low byte");
+    require_eq(static_cast<size_t>(tone.buffer.data[1]), static_cast<size_t>(0), "tone starts at zero high byte");
+}
+
+void test_prepend_silence_and_pad_frame() {
+    auto pcm = synthetic_voice_pcm(0.08, 320, 8000);
+    OwnedBuffer with_silence;
+    require_eq(
+        tji_sc_prepend_silence_pcm16(pcm.data(), pcm.size(), 120, 8000, &with_silence.buffer),
+        TJI_SC_OK,
+        "prepend silence"
+    );
+    require_eq(with_silence.buffer.size, pcm.size() + 8000 * 120 / 1000 * 2, "silence size");
+    require_true(std::memcmp(with_silence.buffer.data + with_silence.buffer.size - pcm.size(), pcm.data(), pcm.size()) == 0, "silence keeps pcm");
+
+    OwnedBuffer padded;
+    require_eq(
+        tji_sc_pad_pcm16_to_frame(pcm.data(), pcm.size() - 20, 640, &padded.buffer),
+        TJI_SC_OK,
+        "pad frame"
+    );
+    require_eq(padded.buffer.size, 640, "padded frame size");
+}
+
+void test_decode_wav_pcm16_mono() {
+    const auto wav = build_pcm16_wav(16000, 2, {
+        1000, 3000,
+        -1000, -3000,
+        2000, 4000,
+        -2000, -4000
+    });
+    OwnedBuffer pcm;
+    require_eq(
+        tji_sc_decode_wav_pcm16_mono(wav.data(), wav.size(), 8000, &pcm.buffer),
+        TJI_SC_OK,
+        "decode wav pcm16 mono"
+    );
+    require_eq(pcm.buffer.size, 4, "decoded wav downsampled size");
+    require_eq(u16le(pcm.buffer.data), static_cast<uint16_t>(0), "decoded wav first averaged sample");
+}
+
+void test_float32_to_pcm16() {
+    const float samples[] = {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f};
+    OwnedBuffer pcm;
+    require_eq(
+        tji_sc_float32_to_pcm16(samples, 5, 8000, 8000, &pcm.buffer),
+        TJI_SC_OK,
+        "float32 to pcm16"
+    );
+    require_eq(pcm.buffer.size, 10, "float32 pcm size");
+    require_eq(u16le(pcm.buffer.data), static_cast<uint16_t>(0x8000), "float32 negative clamp");
+    require_eq(u16le(pcm.buffer.data + 8), static_cast<uint16_t>(0x7FFF), "float32 positive clamp");
+}
+
+void test_mqtt_state_parser() {
+    OwnedBuffer json;
+    require_eq(
+        tji_sc_parse_mqtt_state_json(
+            "SPK-001",
+            R"({"name":"喊话器 01","playing":true,"currentFile":"welcome.hadp","volume":124,"servoAngle":-15,"network":"wifi","lastError":"低电量","ts":1710000000000})",
+            1,
+            &json.buffer
+        ),
+        TJI_SC_OK,
+        "parse mqtt state"
+    );
+    const std::string actual(reinterpret_cast<char *>(json.buffer.data), json.buffer.size);
+    require_true(actual.find("\"serialNumber\":\"SPK-001\"") != std::string::npos, "state serial");
+    require_true(actual.find("\"volume\":100") != std::string::npos, "state volume clamp");
+    require_true(actual.find("\"servoAngle\":-15") != std::string::npos, "state servo");
+    require_true(actual.find("\"timestamp\":1710000000000") != std::string::npos, "state timestamp");
+}
+
+void test_mqtt_state_parser_decodes_unicode_escapes() {
+    OwnedBuffer json;
+    require_eq(
+        tji_sc_parse_mqtt_state_json(
+            "SPK-002",
+            R"({"name":"\u5f55\u97f3","network":"wifi-\ud83d\udce1","ts":1710000000001})",
+            1,
+            &json.buffer
+        ),
+        TJI_SC_OK,
+        "parse mqtt state unicode escapes"
+    );
+    const std::string actual(reinterpret_cast<char *>(json.buffer.data), json.buffer.size);
+    require_true(actual.find("\"name\":\"录音\"") != std::string::npos, "state unicode name");
+    require_true(actual.find("\"network\":\"wifi-📡\"") != std::string::npos, "state unicode surrogate pair");
+}
+
+void test_mqtt_record_list_parser() {
+    OwnedBuffer json;
+    require_eq(
+        tji_sc_parse_mqtt_record_list_json(
+            R"({"items":[{"recordId":"rec-1","name":"起飞提醒","fileSize":1200,"durationMs":2000},{"recordId":"","fileSize":1},{"recordId":"rec-2","fileSize":2400,"durationMs":4000}],"offset":-2,"limit":99,"hasMore":true,"ts":1710000000100})",
+            &json.buffer
+        ),
+        TJI_SC_OK,
+        "parse mqtt record list"
+    );
+    const std::string actual(reinterpret_cast<char *>(json.buffer.data), json.buffer.size);
+    require_true(actual.find("\"recordId\":\"rec-1\"") != std::string::npos, "record list first");
+    require_true(actual.find("\"name\":\"rec-2\"") != std::string::npos, "record list fallback name");
+    require_true(actual.find("\"limit\":8") != std::string::npos, "record list limit clamp");
+    require_true(actual.find("\"total\":2") != std::string::npos, "record list total fallback");
+}
+
+void test_mqtt_record_event_parser() {
+    OwnedBuffer json;
+    require_eq(
+        tji_sc_parse_mqtt_record_event_json(
+            "record_failed",
+            R"({"recordId":"rec-1","code":42,"msg":"存储空间不足","firstSamples":[1,2,3],"ts":1710000000400})",
+            &json.buffer
+        ),
+        TJI_SC_OK,
+        "parse mqtt record event"
+    );
+    const std::string actual(reinterpret_cast<char *>(json.buffer.data), json.buffer.size);
+    require_true(actual.find("\"type\":\"record_failed\"") != std::string::npos, "record event type");
+    require_true(actual.find("\"ok\":false") != std::string::npos, "record event failed default");
+    require_true(actual.find("\"message\":\"存储空间不足\"") != std::string::npos, "record event message");
+    require_true(actual.find("\"firstSamples\":[1,2,3]") != std::string::npos, "record event first samples");
+}
+
 } // namespace
 
 int main() {
@@ -380,6 +691,20 @@ int main() {
         test_kotlin_golden_legacy_and_v2_packets();
         test_stateful_v2_packetizer_matches_hadp_adpcm_frames();
         test_kotlin_golden_hadp_files();
+        test_voice_processing_ptt_boosts_quiet_audio();
+        test_kotlin_golden_ptt_voice_processing();
+        test_stateful_live_voice_processor();
+        test_command_json_standard_envelope();
+        test_command_json_record_download();
+        test_resample_pcm16_linear_length();
+        test_generate_tone_pcm16();
+        test_prepend_silence_and_pad_frame();
+        test_decode_wav_pcm16_mono();
+        test_float32_to_pcm16();
+        test_mqtt_state_parser();
+        test_mqtt_state_parser_decodes_unicode_escapes();
+        test_mqtt_record_list_parser();
+        test_mqtt_record_event_parser();
     } catch (const std::exception &error) {
         std::cerr << "speaker-core test failed: " << error.what() << '\n';
         return 1;

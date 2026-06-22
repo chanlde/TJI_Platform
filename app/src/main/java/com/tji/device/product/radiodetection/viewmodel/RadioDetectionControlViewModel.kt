@@ -12,6 +12,7 @@ import com.tji.device.product.radiodetection.repository.RadioDetectionControlRep
 import com.tji.device.product.radiodetection.repository.RadioDetectionDeviceState
 import com.tji.device.product.radiodetection.repository.RadioDetectionRepository
 import com.tji.device.product.radiodetection.replay.RadioDetectionReplayStore
+import com.tji.device.util.toUserVisibleMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -75,7 +76,7 @@ class RadioDetectionControlViewModel(
             onError = { throwable ->
                 _rgbFeedback.value = RadioRgbCommandFeedback(
                     msgId = msgId,
-                    text = throwable.message ?: "灯语指令发送失败",
+                    text = throwable.toUserVisibleMessage("灯语指令发送失败"),
                     pending = false,
                     success = false
                 )

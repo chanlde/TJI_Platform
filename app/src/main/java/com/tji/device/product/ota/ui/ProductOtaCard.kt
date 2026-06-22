@@ -66,11 +66,9 @@ fun ProductOtaCard(
     otaCheckState: ProductOtaCheckState,
     commandFeedback: ProductOtaCommandFeedback,
     enabled: Boolean,
-    showOtaTestEntry: Boolean = false,
     onRefreshDeviceInfo: () -> Unit,
     onCheckUpdate: () -> Unit,
-    onStartOta: () -> Unit,
-    onStartOtaTest: () -> Unit = onStartOta
+    onStartOta: () -> Unit
 ) {
     val latest = otaCheckState.latest
     val deviceReachedLatest = isDeviceAtLatest(deviceInfo, latest)
@@ -134,27 +132,6 @@ fun ProductOtaCard(
                 enabled = enabled && !isOtaBusy && hasUpdate && latestStartable,
                 color = TjiWarning,
                 onClick = onStartOta
-            )
-            if (showOtaTestEntry) {
-                TjiActionButton(
-                    text = if (latestStartable) "下载测试" else "获取测试包",
-                    enabled = enabled && !isOtaBusy && !otaCheckState.isChecking,
-                    color = PayloadColors.Primary,
-                    onClick = {
-                        if (latestStartable) {
-                            onStartOtaTest()
-                        } else {
-                            onCheckUpdate()
-                        }
-                    }
-                )
-            }
-        }
-        if (showOtaTestEntry) {
-            Text(
-                text = "下载测试只验证 OTA 下载与校验，不替换设备版本。",
-                fontSize = 12.sp,
-                color = PayloadColors.TextMuted
             )
         }
     }

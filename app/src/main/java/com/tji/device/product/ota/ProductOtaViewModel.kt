@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
+import com.tji.device.util.toUserVisibleMessage
 import com.tji.network.utils.NetWorkUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -48,7 +49,7 @@ class ProductOtaViewModel(
                 _commandFeedback.value = ProductOtaCommandFeedback(
                     msgId = msgId,
                     status = ProductOtaCommandFeedbackStatus.Failed,
-                    text = throwable.message ?: "刷新指令发送失败"
+                    text = throwable.toUserVisibleMessage("刷新指令发送失败")
                 )
             }
         )
@@ -78,7 +79,9 @@ class ProductOtaViewModel(
                     )
                 },
                 onFailure = { throwable ->
-                    _otaCheckState.value = ProductOtaCheckState(errorMessage = throwable.message)
+                    _otaCheckState.value = ProductOtaCheckState(
+                        errorMessage = throwable.toUserVisibleMessage("OTA 版本查询失败")
+                    )
                 }
             )
         }
@@ -87,8 +90,7 @@ class ProductOtaViewModel(
     fun startOta(
         serialNumber: String,
         productType: ProductType,
-        deviceInfo: ProductDeviceInfo?,
-        isDownloadTest: Boolean = false
+        deviceInfo: ProductDeviceInfo?
     ) {
         val latest = _otaCheckState.value.latest ?: return
         val targetVersion = latest.latestVersion ?: return
@@ -105,7 +107,7 @@ class ProductOtaViewModel(
         _commandFeedback.value = ProductOtaCommandFeedback(
             msgId = msgId,
             status = ProductOtaCommandFeedbackStatus.Pending,
-            text = if (isDownloadTest) "测试指令发送中" else "升级指令发送中"
+            text = "升级指令发送中"
         )
         commandPublisher.startOta(
             serialNumber = serialNumber,
@@ -124,18 +126,14 @@ class ProductOtaViewModel(
                 _commandFeedback.value = ProductOtaCommandFeedback(
                     msgId = msgId,
                     status = ProductOtaCommandFeedbackStatus.Success,
-                    text = if (isDownloadTest) "测试指令已发送" else "升级指令已发送"
+                    text = "升级指令已发送"
                 )
             },
             onError = { throwable ->
                 _commandFeedback.value = ProductOtaCommandFeedback(
                     msgId = msgId,
                     status = ProductOtaCommandFeedbackStatus.Failed,
-                    text = throwable.message ?: if (isDownloadTest) {
-                        "测试指令发送失败"
-                    } else {
-                        "升级指令发送失败"
-                    }
+                    text = throwable.toUserVisibleMessage("升级指令发送失败")
                 )
             }
         )

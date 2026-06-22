@@ -200,7 +200,7 @@ private fun ListEntryCard(entry: RadioListEntry) {
     ) {
         Text("添加原因：${entry.reason}。添加人：${entry.createdBy}。添加时间：${entry.createdAt}", color = TextMuted, style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlineAction("复制 SN") {}
+            OutlineAction("复制序列号") {}
             OutlineAction("删除") {}
         }
     }
@@ -255,7 +255,7 @@ private fun EmptyStateCard(title: String, subtitle: String) {
 
 @Composable
 private fun TrackMapCard(target: RadioDetectionTarget) {
-    InfoCard("轨迹详情地图", "待回放 · 0%", Blue, "当前点：LAT 37.865112 / LNG 116.295442 / ALT 120m") {
+    InfoCard("轨迹详情地图", "待回放 · 0%", Blue, "当前点：纬度 37.865112 / 经度 116.295442 / 高度 120m") {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -338,7 +338,7 @@ private fun SearchBox() {
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.CenterStart
     ) {
-        Text("搜索 SN / 厂商 / 添加原因", color = TextMuted, style = MaterialTheme.typography.bodyMedium)
+        Text("搜索序列号 / 厂商 / 添加原因", color = TextMuted, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -349,7 +349,7 @@ private fun AddListCard() {
             StatusChip("黑名单", true, Blue)
             StatusChip("白名单", false, TextMuted)
         }
-        FormLine("请输入 RID / SN")
+        FormLine("请输入远程识别码 / 序列号")
         FormLine("请输入厂商")
         FormLine("请输入添加原因")
         SolidAction("保存名单", Modifier.fillMaxWidth().height(44.dp)) {}

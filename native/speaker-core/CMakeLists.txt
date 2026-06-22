@@ -10,9 +10,13 @@ option(TJI_SPEAKER_CORE_BUILD_TOOLS "Build speaker-core command line tools" ${PR
 
 add_library(tji_speaker_core
     src/adpcm_codec.cpp
+    src/audio_tools.cpp
+    src/command_json.cpp
     src/hadp_codec.cpp
+    src/mqtt_json.cpp
     src/pcm_utils.cpp
     src/udp_packetizer.cpp
+    src/voice_processor.cpp
     src/speaker_core_c_api.cpp
 )
 

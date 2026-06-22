@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
@@ -126,7 +125,7 @@ private fun UnsupportedProductControlScreen(
         item {
             TjiSectionCard(title = ProductCatalog.definitionOf(device.productType).displayName) {
                 CommonInfoLine(label = "设备名称", value = device.name)
-                CommonInfoLine(label = "设备 SN", value = device.serialNumber)
+                CommonInfoLine(label = "设备序列号", value = device.serialNumber)
                 CommonInfoLine(label = "控制状态", value = "等待设备协议接入")
             }
         }
@@ -176,7 +175,7 @@ private fun CommonDeviceSettingsScreen(
                     value = device.name,
                     onRenameDevice = onRenameDevice
                 )
-                CommonInfoLine(label = "设备 SN", value = device.serialNumber)
+                CommonInfoLine(label = "设备序列号", value = device.serialNumber)
                 CommonInfoLine(
                     label = "产品类型",
                     value = ProductCatalog.definitionOf(device.productType).displayName
@@ -194,7 +193,6 @@ private fun CommonDeviceSettingsScreen(
                 otaCheckState = otaCheckState,
                 commandFeedback = commandFeedback,
                 enabled = true,
-                showOtaTestEntry = BuildConfig.TJI_ENABLE_OTA_TEST_ENTRY,
                 onRefreshDeviceInfo = {
                     otaViewModel.requestDeviceInfo(device.serialNumber, device.productType)
                 },
@@ -203,14 +201,6 @@ private fun CommonDeviceSettingsScreen(
                 },
                 onStartOta = {
                     otaViewModel.startOta(device.serialNumber, device.productType, deviceInfo)
-                },
-                onStartOtaTest = {
-                    otaViewModel.startOta(
-                        serialNumber = device.serialNumber,
-                        productType = device.productType,
-                        deviceInfo = deviceInfo,
-                        isDownloadTest = true
-                    )
                 }
             )
         }

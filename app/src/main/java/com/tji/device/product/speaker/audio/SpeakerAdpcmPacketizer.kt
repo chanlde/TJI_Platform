@@ -1,18 +1,25 @@
 package com.tji.device.product.speaker.audio
 
+import com.tji.device.product.speaker.core.SpeakerCoreNative
+import java.io.Closeable
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.text.Charsets
 
 class SpeakerAdpcmPacketizer(
-    private val streamContext: SpeakerUdpStreamContext? = null
-) {
+    private val streamContext: SpeakerUdpStreamContext? = null,
+    private val useNative: Boolean = true
+) : Closeable {
+    private val nativePacketizer = if (useNative) SpeakerCoreNative.createAdpcmPacketizerOrNull() else null
     private var sequence: Int = 0
     private var legacyTimestampSamples: Int = 0
     private var timestampMs: Int = 0
     private var stepIndex: Int = 0
+    private var closed: Boolean = false
 
     fun reset() {
+        if (closed) return
+        nativePacketizer?.reset()
         sequence = 0
         legacyTimestampSamples = 0
         timestampMs = 0
@@ -20,8 +27,15 @@ class SpeakerAdpcmPacketizer(
     }
 
     fun packetize(pcm16le: ByteArray, isLastPacket: Boolean = false): ByteArray? {
+        if (closed) return null
         val aligned = pcm16le.size - (pcm16le.size % 2)
         if (aligned < 2) return null
+        nativePacketize(pcm16le, isLastPacket)?.let { packet ->
+            sequence += 1
+            legacyTimestampSamples += aligned / 2
+            timestampMs += PACKET_MS
+            return packet
+        }
         val initialStepIndex = if (SpeakerAudioConfig.Codec.RESET_ADPCM_STEP_INDEX_EACH_FRAME) 0 else stepIndex
         val encoded = encodeImaAdpcmBlock(pcm16le, aligned, initialStepIndex)
         stepIndex = if (SpeakerAudioConfig.Codec.RESET_ADPCM_STEP_INDEX_EACH_FRAME) 0 else encoded.nextStepIndex
@@ -32,6 +46,32 @@ class SpeakerAdpcmPacketizer(
         legacyTimestampSamples += encoded.sampleCount
         timestampMs += PACKET_MS
         return header + encoded.payload
+    }
+
+    private fun nativePacketize(pcm16le: ByteArray, isLastPacket: Boolean): ByteArray? {
+        val packetizer = nativePacketizer ?: return null
+        return streamContext?.let { context ->
+            packetizer.packetizeV2OrNull(
+                pcm16le = pcm16le,
+                sequence = sequence,
+                timestampMs = timestampMs,
+                deviceId = context.deviceId,
+                taskId = context.taskId,
+                talkId = context.talkId,
+                streamType = context.type,
+                isLastPacket = isLastPacket
+            )
+        } ?: packetizer.packetizeLegacyOrNull(
+            pcm16le = pcm16le,
+            sequence = sequence,
+            timestampSamples = legacyTimestampSamples
+        )
+    }
+
+    override fun close() {
+        if (closed) return
+        closed = true
+        nativePacketizer?.close()
     }
 
     private fun buildLegacyHeader(encoded: EncodedAdpcm): ByteArray =

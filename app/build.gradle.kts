@@ -66,8 +66,8 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("boolean", "TJI_ENABLE_OTA_TEST_ENTRY", "true")
-            buildConfigField("boolean", "TJI_ENABLE_LOCAL_DEMO_DEVICES", "true")
+            buildConfigField("boolean", "TJI_ENABLE_OTA_TEST_ENTRY", "false")
+            buildConfigField("boolean", "TJI_ENABLE_LOCAL_DEMO_DEVICES", "false")
         }
         release {
             isMinifyEnabled = true

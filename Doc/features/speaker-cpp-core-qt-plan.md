@@ -1,13 +1,14 @@
-# 喊话器 C++ Core 与 Qt 上位机实施方案
+# 喊话器 Android App C++ Core 实施方案
 
 ## 状态
 
 - 状态：active
-- 适用对象：Android App、Qt/C++ 电脑上位机、服务器临时文件服务、MCU 联调。
-- 当前结论：先把喊话器纯算法和协议转换抽成共享 C++ core，再让 Android 通过 JNI 调用、Qt 上位机直接链接。
-- 当前落地：Qt 环境已安装；App 最新稳定版已推送远端；`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包第一版 C++ core 已通过 CTest、服务器上传/下载验证和 GitHub Actions Ubuntu CTest。
-- Android JNI shadow mode 已建立：App 可编译 `tji_speaker_core_jni`，Kotlin wrapper 在 native 不可用时安全返回，不改变当前正式业务路径；TTS 临时文件、本地 Kokoro TTS 文件、录音保存 HADP 路径和 UDP 分包路径会输出结构化 shadow 摘要；主项目 GitHub Actions 已通过 `checkDocs`、`:app:testDebugUnitTest`、`:app:assembleDebug` 和 `native/speaker-core` CTest。
-- Qt desktop MVP 已建立：`$HOME/Desktop/code/QT/tji-speaker-desktop` 可直接链接 `speaker-core`，console 和 Widgets 两个入口都能生成 HADP、上传服务器、下载比对，并输出 `RECORD_DOWNLOAD` 控制 JSON。
+- 适用对象：Android App、共享 C++ core、服务器临时文件服务、MCU 联调。
+- 当前结论：当前阶段暂停 Qt 功能开发，先把 Android App 喊话器核心链路做到 native-first 约 90% 完成度。
+- 当前落地：`native/speaker-core` 已建立，HADP/ADPCM/UDP 分包、VoiceProcessor、命令 JSON、MQTT 入站解析、重采样、WAV PCM16 mono 解码、float32 samples 转 PCM16、前导静音、帧补齐和 tone generator 第一版 C++ core 已通过 CTest；Android App 已可编译 `tji_speaker_core_jni`，APK 内包含 `libtji_speaker_core_jni.so` 与 `libc++_shared.so`。
+- Android 当前策略：HADP 编码、ADPCM UDP 分包、实时喊话 live frame、PTT 处理、TTS playback tone 处理、命令 JSON、MQTT 入站解析、录音重采样、TTS WAV 解码、Kokoro float32 转 PCM16、前导静音、帧补齐和 tone generator 默认先走 C++；native 不可用或调用失败时自动 fallback 到原 Kotlin 实现；关键路径输出 `speakerCoreNative status=native|fallback` 日志。
+- Shadow/现场验证仍保留：HADP 和 UDP 路径继续可输出 `speakerCoreShadow` 摘要，用于真机联调时确认 native 输出和链路覆盖。
+- Qt desktop 现状：已有 MVP 和 CI，但当前不继续扩 Qt UI/功能；后续由稳定后的 `speaker-core` C ABI 供 Qt 复用。
 - Qt Widgets 已支持多设备 profiles：可保存、加载、删除命名设备配置，覆盖 deviceId、recordId、服务器、文件路径和 UDP 目标。
 - Qt Widgets 已支持麦克风 UDP 流和输入格式转换：优先请求 8 kHz mono PCM16，失败时用设备 preferred format 采集，再混音/线性重采样为 8 kHz mono PCM16 后用 stateful ADPCM packetizer 按 40 ms 分包为 v2 record-store UDP 发送。
 - Qt Widgets 已支持麦克风手动增益、轻量自动增益和阈值 Noise Gate：手动增益范围 `-24 dB` 到 `+24 dB`，Noise Gate 阈值范围 `-70 dB` 到 `-20 dB`，相关设置随当前设置和命名 profile 保存，并写入联调日志。
@@ -19,14 +20,14 @@
 
 ## 1. 目标
 
-把喊话器当前 App 中已经稳定的核心能力抽成可复用 C++ 库，避免 Android App 和电脑上位机各写一套协议。
+把喊话器当前 App 中已经稳定的核心能力抽成可复用 C++ 库，并先让 Android App 默认稳定调用 C++。
 
 最终目标：
 
 ```text
 speaker-core C++
   -> Android App JNI
-  -> Qt/C++ 上位机
+  -> later Qt/C++ 上位机
   -> CMake 单元测试和 golden samples
 ```
 
@@ -43,12 +44,13 @@ HADP 临时文件上传 = /api/speaker/records/upload-temp
 
 | 能力 | 当前文件 | 是否适合抽入 C++ core |
 |------|----------|------------------------|
-| 命令 JSON 生成 | `app/src/main/java/com/tji/device/product/speaker/repository/SpeakerRepository.kt` | 第二期 |
-| MQTT 入站解析 | `app/src/main/java/com/tji/device/product/speaker/mqtt/SpeakerMqttInbound.kt` | 第二期 |
+| 命令 JSON 生成 | `app/src/main/java/com/tji/device/product/speaker/core/SpeakerCommandJson.kt` | 已抽入 native-first |
+| MQTT 入站解析 | `app/src/main/java/com/tji/device/product/speaker/core/SpeakerMqttPayloadParser.kt` | 已抽入 native-first |
 | ADPCM UDP 分包 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerAdpcmPacketizer.kt` | 第一期 |
 | HADP 编码 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerHadpEncoder.kt` | 第一期 |
-| HADP / ADPCM 解码 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerAdpcmDecoder.kt` | 第一期 |
-| PTT / TTS 音频处理 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerVoiceProcessor.kt` | 第一期后段 |
+| HADP / ADPCM 解码 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerAdpcmDecoder.kt` | 已抽入 native-first |
+| PTT / TTS 音频处理 | `app/src/main/java/com/tji/device/product/speaker/core/SpeakerCoreAudioEngine.kt` | 已抽入 native-first |
+| 重采样 / WAV 解码 / float32 转 PCM16 / tone generator | `app/src/main/java/com/tji/device/product/speaker/core/SpeakerCoreAudioEngine.kt` | 已抽入 native-first |
 | 麦克风采集 / UDP 发送 | `app/src/main/java/com/tji/device/product/speaker/audio/SpeakerAudioRelay.kt` | 不抽 |
 | TTS 引擎 | `SpeakerTtsSynthesizer` / `SpeakerLocalKokoroTtsClient` | 不抽 |
 | 上传临时 HADP | `SpeakerRecordUploadClient` | 不抽，保留平台网络层 |
@@ -59,6 +61,7 @@ HADP 临时文件上传 = /api/speaker/records/upload-temp
 C++ core 只负责纯逻辑：
 
 - 输入 PCM，输出处理后的 PCM。
+- 输入 WAV 或 float32 samples，输出 8 kHz mono PCM16。
 - 输入 PCM，输出 `.hadp` 字节和元数据。
 - 输入 PCM 帧，输出 UDP audio packet。
 - 输入命令参数，输出 JSON 字符串。
@@ -73,6 +76,7 @@ C++ core 不负责：
 - MQTT 连接。
 - 页面状态、按钮、Toast、Compose 或 Qt Widgets。
 - Android TTS / Kokoro 模型调用。
+- Android TTS / Kokoro 模型调用只保留在平台层，模型输出后的 WAV/PCM 转换可以走 C++ core。
 
 ## 4. 版本路线
 
@@ -95,7 +99,7 @@ C++ core 不负责：
 
 ### V2：C++ core 第一版
 
-目标：C++ 复刻纯算法，先不接 Android。
+目标：C++ 复刻纯算法，并通过 JNI 给 Android App native-first 调用。
 
 当前已建立：
 
@@ -108,6 +112,7 @@ native/speaker-core/
   src/
     adpcm_codec.cpp
     udp_packetizer.cpp
+    voice_processor.cpp
     hadp_codec.cpp
     pcm_utils.cpp
     speaker_core_c_api.cpp
@@ -131,17 +136,31 @@ tji_sc_adpcm_packetizer_packetize_legacy(...)
 tji_sc_adpcm_packetizer_packetize_v2(...)
 tji_sc_adpcm_packetizer_reset(...)
 tji_sc_adpcm_packetizer_free(...)
+tji_sc_process_voice(...)
+tji_sc_voice_processor_create(...)
+tji_sc_voice_processor_process_frame(...)
+tji_sc_voice_processor_reset(...)
+tji_sc_voice_processor_free(...)
+tji_sc_build_standard_command_json(...)
+tji_sc_build_record_download_command_json(...)
+tji_sc_resample_pcm16(...)
+tji_sc_generate_tone_pcm16(...)
+tji_sc_prepend_silence_pcm16(...)
+tji_sc_pad_pcm16_to_frame(...)
+tji_sc_decode_wav_pcm16_mono(...)
+tji_sc_float32_to_pcm16(...)
+tji_sc_parse_mqtt_state_json(...)
+tji_sc_parse_mqtt_ack_json(...)
+tji_sc_parse_mqtt_record_list_json(...)
+tji_sc_parse_mqtt_storage_status_json(...)
+tji_sc_parse_mqtt_record_event_json(...)
 tji_sc_crc32(...)
 tji_sc_free(...)
 ```
 
-暂未抽入：
+仍暂未抽入：
 
-- `SpeakerVoiceProcessor.processPushToTalk`
-- `SpeakerVoiceProcessor.applyPlaybackTone`
-- 重采样 / tone generator
-- 命令 JSON 与 MQTT parser
-- JNI 正式替换路径；当前只用于 shadow mode。
+- Android/服务器网络边界的 HTTP 上传响应解析，当前继续留在 Kotlin/OkHttp 层。
 
 验收：
 
@@ -151,15 +170,16 @@ cmake --build native/speaker-core/build
 ctest --test-dir native/speaker-core/build --output-on-failure
 ```
 
-### V3：Android JNI 接入
+### V3：Android JNI native-first 接入
 
-目标：Android 可以调用 C++ core，但先 shadow mode。
+目标：Android App 主喊话链路默认先调用 C++，Kotlin 只做 fallback。
 
 新增：
 
 ```text
 app/src/main/cpp/speaker_core_jni.cpp
 app/src/main/java/com/tji/device/product/speaker/core/SpeakerCoreNative.kt
+app/src/main/java/com/tji/device/product/speaker/core/SpeakerCoreAudioEngine.kt
 app/src/main/java/com/tji/device/product/speaker/core/SpeakerCoreShadowVerifier.kt
 ```
 
@@ -175,11 +195,11 @@ externalNativeBuild {
 
 接入策略：
 
-1. Kotlin 原实现继续生产真实结果。
-2. `SpeakerCoreNative` 通过 JNI 调用 C++ core，native 不可用时返回 `null`。
-3. `SpeakerCoreShadowVerifier` 同时计算一份 C++ 结果。
-4. Debug 日志比较 size、CRC、header、frameCount、audioBytes；HADP 主路径和 UDP 分包路径统一输出 `speakerCoreShadow status=...`。
-5. 连续通过后再切换真实调用。
+1. `SpeakerCoreAudioEngine` 作为 App 业务统一入口，HADP/PTT/TTS 先走 native，失败 fallback 到 Kotlin。
+2. `SpeakerAdpcmPacketizer` 内部先创建 native stateful packetizer；native 不可用时继续使用 Kotlin packetizer。
+3. `SpeakerAudioRelay` 的实时喊话 live frame 使用 native stateful `VoiceProcessor`，失败 fallback 到 Kotlin stateful processor。
+4. Debug 日志输出 `speakerCoreNative status=native|fallback path=...`，现场可快速判断是否真正走到 C++。
+5. `SpeakerCoreShadowVerifier` 继续保留，用于真机联调时覆盖 HADP/UDP 关键路径。
 
 验收：
 
@@ -294,6 +314,9 @@ adb logcat -s SpeakerAudioData | rg 'speakerCoreShadow|record save encoded|tts t
 通过标准：
 
 ```text
+speakerCoreNative status=native path=voice-ptt ...
+speakerCoreNative status=native path=voice-playback ...
+speakerCoreNative status=native path=hadp ...
 speakerCoreShadow status=match path=tts-temp-file ...
 speakerCoreShadow status=match path=local-kokoro-tts-file ...
 speakerCoreShadow status=match path=record-save ...
@@ -307,15 +330,28 @@ speakerCoreShadow status=match path=live-legacy-udp ...
 
 目标：Android 和 Qt 共用命令生成与解析。
 
-抽取：
+当前已抽入：
 
 - `SpeakerCommand -> JSON`
+
+接入方式：
+
+- `native/speaker-core/src/command_json.cpp` 构建标准命令 envelope 和 `RECORD_DOWNLOAD` 完整 JSON。
+- `SpeakerCommandJson.encode(...)` 是 Android App 发送命令的统一入口，native 可用时走 C++，否则 fallback 到 Kotlin。
+- `SpeakerControlRepo.sendCommand(...)` 不再自己拼 JSON。
+
+MQTT 入站解析也已抽入：
+
 - ACK parser
 - state parser
 - record_list parser
 - storage_status parser
 - record_event parser
-- recordId / storeTaskId 生成规则
+
+仍不抽：
+
+- HTTP 上传响应解析：属于 Android/OkHttp 网络边界，不是共享协议 core 的必要部分。
+- recordId / storeTaskId 生成：属于 App 当前业务流程编排，Qt 后续可按自己的任务上下文生成。
 
 验收：
 

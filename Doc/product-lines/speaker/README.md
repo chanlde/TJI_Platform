@@ -9,7 +9,7 @@
 
 ## 产品定位
 
-喊话器用于无人机实时喊话、录音管理、文字转语音和音量/音色控制。App 当前已收口云端 TTS，文字转语音由本地或系统生成音频，再通过 `.hadp` 临时文件上传下载链路给 MCU 播放或保存。
+喊话器用于无人机实时喊话、录音管理、文字转语音和音量/音色控制。App 当前已收口云端 TTS，文字转语音由本地或系统生成音频，再通过 `.hadp` 临时文件上传下载链路给 MCU 播放或保存。后续 Qt 上位机复用同一套 `speaker-core` 和 HADP 协议，不另起格式。
 
 ## 当前 App 能力
 
@@ -29,6 +29,7 @@
 ## 分文档索引
 
 - [protocol.md](protocol.md)：MQTT、HADP、录音和 ACK 规则。
+- [hadp-file-format.md](hadp-file-format.md)：HADP v1 音频文件格式，App / Qt / Server / MCU 四端共同遵守。
 - [mcu.md](mcu.md)：播放、保存、录音列表和存储状态职责。
 - [server.md](server.md)：临时音频文件传输服务职责。
 - [app.md](app.md)：App 音频链路、UI、测试和本地模型资源。

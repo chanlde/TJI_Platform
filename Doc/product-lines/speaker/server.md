@@ -17,9 +17,11 @@ server/kokoro_tts_service/
 当前服务职责：
 
 - 接收 App 上传的完整 `.hadp` 文件。
+- 接收后续 Qt 上位机上传的完整 `.hadp` 文件。
 - 生成短期下载 URL。
 - 供 MCU 下载后播放或保存。
 - 临时文件默认短期保留，不写数据库。
+- 不重新编码、不修改 header、不修补音频区；HADP 文件格式见 [hadp-file-format.md](hadp-file-format.md)。
 
 该服务不再负责 TTS 合成。
 

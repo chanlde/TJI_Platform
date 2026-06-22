@@ -87,11 +87,11 @@ object SpeakerAudioConfig {
         // Live mic peak activity floor. Used with RMS to avoid opening on tiny low-level noise.
         const val LIVE_MIN_ACTIVE_PEAK = 0.001f
 
-        // Push-to-talk target RMS. Higher than live because playback starts after recording stops.
-        const val PTT_TARGET_RMS = 0.30f
+        // Push-to-talk target RMS. Keep below TTS so mic noise is not lifted into ADPCM hiss.
+        const val PTT_TARGET_RMS = 0.22f
 
-        // Push-to-talk maximum AGC gain. Allows quiet speech to become loud enough.
-        const val PTT_MAX_GAIN = 28f
+        // Push-to-talk maximum AGC gain. A conservative cap avoids boosting room noise and handling clicks.
+        const val PTT_MAX_GAIN = 12f
 
         // Push-to-talk activity floor. Lower than live so quiet recorded speech is still boosted.
         const val PTT_MIN_ACTIVE_RMS = 0.0003f
@@ -162,6 +162,15 @@ object SpeakerAudioConfig {
 
         // Smooth gate changes between windows to avoid zipper noise.
         const val PTT_NOISE_GATE_SMOOTHING = 0.55f
+
+        // Require several speech-like windows before sending PTT; this prevents pure room noise from being amplified.
+        const val PTT_MIN_SPEECH_WINDOWS = 4
+
+        // Low-pass recorded microphone speech before ADPCM/UDP playback to reduce sharp "zizi" artifacts.
+        const val PTT_LOW_PASS_CUTOFF_HZ = 3_200f
+
+        // One pass is enough for recorded speech; more passes can make speech dull.
+        const val PTT_LOW_PASS_PASSES = 1
 
         // Drop the very end of push-to-talk recordings because button release/AudioRecord stop can create a click.
         const val PTT_RELEASE_GUARD_MS = 250

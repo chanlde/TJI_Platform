@@ -16,8 +16,10 @@
 ## 音频职责边界
 
 - App 负责本地 TTS、录音处理、ADPCM / HADP 封装和上传。
+- Qt 上位机后续复用同一 HADP 协议和 `speaker-core`，生成物必须与 App 一致。
 - MCU 负责下载、播放、保存和设备侧状态。
 - 临时传输服务只负责文件中转，不做 TTS 合成。
+- HADP 字节布局、codec、CRC 和多音质参数见 [hadp-file-format.md](hadp-file-format.md)。
 
 ## 联调清单
 
