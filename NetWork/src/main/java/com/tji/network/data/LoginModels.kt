@@ -4,20 +4,32 @@ import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
 
 data class BoundDeviceRow(
+    @SerializedName("id")
     val id: Int? = null,
+    @SerializedName("sn")
     val sn: String? = null,
+    @SerializedName("sn1")
     val sn1: String? = null,
+    @SerializedName("serialNumber")
     val serialNumber: String? = null,
+    @SerializedName("name")
     val name: String? = null,
+    @SerializedName("deviceName")
     val deviceName: String? = null,
+    @SerializedName("productName")
     val productName: String? = null,
+    @SerializedName("productId")
     val productId: Int? = null,
+    @SerializedName("productType")
     val productType: String? = null,
+    @SerializedName("productCode")
     val productCode: String? = null
 )
 
 data class LoginResponse(
+    @SerializedName("id")
     val id: String? = null,
+    @SerializedName("token")
     val token: String,
     /**
      * 推荐 JSON 字段（多产品中性命名）。格式：`["SN,Name", ...]`，与 [bucketsns] 相同形态。

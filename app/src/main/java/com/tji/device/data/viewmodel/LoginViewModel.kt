@@ -78,6 +78,11 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
      * @param callback 登录结果回调，参数：(是否成功, 错误信息)
      */
     override fun login(account: String, password: String, rememberMe: Boolean, callback: (Boolean, String?) -> Unit) {
+        validateLoginInput(account, password)?.let { validationError ->
+            handleLoginFailure(message = validationError, callback = callback)
+            return
+        }
+
         viewModelScope.launch {
             setLoginLoading()
             try {
@@ -95,6 +100,14 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
 
     private fun setLoginLoading() {
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+    }
+
+    private fun validateLoginInput(account: String, password: String): String? {
+        return when {
+            account.isBlank() -> "请输入账号"
+            password.isBlank() -> "请输入密码"
+            else -> null
+        }
     }
 
     private suspend fun handleLoginSuccess(
