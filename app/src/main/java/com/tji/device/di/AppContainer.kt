@@ -105,12 +105,12 @@ object AppContainer {
     }
 
     val speakerTtsSynthesizer: SpeakerTtsSynthesizer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        check(::appContext.isInitialized) { "AppContainer.initialize(context) must be called before using speaker TTS" }
+        check(::appContext.isInitialized) { "语音功能还没有准备好，请重新打开页面" }
         SpeakerTtsSynthesizer(appContext)
     }
 
     val speakerLocalKokoroTtsClient: SpeakerLocalKokoroTtsClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        check(::appContext.isInitialized) { "AppContainer.initialize(context) must be called before using local Kokoro TTS" }
+        check(::appContext.isInitialized) { "语音功能还没有准备好，请重新打开页面" }
         SpeakerLocalKokoroTtsClient(appContext)
     }
 

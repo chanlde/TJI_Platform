@@ -140,7 +140,7 @@ internal fun TelemetryCard(
                 TjiMetricTile("横滚", state?.rollDegrees?.let { "${it.toInt()}°" } ?: "--")
                 TjiMetricTile("纬度", state?.latitude?.let { "%.5f".format(it) } ?: "--")
                 TjiMetricTile("经度", state?.longitude?.let { "%.5f".format(it) } ?: "--")
-                TjiMetricTile("MQTT", mqttStatusText(state))
+                TjiMetricTile("连接", mqttStatusText(state))
             }
         }
     }

@@ -24,7 +24,7 @@ class SpeakerTtsSynthesizer(context: Context) {
         voicePreset: SpeakerTtsVoicePreset = SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET,
         targetSampleRate: Int = SpeakerAudioConfig.Tts.DEFAULT_TTS_QUALITY.sampleRate
     ): ByteArray {
-        require(targetSampleRate > 0) { "系统 TTS 目标采样率无效: $targetSampleRate" }
+        require(targetSampleRate > 0) { "语音设置有问题，请重试" }
         val wavFile = File(appContext.cacheDir, "speaker-tts-${UUID.randomUUID()}.wav")
         return try {
             synthesizeToWav(text, voicePreset, wavFile)
@@ -89,7 +89,7 @@ class SpeakerTtsSynthesizer(context: Context) {
                 languageResult == TextToSpeech.LANG_NOT_SUPPORTED
             ) {
                 engine.shutdown()
-                throw IllegalStateException("系统 TTS 不支持 ${locale.displayLanguage}")
+                throw IllegalStateException("当前手机不支持这段文字的语音朗读")
             }
             withContext(Dispatchers.Main.immediate) {
                 engine.applyConfiguredVoice(locale, voicePreset)
@@ -110,7 +110,7 @@ class SpeakerTtsSynthesizer(context: Context) {
                     if (status == TextToSpeech.SUCCESS) {
                         continuation.resume(engine)
                     } else {
-                        continuation.resumeWithException(IllegalStateException("系统 TTS 初始化失败"))
+                        continuation.resumeWithException(IllegalStateException("手机语音不可用，请检查系统语音设置"))
                     }
                 }
                 continuation.invokeOnCancellation { engine.shutdown() }
@@ -133,13 +133,13 @@ class SpeakerTtsSynthesizer(context: Context) {
                     @Deprecated("Deprecated in Java")
                     override fun onError(errorUtteranceId: String?) {
                         if (errorUtteranceId == utteranceId && continuation.isActive) {
-                            continuation.resumeWithException(IllegalStateException("TTS 合成失败"))
+                            continuation.resumeWithException(IllegalStateException("语音生成失败，请重试"))
                         }
                     }
 
                     override fun onError(errorUtteranceId: String?, errorCode: Int) {
                         if (errorUtteranceId == utteranceId && continuation.isActive) {
-                            continuation.resumeWithException(IllegalStateException("TTS 合成失败: $errorCode"))
+                            continuation.resumeWithException(IllegalStateException("语音生成失败，请重试"))
                         }
                     }
                 })
@@ -150,7 +150,7 @@ class SpeakerTtsSynthesizer(context: Context) {
                     utteranceId
                 )
                 if (result != TextToSpeech.SUCCESS && continuation.isActive) {
-                    continuation.resumeWithException(IllegalStateException("TTS 合成启动失败"))
+                    continuation.resumeWithException(IllegalStateException("语音生成失败，请重试"))
                 }
             }
         }

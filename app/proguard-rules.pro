@@ -31,20 +31,50 @@
 -dontwarn io.netty.handler.codec.http.**
 -dontwarn io.netty.handler.proxy.**
 -dontwarn io.netty.internal.tcnative.**
+-dontwarn com.aayushatharva.brotli4j.**
+-dontwarn com.github.luben.zstd.**
+-dontwarn com.google.protobuf.**
+-dontwarn com.jcraft.jzlib.**
+-dontwarn com.ning.compress.**
+-dontwarn com.oracle.svm.core.annotate.**
+-dontwarn lzma.sdk.**
+-dontwarn net.jpountz.**
+-dontwarn org.jboss.marshalling.**
+-dontwarn reactor.blockhound.**
+-dontwarn sun.security.x509.**
 -dontwarn org.apache.log4j.**
 -dontwarn org.apache.logging.log4j.**
 -dontwarn org.eclipse.jetty.alpn.**
 -dontwarn org.eclipse.jetty.npn.**
 -dontwarn org.slf4j.**
 
+# Debug builds do not run R8, while release builds do. HiveMQ's MQTT client is built on
+# Netty and uses internal handlers, futures, service metadata, and platform probes that are
+# easy to break with aggressive shrinking/optimization. Keep this stack intact so release
+# MQTT connect/subscribe/message delivery behaves like debug.
+-keep class com.hivemq.** { *; }
+-keep class io.netty.** { *; }
+-keep class org.jctools.** { *; }
+-keep class reactor.blockhound.** { *; }
+-keep class org.reactivestreams.** { *; }
+-keepnames class io.netty.** { *; }
+
+# Retrofit resolves Kotlin suspend return types from Continuation<T> generic
+# signatures at runtime. Keep these signatures intact in release/R8 builds.
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
+-keep,includedescriptorclasses interface com.tji.network.api.** { *; }
+-keep,includedescriptorclasses class kotlin.coroutines.Continuation { *; }
+-keep class retrofit2.** { *; }
+-keep class retrofit2.converter.gson.** { *; }
+-keep class retrofit2.http.** { *; }
+
 # Release builds strip Android Log calls to reduce account, MQTT, and device
-# diagnostics exposure in production APKs.
+# diagnostics exposure in production APKs. Keep warnings/errors so release-only
+# failures still leave actionable diagnostics in logcat.
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);
     public static int v(...);
     public static int d(...);
     public static int i(...);
-    public static int w(...);
-    public static int e(...);
     public static int println(int, java.lang.String, java.lang.String);
 }

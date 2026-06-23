@@ -11,6 +11,7 @@ import com.tji.device.product.speaker.audio.SpeakerAdpcmPacketizer
 import com.tji.device.product.speaker.audio.SpeakerAudioQuality
 import com.tji.device.product.speaker.audio.SpeakerAudioRelay
 import com.tji.device.product.speaker.audio.SpeakerHadpEncoder
+import com.tji.device.product.speaker.audio.SpeakerHadpCodec
 import com.tji.device.product.speaker.audio.SpeakerHadpFile
 import com.tji.device.product.speaker.audio.SpeakerKokoroTtsSettings
 import com.tji.device.product.speaker.audio.SpeakerKokoroVoice
@@ -284,10 +285,17 @@ class SpeakerControlViewModel(
                 val processedPcm = SpeakerCoreAudioEngine
                     .applyPlaybackTone(pcm, _toneSettings.value, quality.sampleRate)
                     .let {
+                        SpeakerCoreAudioEngine.resamplePcm16(
+                            pcm16le = it,
+                            sourceSampleRate = quality.sampleRate,
+                            targetSampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE
+                        )
+                    }
+                    .let {
                         SpeakerCoreAudioEngine.prependSilencePcm16(
                             pcm16le = it,
                             durationMs = SpeakerAudioConfig.Voice.TTS_FILE_LEADING_SILENCE_MS,
-                            sampleRate = quality.sampleRate
+                            sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE
                         )
                     }
                 val suffix = System.currentTimeMillis()
@@ -299,8 +307,9 @@ class SpeakerControlViewModel(
                 val hadp = SpeakerCoreAudioEngine.encodeHadp(
                     pcm = processedPcm,
                     recordId = recordId,
-                    sampleRate = quality.sampleRate,
-                    packetMs = quality.packetMs
+                    codec = SpeakerHadpCodec.ImaAdpcm,
+                    sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE,
+                    packetMs = SpeakerAdpcmPacketizer.PACKET_MS
                 )
                 logHadpShadowResult(
                     label = "tts-temp-file",
@@ -677,6 +686,7 @@ class SpeakerControlViewModel(
             }
             _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Sending, recordedPcm = pcm)
             runCatching {
+                val startedAt = System.currentTimeMillis()
                 if (!SpeakerVoiceProcessor.hasPushToTalkSpeech(pcm)) {
                     _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle)
                     _feedback.value = SpeakerCommandFeedback(
@@ -688,16 +698,48 @@ class SpeakerControlViewModel(
                 }
                 val processedPcm = SpeakerVoiceProcessor.processPushToTalk(pcm, _toneSettings.value)
                 logPttAudioStats(pcm, processedPcm)
-                audioRelay.sendRecordedPcm(
-                    pcm = processedPcm,
-                    outputGain = _outputGain.value,
-                    prebufferPackets = SpeakerAudioConfig.Timing.RECORDED_PREBUFFER_PACKETS,
-                    leadingSilenceMs = SpeakerAudioConfig.Timing.RECORDED_LEADING_SILENCE_MS,
-                    streamContext = playbackStreamContext(serialNumber, "ptt"),
-                    useNativePacketizer = false
-                ) {
-                    incrementPacketCount(SpeakerTalkMode.Sending)
-                }
+                val playbackPcm = SpeakerCoreAudioEngine.prependSilencePcm16(
+                    pcm16le = processedPcm,
+                    durationMs = SpeakerAudioConfig.Timing.RECORDED_LEADING_SILENCE_MS,
+                    sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE
+                )
+                val suffix = System.currentTimeMillis()
+                val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
+                val recordId = "PTT_PLAY_${cleanDeviceId}_$suffix"
+                val storeTaskId = "STORE_PTT_PLAY_${cleanDeviceId}_$suffix"
+                val createdAt = isoNow()
+                val recordName = "按住喊话 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"
+                val hadp = SpeakerCoreAudioEngine.encodeHadp(
+                    pcm = playbackPcm,
+                    recordId = recordId,
+                    codec = SpeakerHadpCodec.ImaAdpcm,
+                    sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE,
+                    packetMs = SpeakerAdpcmPacketizer.PACKET_MS
+                )
+                logHadpShadowResult(
+                    label = "ptt-temp-file",
+                    hadp = hadp,
+                    pcm16le = playbackPcm,
+                    recordId = recordId
+                )
+                uploadHadpAndRequestPlayback(
+                    serialNumber = serialNumber,
+                    recordId = recordId,
+                    storeTaskId = storeTaskId,
+                    createdAt = createdAt,
+                    recordName = recordName,
+                    hadp = hadp,
+                    label = "按住喊话",
+                    downloadMsgPrefix = "ptt-download",
+                    autoPlayVolume = devices.value.firstOrNull { it.serialNumber == serialNumber }?.volume
+                        ?: DEFAULT_SPEAKER_VOLUME,
+                    autoPlayLabel = "播放按住喊话",
+                    startedAt = startedAt,
+                    temporary = true,
+                    visible = false,
+                    autoPlayInDownload = true,
+                    fallbackPlayAfterSave = false
+                )
                 _talkState.value = _talkState.value.copy(mode = SpeakerTalkMode.Idle, recordedPcm = ByteArray(0))
             }.onFailure { throwable ->
                 _talkState.value = SpeakerTalkState(
@@ -892,7 +934,14 @@ class SpeakerControlViewModel(
             record = upload.toSpeakerRecord(recordName, createdAt),
             startedAt = startedAt,
             autoPlayVolume = if (fallbackPlayAfterSave) autoPlayVolume?.coerceIn(0, 100) else null,
-            autoPlayLabel = autoPlayLabel
+            autoPlayLabel = autoPlayLabel,
+            waitForPlayback = autoPlayInDownload,
+            cacheRecord = !temporary,
+            timeoutMs = if (autoPlayInDownload) {
+                RECORD_SAVE_EVENT_TIMEOUT_MS + upload.durationMs.toLong() + RECORD_PLAYBACK_FEEDBACK_MARGIN_MS
+            } else {
+                RECORD_SAVE_EVENT_TIMEOUT_MS
+            }
         )
         send(
             serialNumber = serialNumber,
@@ -978,12 +1027,20 @@ class SpeakerControlViewModel(
                 }
             }
             "record_saved" -> {
-                completeRecordSave(serialNumber, pending.recordId)
+                if (pending.waitForPlayback) {
+                    _talkState.value = _talkState.value.copy(progress = 0.98f)
+                    _feedback.value = SpeakerCommandFeedback(
+                        status = SpeakerCommandFeedbackStatus.Pending,
+                        text = "设备已下载，正在播放"
+                    )
+                } else {
+                    completeRecordSave(serialNumber, pending.recordId)
+                }
             }
             "record_failed" -> failRecordSave(event.message.ifBlank { "设备保存录音失败" })
             "record_progress" -> {
                 _talkState.value = _talkState.value.copy(progress = (event.progress / 100f).coerceIn(0.92f, 0.98f))
-                if (event.progress >= 100) {
+                if (event.progress >= 100 && !pending.waitForPlayback) {
                     confirmRecordSaveFromListAfterProgress(serialNumber, pending)
                 }
             }
@@ -1027,7 +1084,9 @@ class SpeakerControlViewModel(
                 status = SpeakerCommandFeedbackStatus.Success,
                 text = successText ?: if (completed?.autoPlayVolume != null) "文件保存完成，正在播放" else "录音保存完成"
             )
-            completed?.record?.let { stateRepository.upsertRecord(serialNumber, it) }
+            if (completed?.cacheRecord == true) {
+                stateRepository.upsertRecord(serialNumber, completed.record)
+            }
             refreshRecords(serialNumber)
             refreshStorageStatus(serialNumber)
             completed?.autoPlayVolume?.let { volume ->
@@ -1068,12 +1127,12 @@ class SpeakerControlViewModel(
 
     private fun waitForRecordSaveEvent(serialNumber: String, recordId: String, startedAt: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            delay(RECORD_SAVE_EVENT_TIMEOUT_MS)
+            delay(pendingRecordSave?.timeoutMs ?: RECORD_SAVE_EVENT_TIMEOUT_MS)
             val pending = pendingRecordSave ?: return@launch
             if (pending.serialNumber != serialNumber || pending.recordId != recordId || pending.startedAt != startedAt) {
                 return@launch
             }
-            if (confirmRecordSaveFromPagedList(serialNumber, recordId)) {
+            if (!pending.waitForPlayback && confirmRecordSaveFromPagedList(serialNumber, recordId)) {
                 completeRecordSave(serialNumber, recordId)
                 return@launch
             }
@@ -1211,6 +1270,7 @@ class SpeakerControlViewModel(
         const val COMMAND_FEEDBACK_VISIBLE_MS = 2_500L
         const val RECORD_SAVE_EVENT_TIMEOUT_MS = 20_000L
         const val SAVE_PROGRESS_DONE_VISIBLE_MS = 500L
+        const val RECORD_PLAYBACK_FEEDBACK_MARGIN_MS = 5_000L
         const val RECORD_LIST_PAGE_SIZE = 4
         const val RECORD_PROGRESS_DONE_CONFIRM_DELAY_MS = 1_500L
         const val RECORD_CONFIRM_PAGE_WAIT_MS = 700L
@@ -1228,6 +1288,9 @@ private data class PendingRecordSave(
     val record: SpeakerRecord,
     val startedAt: Long,
     val autoPlayVolume: Int? = null,
+    val waitForPlayback: Boolean = false,
+    val cacheRecord: Boolean = true,
+    val timeoutMs: Long = 20_000L,
     val autoPlayLabel: String = "播放文件"
 )
 

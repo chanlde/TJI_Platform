@@ -141,9 +141,9 @@ class MainViewModel(
                 val currentProductSerials = mqttSubscriptionManager.getSubscribedDevices(productType)
                 val devicesToSubscribe = targetSerials.filter { it !in currentProductSerials }
 
-                Log.d(
+                Log.w(
                     TAG,
-                    "打开产品 MQTT 订阅检查: product=$productType targetSerials=$targetSerials " +
+                    "TJI_MQTT_DIAG openProduct subscribe check product=$productType targetSerials=$targetSerials " +
                         "current=$currentProductSerials subscribe=$devicesToSubscribe unsubscribe=$targetsToUnsubscribe"
                 )
                 if (targetsToUnsubscribe.isNotEmpty()) {
@@ -179,9 +179,9 @@ class MainViewModel(
                     .map { it.serialNumber }
                     .filter { it !in currentProductSerials }
 
-                Log.d(
+                Log.w(
                     TAG,
-                    "打开设备 MQTT 订阅检查: product=${device.productType} selected=${device.serialNumber} " +
+                    "TJI_MQTT_DIAG openDevice subscribe check product=${device.productType} selected=${device.serialNumber} " +
                         "desired=$desiredTargets current=$currentProductSerials subscribe=$devicesToSubscribe unsubscribe=$targetsToUnsubscribe"
                 )
                 if (targetsToUnsubscribe.isNotEmpty()) {

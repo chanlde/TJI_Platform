@@ -136,6 +136,14 @@ object SpeakerCommandJson {
             is SpeakerCommand.SetServoAngle -> JSONObject().apply {
                 put("angle", angle.coerceIn(-90, 90))
             }
+            is SpeakerCommand.StartTalk -> JSONObject().apply {
+                put("sessionId", sessionId)
+                put("talkId", talkId)
+                put("codec", codec)
+                put("sampleRate", sampleRate)
+                put("channels", channels)
+                put("packetMs", packetMs)
+            }
             is SpeakerCommand.StartRecordStore -> JSONObject().apply {
                 put("recordId", recordId)
                 put("storeTaskId", storeTaskId)
@@ -163,7 +171,8 @@ object SpeakerCommandJson {
             is SpeakerCommand.GetStorageStatus,
             is SpeakerCommand.ListRecords,
             is SpeakerCommand.RecordDownload,
-            is SpeakerCommand.Stop -> null
+            is SpeakerCommand.Stop,
+            is SpeakerCommand.StopTalk -> null
         }
 
     private fun SpeakerCommand.extraFieldsJsonOrEmpty(): String =
@@ -196,6 +205,14 @@ object SpeakerCommandJson {
                 expectedDurationMs?.let { put("expectedDurationMs", it) }
                 expectedFileSize?.let { put("expectedFileSize", it) }
             }
+            is SpeakerCommand.StartTalk -> linkedMapOf(
+                "sessionId" to sessionId,
+                "talkId" to talkId,
+                "codec" to codec,
+                "sampleRate" to sampleRate,
+                "channels" to channels,
+                "packetMs" to packetMs
+            )
             is SpeakerCommand.PlayRecord -> linkedMapOf(
                 "recordId" to recordId,
                 "volume" to volume.coerceIn(0, 100)

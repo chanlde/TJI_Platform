@@ -42,7 +42,33 @@ import java.util.UUID
  * 
  * @param authRepository 认证仓库，用于执行登录/登出操作
  */
-class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
+class LoginViewModel(
+    private val authRepository: AuthRepository,
+    private val accountMqttConnector: (String, String, String) -> Unit = { account, platformClientId, radioDetectionClientId ->
+        userData.updateMqttConfig(
+            username = account,
+            clientId = platformClientId
+        )
+        ProductMqttRouter.resetForAccount(
+            account = account,
+            platformClientId = platformClientId,
+            radioDetectionClientId = radioDetectionClientId
+        )
+        Log.w(
+            "LoginViewModel",
+            "TJI_MQTT_DIAG login mqtt reset account=$account " +
+                "platformClientId=$platformClientId radioDetectionClientId=$radioDetectionClientId"
+        )
+        ProductMqttRouter.platformManager().connect(
+            onConnected = {
+                Log.w("LoginViewModel", "TJI_MQTT_DIAG platform mqtt connected after login")
+            },
+            onFailed = { throwable ->
+                Log.e("LoginViewModel", "TJI_MQTT_DIAG platform mqtt connect failed after login", throwable)
+            }
+        )
+    }
+) : ViewModel(),
     LoginViewModelInterface {
 
     companion object {
@@ -121,10 +147,10 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
 
         saveAuthToken(loginData)
         resetRuntimeForNewLogin()
-        connectMqttForAccount(account)
 
         val boundDevices = parseBoundDevices(loginData)
         userData.boundAccountDevices = boundDevices
+        startMqttForAccount(account)
         Log.d(TAG, "登录成功，解析到 ${boundDevices.size} 个后台设备")
 
         updateLoginSuccessState(
@@ -156,16 +182,20 @@ class LoginViewModel(private val authRepository: AuthRepository) : ViewModel(),
         _account.value = account
         val platformClientId = currentMqttClientId(account)
         val radioDetectionClientId = currentRadioDetectionMqttClientId(account)
-        userData.updateMqttConfig(
-            username = account,
-            clientId = platformClientId
+        Log.w(
+            TAG,
+            "TJI_MQTT_DIAG start account mqtt account=$account " +
+                "platformClientId=$platformClientId radioDetectionClientId=$radioDetectionClientId"
         )
-        ProductMqttRouter.resetForAccount(
-            account = account,
-            platformClientId = platformClientId,
-            radioDetectionClientId = radioDetectionClientId
-        )
-        ProductMqttRouter.platformManager().connect()
+        accountMqttConnector(account, platformClientId, radioDetectionClientId)
+    }
+
+    private fun startMqttForAccount(account: String) {
+        runCatching {
+            connectMqttForAccount(account)
+        }.onFailure { throwable ->
+            Log.e(TAG, "MQTT startup after login failed", throwable)
+        }
     }
 
     private fun currentMqttClientId(account: String): String =

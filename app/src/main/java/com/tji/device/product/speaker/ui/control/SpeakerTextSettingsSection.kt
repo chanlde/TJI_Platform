@@ -196,7 +196,7 @@ private fun TtsEngineSelector(
     onSelect: (SpeakerTtsEngine) -> Unit
 ) {
     Text(
-        text = "语音引擎",
+        text = "语音来源",
         style = MaterialTheme.typography.bodyMedium,
         color = SpeakerMuted
     )

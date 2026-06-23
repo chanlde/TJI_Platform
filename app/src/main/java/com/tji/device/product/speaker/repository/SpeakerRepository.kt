@@ -133,7 +133,11 @@ class SpeakerRepo : SpeakerRepository {
                 val isDeleteGone = event.isDeleteAlreadyGone()
                 val records = if (!event.recordId.isNullOrBlank()) {
                     when (event.type) {
-                        "record_saved" -> if (event.ok) it.records.upsertSavedRecord(event) else it.records
+                        "record_saved" -> if (event.ok && event.shouldAppearInRecordList()) {
+                            it.records.upsertSavedRecord(event)
+                        } else {
+                            it.records
+                        }
                         "record_deleted" -> if (event.ok || isDeleteGone) {
                             it.records.filterNot { record -> record.recordId == event.recordId }
                         } else {
@@ -199,6 +203,11 @@ class SpeakerRepo : SpeakerRepository {
         incoming: SpeakerStorageStatus
     ): SpeakerStorageStatus {
         if (incoming.ok || previous == null) return incoming
+        if (incoming.code == SPEAKER_STORAGE_BUSY_CODE ||
+            incoming.message.equals("record store active", ignoreCase = true)
+        ) {
+            return previous.copy(timestamp = incoming.timestamp ?: previous.timestamp)
+        }
         val incomingHasCapacity = incoming.totalBytes > 0L || incoming.freeBytes > 0L
         if (incomingHasCapacity) return incoming
         val previousHasCapacity = previous.totalBytes > 0L || previous.freeBytes > 0L
@@ -226,10 +235,14 @@ class SpeakerRepo : SpeakerRepository {
             packetMs = event.packetMs,
             crc32 = event.crc32,
             createdAt = event.createdAt,
-            createdMs = event.timestamp
+            createdMs = event.timestamp,
+            path = event.path
         )
         return (listOf(savedRecord) + filterNot { it.recordId == recordId }).sortedForSpeakerRecordList()
     }
+
+    private fun SpeakerRecordEvent.shouldAppearInRecordList(): Boolean =
+        visible && path != "ram://temporary"
 
     private fun mergeRecordPage(
         existing: List<SpeakerRecord>,
@@ -267,6 +280,10 @@ class SpeakerRepo : SpeakerRepository {
         type == "record_deleted" &&
             !recordId.isNullOrBlank() &&
             (code == 404 || message.contains("not found", ignoreCase = true))
+
+    private companion object {
+        const val SPEAKER_STORAGE_BUSY_CODE = 486
+    }
 }
 
 interface SpeakerControlRepository {

@@ -33,6 +33,13 @@ class MyApplication : Application(), LifecycleOwner {
 
         ToastUtils.init(applicationContext)
 
+        Log.e(
+            TAG,
+            "TJI_RELEASE_DIAG_ID=retrofit-suspend-keep-20260623-1808 " +
+                "version=${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE}) " +
+                "buildType=${BuildConfig.BUILD_TYPE}"
+        )
+
         lifecycleScope.launch {
             performUpdateCheck()
         }

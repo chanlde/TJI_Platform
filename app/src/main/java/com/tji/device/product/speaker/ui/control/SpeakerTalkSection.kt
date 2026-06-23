@@ -41,6 +41,7 @@ import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
 import com.tji.device.ui.theme.TjiError
 import com.tji.device.ui.theme.TjiOnline
+import com.tji.device.util.toUserVisibleDeviceMessage
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -105,7 +106,10 @@ internal fun SpeakerHeaderCard(
         )
         FeedbackBadge(feedback)
         state?.lastError?.takeIf { it.isNotBlank() }?.let {
-            SpeakerStatusBadge(text = "设备返回异常", color = SpeakerDanger)
+            SpeakerStatusBadge(
+                text = it.toUserVisibleDeviceMessage("设备处理失败，请重试"),
+                color = SpeakerDanger
+            )
         }
     }
 }

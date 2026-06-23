@@ -110,6 +110,8 @@ object SpeakerMqttPayloadParser {
             packetMs = optInt("packetMs", 40),
             crc32 = optString("crc32").ifBlank { null },
             createdAt = optString("createdAt").ifBlank { null },
+            path = optString("path").ifBlank { null },
+            visible = optBoolean("visible", true),
             storeTaskId = optString("storeTaskId").ifBlank { null },
             timestamp = optNullableLong("timestamp")
         )
@@ -195,6 +197,8 @@ object SpeakerMqttPayloadParser {
             packetMs = json.optInt("packetMs", 40),
             crc32 = json.optString("crc32").ifBlank { null },
             createdAt = json.optString("createdAt").ifBlank { null },
+            path = json.optString("path").ifBlank { null },
+            visible = json.optBoolean("visible", true),
             storeTaskId = json.optString("storeTaskId").ifBlank { null },
             timestamp = json.optNullableLong("ts")
         )

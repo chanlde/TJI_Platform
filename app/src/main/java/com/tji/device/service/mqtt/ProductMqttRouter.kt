@@ -1,16 +1,24 @@
 package com.tji.device.service.mqtt
 
+import android.util.Log
 import com.tji.device.data.model.ProductType
 import com.tji.network.MQTTConfig
 import com.tji.network.MqttManager
 import com.tji.network.MqttProfiles
 
 object ProductMqttRouter {
+    private const val TAG = "ProductMqttRouter"
+
     fun resetForAccount(
         account: String,
         platformClientId: String,
         radioDetectionClientId: String
     ) {
+        Log.w(
+            TAG,
+            "TJI_MQTT_DIAG resetForAccount account=$account " +
+                "platformClientId=$platformClientId radioDetectionClientId=$radioDetectionClientId"
+        )
         MqttManager.reset(
             profileKey = MqttProfiles.PLATFORM,
             config = MQTTConfig.platform(

@@ -153,8 +153,8 @@ App 当前负责：
 当前版本配置在 `gradle.properties`：
 
 ```properties
-APP_VERSION_CODE=205
-APP_VERSION_NAME=V2.0.5
+APP_VERSION_CODE=208
+APP_VERSION_NAME=V2.0.8
 ```
 
 本地 Kokoro TTS 需要额外准备模型资源：

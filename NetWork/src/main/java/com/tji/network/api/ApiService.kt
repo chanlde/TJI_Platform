@@ -13,14 +13,14 @@ internal interface ApiService {
     suspend fun login(
         @Query("account") account: String,
         @Query("password") password: String,
-        @Query("productId") productId: Int = 2,
-        @Query("rcSn") rcSn: String = ""
+        @Query("productId") productId: Int,
+        @Query("rcSn") rcSn: String
     ): ApiResponse<LoginResponse>
 
     @GET("/api/data/appversion/getAppVersion")
     suspend fun getProductInfo(
-        @Query("productId") productId: Int = 2,
-        @Query("type") type: Int = 1
+        @Query("productId") productId: Int,
+        @Query("type") type: Int
     ): ApiResponse<JsonElement>
 
     @GET("/api/data/appversion/getAppVersion")

@@ -79,6 +79,18 @@ sealed class SpeakerCommand(
         val angle: Int
     ) : SpeakerCommand(msgId, 107, "SET_SERVO_ANGLE")
 
+    class StartTalk(
+        msgId: String,
+        val sessionId: String,
+        val talkId: String,
+        val sampleRate: Int = 8_000,
+        val channels: Int = 1,
+        val packetMs: Int = 40,
+        val codec: String = "ima_adpcm"
+    ) : SpeakerCommand(msgId, 108, "START_TALK")
+
+    class StopTalk(msgId: String) : SpeakerCommand(msgId, 109, "STOP_TALK")
+
     class StartRecordStore(
         msgId: String,
         val recordId: String,
@@ -197,6 +209,8 @@ data class SpeakerRecordEvent(
     val packetMs: Int = 40,
     val crc32: String? = null,
     val createdAt: String? = null,
+    val path: String? = null,
+    val visible: Boolean = true,
     val storeTaskId: String? = null,
     val timestamp: Long? = null
 )

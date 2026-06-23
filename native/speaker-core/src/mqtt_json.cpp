@@ -427,6 +427,8 @@ std::vector<uint8_t> parse_mqtt_record_event_json(
     append(out, first, "packetMs", std::to_string(int_field(payload_json, "packetMs", 40)));
     append(out, first, "crc32", nullable_string_raw(payload_json, "crc32"));
     append(out, first, "createdAt", nullable_string_raw(payload_json, "createdAt"));
+    append(out, first, "path", nullable_string_raw(payload_json, "path"));
+    append(out, first, "visible", bool_field(payload_json, "visible", true) ? "true" : "false");
     append(out, first, "storeTaskId", nullable_string_raw(payload_json, "storeTaskId"));
     append(out, first, "timestamp", timestamp_raw(payload_json));
     out << '}';

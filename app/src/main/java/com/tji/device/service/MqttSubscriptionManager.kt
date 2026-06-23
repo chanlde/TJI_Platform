@@ -164,7 +164,7 @@ class MqttSubscriptionManager(
     }
 
     private suspend fun subscribeToDeviceUnlocked(serialNumber: String, productType: ProductType) {
-        Log.d(TAG, "--- 处理设备订阅: $serialNumber product=$productType ---")
+        Log.w(TAG, "TJI_MQTT_DIAG subscribe device start serial=$serialNumber product=$productType")
 
         subscriptionProductBySerial[serialNumber] = productType
 
@@ -175,12 +175,12 @@ class MqttSubscriptionManager(
                 try {
                     val key = subscriptionKey(topic, productType)
                     if (subscribedTopics.contains(key)) {
-                        Log.d(TAG, "跳过已订阅主题: $topic")
+                        Log.w(TAG, "TJI_MQTT_DIAG skip already subscribed topic=$topic")
                         subscribedDevices.add(SubscriptionTarget(serialNumber, productType))
                         return@forEach
                     }
 
-                    Log.d(TAG, "订阅主题: $topic qos=$qos")
+                    Log.w(TAG, "TJI_MQTT_DIAG subscribe topic=$topic qos=$qos serial=$serialNumber product=$productType")
 
                     ProductMqttRouter.managerFor(productType).subscribe(
                         topic = topic,
@@ -218,7 +218,7 @@ class MqttSubscriptionManager(
                         onSubscribed = {
                             subscribedTopics.add(key)
                             subscribedDevices.add(SubscriptionTarget(serialNumber, productType))
-                            Log.d(TAG, "✅ 订阅成功: $topic")
+                            Log.w(TAG, "TJI_MQTT_DIAG subscribe success topic=$topic serial=$serialNumber product=$productType")
                         }
                     )
 
@@ -227,13 +227,13 @@ class MqttSubscriptionManager(
                 }
             }
 
-            Log.d(TAG, "设备 $serialNumber 订阅完成，当前总订阅数: ${subscribedTopics.size}")
+            Log.w(TAG, "TJI_MQTT_DIAG subscribe device finished serial=$serialNumber product=$productType total=${subscribedTopics.size}")
 
         } catch (e: Exception) {
             Log.e(TAG, "处理设备订阅失败 - deviceId: $serialNumber", e)
         }
 
-        Log.d(TAG, "--- 设备订阅处理结束: $serialNumber ---")
+        Log.w(TAG, "TJI_MQTT_DIAG subscribe device end serial=$serialNumber product=$productType")
     }
 
     fun cleanup() {

@@ -25,6 +25,7 @@ internal class NetworkHttpClient(
     }
 
     val apiService: ApiService by lazy {
+        logRetrofitServiceContract()
         retrofit.create(ApiService::class.java)
     }
 
@@ -34,6 +35,19 @@ internal class NetworkHttpClient(
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
+    }
+
+    private fun logRetrofitServiceContract() {
+        ApiService::class.java.declaredMethods
+            .sortedBy { it.name }
+            .forEach { method ->
+                Log.e(
+                    tag,
+                    "TJI_RETROFIT_CONTRACT_DIAG method=${method.name} " +
+                        "return=${method.genericReturnType.typeName} " +
+                        "params=${method.genericParameterTypes.joinToString(prefix = "[", postfix = "]") { it.typeName }}"
+                )
+            }
     }
 
     private fun createLoggingInterceptor(): Interceptor {

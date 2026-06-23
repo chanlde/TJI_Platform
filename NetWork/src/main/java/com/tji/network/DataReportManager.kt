@@ -84,7 +84,8 @@ class DataReportManager private constructor() {
             httpClient.apiService.login(
                 account = account,
                 password = password,
-                productId = productId
+                productId = productId,
+                rcSn = ""
             )
         }
         Log.d(

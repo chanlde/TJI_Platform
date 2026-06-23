@@ -25,17 +25,17 @@ class SpeakerLocalKokoroTtsClient(context: Context) {
     ): SpeakerLocalTtsAudio = withContext(Dispatchers.IO) {
         val normalizedText = text.trim()
         require(normalizedText.isNotBlank()) { "请输入喊话文本" }
-        require(targetSampleRate == null || targetSampleRate > 0) { "本地 TTS 目标采样率无效: $targetSampleRate" }
+        require(targetSampleRate == null || targetSampleRate > 0) { "语音设置有问题，请重试" }
         val engine = mutex.withLock { offlineTts ?: createEngine().also { offlineTts = it } }
         val normalizedSettings = settings.normalized()
         val audio = runCatching {
             engine.generate(normalizedText, normalizedSettings.voice.speakerId, normalizedSettings.speed)
         }.getOrElse { throwable ->
-            throw IllegalStateException("本地 Kokoro 合成失败: ${throwable.rootMessage()}", throwable)
+            throw IllegalStateException("语音生成失败，请重试", throwable)
         }
         val samples = audio.samples
         val sourceSampleRate = audio.sampleRate
-        require(samples.isNotEmpty()) { "本地 Kokoro 返回空音频" }
+        require(samples.isNotEmpty()) { "没有生成有效语音，请换一段文字试试" }
         val outputSampleRate = targetSampleRate ?: sourceSampleRate
         val pcm16 = SpeakerCoreAudioEngine.float32ToPcm16(samples, sourceSampleRate, outputSampleRate)
         Log.d(
@@ -62,7 +62,7 @@ class SpeakerLocalKokoroTtsClient(context: Context) {
         return runCatching {
             OfflineTts(assetManager = appContext.assets, config = ttsConfig)
         }.getOrElse { throwable ->
-            throw IllegalStateException("本地 Kokoro 初始化失败: ${throwable.rootMessage()}", throwable)
+            throw IllegalStateException("语音包加载失败，请安装完整版本后再试", throwable)
         }
     }
 
@@ -99,7 +99,7 @@ class SpeakerLocalKokoroTtsClient(context: Context) {
 
     private fun copyAssetDir(assetDir: String, targetDir: File) {
         val children = appContext.assets.list(assetDir).orEmpty()
-        require(children.isNotEmpty()) { "本地 Kokoro 缺少资源目录: assets/$assetDir" }
+        require(children.isNotEmpty()) { "语音包不完整，请安装完整版本后再试" }
         targetDir.mkdirs()
         children.forEach { child ->
             val childAsset = "$assetDir/$child"

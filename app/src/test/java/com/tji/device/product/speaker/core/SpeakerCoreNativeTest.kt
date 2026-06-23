@@ -114,6 +114,28 @@ class SpeakerCoreNativeTest {
     }
 
     @Test
+    fun commandJsonFallbackBuildsStartTalkCommandWithTopLevelIds() {
+        val json = SpeakerCommandJson.encode(
+            command = SpeakerCommand.StartTalk(
+                msgId = "speaker-talk-start-1",
+                sessionId = "PLAY_PTT_1",
+                talkId = "PLAY_PTT_1"
+            ),
+            deviceId = "T12345678",
+            timestampMs = 123456789L
+        )
+
+        assertEquals(108, json.getInt("cmd"))
+        assertEquals("START_TALK", json.getString("cmdName"))
+        assertEquals("PLAY_PTT_1", json.getString("sessionId"))
+        assertEquals("PLAY_PTT_1", json.getString("talkId"))
+        assertEquals("ima_adpcm", json.getString("codec"))
+        assertEquals(8_000, json.getInt("sampleRate"))
+        assertEquals(1, json.getInt("channels"))
+        assertEquals(40, json.getInt("packetMs"))
+    }
+
+    @Test
     fun commandJsonFallbackBuildsRecordDownloadCommand() {
         val json = SpeakerCommandJson.encode(
             command = SpeakerCommand.RecordDownload(

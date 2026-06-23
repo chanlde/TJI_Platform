@@ -460,8 +460,8 @@ enum class SpeakerTtsVoicePreset(
 }
 
 enum class SpeakerTtsEngine(val label: String) {
-    System(label = "系统"),
-    LocalKokoro(label = "本地")
+    System(label = "手机语音"),
+    LocalKokoro(label = "内置语音")
 }
 
 enum class SpeakerAudioQuality(

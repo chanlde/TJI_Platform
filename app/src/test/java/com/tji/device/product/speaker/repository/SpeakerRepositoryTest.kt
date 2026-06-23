@@ -2,6 +2,7 @@ package com.tji.device.product.speaker.repository
 
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerRecordEvent
+import com.tji.device.product.speaker.model.SpeakerStorageStatus
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -74,6 +75,55 @@ class SpeakerRepositoryTest {
         val state = repo.devices.value.single()
         assertEquals(1, state.recordTotal)
         assertFalse(state.records.any { it.recordId == "REC_STALE" })
+    }
+
+    @Test
+    fun temporarySavedEventDoesNotEnterRecordList() = runBlocking {
+        val repo = SpeakerRepo()
+
+        repo.updateRecordEvent(
+            serialNumber = SERIAL,
+            event = SpeakerRecordEvent(
+                type = "record_saved",
+                recordId = "PTT_PLAY_$SERIAL",
+                ok = true,
+                path = "ram://temporary",
+                visible = false
+            )
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(0, state.recordTotal)
+        assertFalse(state.records.any { it.recordId == "PTT_PLAY_$SERIAL" })
+    }
+
+    @Test
+    fun busyStorageStatusKeepsPreviousCapacity() = runBlocking {
+        val repo = SpeakerRepo()
+
+        repo.updateStorageStatus(
+            serialNumber = SERIAL,
+            status = SpeakerStorageStatus(
+                ok = true,
+                totalBytes = 1024,
+                freeBytes = 512,
+                recordCount = 3,
+                maxRecords = 32
+            )
+        )
+        repo.updateStorageStatus(
+            serialNumber = SERIAL,
+            status = SpeakerStorageStatus(
+                ok = false,
+                code = 486,
+                message = "record store active"
+            )
+        )
+
+        val status = repo.devices.value.single().storageStatus
+        assertEquals(true, status?.ok)
+        assertEquals(1024, status?.totalBytes)
+        assertEquals(512, status?.freeBytes)
     }
 
     private fun record(recordId: String, createdMs: Long): SpeakerRecord =
