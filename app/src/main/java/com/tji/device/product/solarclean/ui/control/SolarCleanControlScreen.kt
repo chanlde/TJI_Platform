@@ -10,6 +10,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.di.AppContainer
+import com.tji.device.product.solarclean.model.SolarCleanControlSettings
 import com.tji.device.product.solarclean.viewmodel.SolarCleanControlViewModel
 import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedback
 
@@ -33,6 +34,10 @@ fun SolarCleanControlScreen(
     val commandFeedback by viewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
         it ?: remember { androidx.compose.runtime.mutableStateOf(SolarCleanCommandFeedback()) }
     }
+    val controlSettingsByDevice by viewModel?.controlSettings?.collectAsStateWithLifecycle().let {
+        it ?: remember { androidx.compose.runtime.mutableStateOf(emptyMap()) }
+    }
+    val controlSettings = controlSettingsByDevice[device.serialNumber] ?: SolarCleanControlSettings()
 
     LaunchedEffect(viewModel, device.serialNumber) {
         viewModel?.requestDeviceInfo(device.serialNumber)
@@ -42,6 +47,7 @@ fun SolarCleanControlScreen(
     SolarCleanControlPage(
         device = device,
         state = displayState,
+        controlSettings = controlSettings,
         enabled = controlsEnabled,
         commandFeedback = commandFeedback,
         onPumpOn = { viewModel?.setPump(device.serialNumber, true) },

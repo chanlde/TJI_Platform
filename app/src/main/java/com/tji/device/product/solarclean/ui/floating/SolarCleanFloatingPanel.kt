@@ -35,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.data.model.ProductType
 import com.tji.device.di.AppContainer
+import com.tji.device.product.solarclean.model.SolarCleanControlSettings
 import com.tji.device.product.solarclean.viewmodel.SolarCleanControlViewModel
 import com.tji.device.ui.floating.ExpandedCard
 import com.tji.device.ui.floating.FloatingWindowAppearance
@@ -56,8 +57,13 @@ fun SolarCleanFloatingPanel(
         factory = AppContainer.solarCleanControlViewModelFactory
     )
     val serialNumber = link?.serialNumber
+    val controlSettingsByDevice by viewModel.controlSettings.collectAsStateWithLifecycle()
+    val controlSettings = serialNumber
+        ?.let { controlSettingsByDevice[it] }
+        ?: SolarCleanControlSettings()
     SolarCleanFloatingPanelContent(
         link = link,
+        controlSettings = controlSettings,
         onPumpPressureChanged = { value ->
             serialNumber?.let { viewModel.setPumpPressure(it, value.toDouble()) }
         },
@@ -85,6 +91,7 @@ fun SolarCleanFloatingPanel(
 @Composable
 private fun SolarCleanFloatingPanelContent(
     link: FloatingLinkSummary?,
+    controlSettings: SolarCleanControlSettings,
     onPumpPressureChanged: (Int) -> Unit,
     onSprayAngleChanged: (Int) -> Unit,
     onSwingSpeedChanged: (Int) -> Unit,
@@ -100,11 +107,27 @@ private fun SolarCleanFloatingPanelContent(
         FloatingWindowAppearance.load(context)
     }
     val backgroundAlpha by FloatingWindowAppearance.backgroundAlpha.collectAsStateWithLifecycle()
-    var pumpPressure by remember(serialNumber) { mutableFloatStateOf(50f) }
-    var sprayAngle by remember(serialNumber) { mutableFloatStateOf(20f) }
-    var swingSpeed by remember(serialNumber) { mutableFloatStateOf(50f) }
-    var pumpOn by remember(serialNumber) { androidx.compose.runtime.mutableStateOf(false) }
-    var swingOn by remember(serialNumber) { androidx.compose.runtime.mutableStateOf(false) }
+    var pumpPressure by remember(serialNumber) { mutableFloatStateOf(controlSettings.pumpPressurePercent.toFloat()) }
+    var sprayAngle by remember(serialNumber) { mutableFloatStateOf(controlSettings.sprayAngleDegrees.toFloat()) }
+    var swingSpeed by remember(serialNumber) { mutableFloatStateOf(controlSettings.swingSpeedPercent.toFloat()) }
+    var pumpOn by remember(serialNumber) { androidx.compose.runtime.mutableStateOf(controlSettings.pumpOn) }
+    var swingOn by remember(serialNumber) { androidx.compose.runtime.mutableStateOf(controlSettings.swingOn) }
+
+    LaunchedEffect(serialNumber, controlSettings.pumpPressurePercent) {
+        pumpPressure = controlSettings.pumpPressurePercent.toFloat()
+    }
+    LaunchedEffect(serialNumber, controlSettings.sprayAngleDegrees) {
+        sprayAngle = controlSettings.sprayAngleDegrees.toFloat()
+    }
+    LaunchedEffect(serialNumber, controlSettings.swingSpeedPercent) {
+        swingSpeed = controlSettings.swingSpeedPercent.toFloat()
+    }
+    LaunchedEffect(serialNumber, controlSettings.pumpOn) {
+        pumpOn = controlSettings.pumpOn
+    }
+    LaunchedEffect(serialNumber, controlSettings.swingOn) {
+        swingOn = controlSettings.swingOn
+    }
 
     Column(
         modifier = Modifier
@@ -379,6 +402,13 @@ private fun PreviewSolarCleanFloatingPanelOffline() {
 private fun PreviewSolarCleanFloatingPanelContent() {
     SolarCleanFloatingPanelContent(
         link = previewFloatingLink(isOnline = true),
+        controlSettings = SolarCleanControlSettings(
+            pumpPressurePercent = 68.0,
+            sprayAngleDegrees = 24.0,
+            swingSpeedPercent = 72.0,
+            pumpOn = true,
+            swingOn = true
+        ),
         onPumpPressureChanged = {},
         onSprayAngleChanged = {},
         onSwingSpeedChanged = {},

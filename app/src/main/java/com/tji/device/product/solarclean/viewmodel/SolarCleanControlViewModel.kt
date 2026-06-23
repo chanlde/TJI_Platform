@@ -19,6 +19,7 @@ class SolarCleanControlViewModel(
     private val controlRepository: SolarCleanControlRepository
 ) : ViewModel() {
     val devices: StateFlow<List<SolarCleanDeviceState>> = stateRepository.devices
+    val controlSettings = stateRepository.controlSettings
 
     private val _commandFeedback = MutableStateFlow(SolarCleanCommandFeedback())
     val commandFeedback: StateFlow<SolarCleanCommandFeedback> = _commandFeedback.asStateFlow()
@@ -63,22 +64,27 @@ class SolarCleanControlViewModel(
     }
 
     fun setPump(serialNumber: String, on: Boolean) {
+        stateRepository.updateControlSettings(serialNumber) { it.copy(pumpOn = on) }
         send(serialNumber, SolarCleanCommand.PumpSwitch(newMsgId("pump"), on), "水泵设置")
     }
 
     fun setPumpPressure(serialNumber: String, percent: Double) {
+        stateRepository.updateControlSettings(serialNumber) { it.copy(pumpPressurePercent = percent) }
         send(serialNumber, SolarCleanCommand.PumpPressure(newMsgId("pressure"), percent), "水泵压力设置")
     }
 
     fun setSprayAngle(serialNumber: String, angleDeg: Double) {
+        stateRepository.updateControlSettings(serialNumber) { it.copy(sprayAngleDegrees = angleDeg) }
         send(serialNumber, SolarCleanCommand.SprayAngle(newMsgId("angle"), angleDeg), "喷洒角度设置")
     }
 
     fun setServoSwing(serialNumber: String, on: Boolean) {
+        stateRepository.updateControlSettings(serialNumber) { it.copy(swingOn = on) }
         send(serialNumber, SolarCleanCommand.ServoSwing(newMsgId("swing"), on), "摆动设置")
     }
 
     fun setSwingSpeed(serialNumber: String, speedPercent: Double) {
+        stateRepository.updateControlSettings(serialNumber) { it.copy(swingSpeedPercent = speedPercent) }
         send(serialNumber, SolarCleanCommand.SwingSpeed(newMsgId("swing-speed"), speedPercent), "摆动速度设置")
     }
 

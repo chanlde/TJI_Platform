@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductType
+import com.tji.device.product.solarclean.model.SolarCleanControlSettings
 import com.tji.device.product.solarclean.model.SolarCleanDeviceInfo
 import com.tji.device.product.solarclean.model.SolarCleanDeviceState
 import com.tji.device.product.solarclean.model.SolarCleanOtaStatus
@@ -78,6 +79,13 @@ private fun PreviewSolarCleanPrimaryControlsCard() {
         PrimaryControlsCard(
             enabled = true,
             expanded = true,
+            controlSettings = SolarCleanControlSettings(
+                pumpPressurePercent = 68.0,
+                sprayAngleDegrees = 24.0,
+                swingSpeedPercent = 72.0,
+                pumpOn = true,
+                swingOn = true
+            ),
             commandFeedback = SolarCleanCommandFeedback(
                 status = SolarCleanCommandFeedbackStatus.Success,
                 text = "指令已确认"

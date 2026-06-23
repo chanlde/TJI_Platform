@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import com.tji.device.data.model.BoundAccountDevice
+import com.tji.device.product.solarclean.model.SolarCleanControlSettings
 import com.tji.device.product.solarclean.model.SolarCleanDeviceState
 import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedback
 import com.tji.device.ui.components.TjiMetricTile
@@ -43,6 +45,7 @@ private const val TELEMETRY_PANEL_EXPANDED_PREFIX = "telemetry_expanded_"
 internal fun SolarCleanControlPage(
     device: BoundAccountDevice,
     state: SolarCleanDeviceState?,
+    controlSettings: SolarCleanControlSettings,
     enabled: Boolean,
     commandFeedback: SolarCleanCommandFeedback,
     onPumpOn: () -> Unit,
@@ -73,6 +76,7 @@ internal fun SolarCleanControlPage(
             PrimaryControlsCard(
                 enabled = enabled,
                 expanded = controlsExpanded,
+                controlSettings = controlSettings,
                 commandFeedback = commandFeedback,
                 onExpandedChange = {
                     controlsExpanded = it
@@ -146,6 +150,7 @@ internal fun TelemetryCard(
 internal fun PrimaryControlsCard(
     enabled: Boolean,
     expanded: Boolean,
+    controlSettings: SolarCleanControlSettings,
     commandFeedback: SolarCleanCommandFeedback,
     onExpandedChange: (Boolean) -> Unit,
     onPumpOn: () -> Unit,
@@ -156,9 +161,19 @@ internal fun PrimaryControlsCard(
     onSwingOn: () -> Unit,
     onSwingOff: () -> Unit
 ) {
-    var pumpPressure by remember { mutableFloatStateOf(50f) }
-    var sprayAngle by remember { mutableFloatStateOf(20f) }
-    var swingSpeed by remember { mutableFloatStateOf(50f) }
+    var pumpPressure by remember { mutableFloatStateOf(controlSettings.pumpPressurePercent.toFloat()) }
+    var sprayAngle by remember { mutableFloatStateOf(controlSettings.sprayAngleDegrees.toFloat()) }
+    var swingSpeed by remember { mutableFloatStateOf(controlSettings.swingSpeedPercent.toFloat()) }
+
+    LaunchedEffect(controlSettings.pumpPressurePercent) {
+        pumpPressure = controlSettings.pumpPressurePercent.toFloat()
+    }
+    LaunchedEffect(controlSettings.sprayAngleDegrees) {
+        sprayAngle = controlSettings.sprayAngleDegrees.toFloat()
+    }
+    LaunchedEffect(controlSettings.swingSpeedPercent) {
+        swingSpeed = controlSettings.swingSpeedPercent.toFloat()
+    }
 
     TjiSectionCard(
         title = "设备控制",

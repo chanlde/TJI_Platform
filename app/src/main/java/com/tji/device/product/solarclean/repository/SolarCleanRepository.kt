@@ -1,6 +1,7 @@
 package com.tji.device.product.solarclean.repository
 
 import com.tji.device.product.solarclean.model.SolarCleanAck
+import com.tji.device.product.solarclean.model.SolarCleanControlSettings
 import com.tji.device.product.solarclean.model.SolarCleanDeviceInfo
 import com.tji.device.product.solarclean.model.SolarCleanDeviceState
 import com.tji.device.product.solarclean.model.SolarCleanEvent
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.update
 
 interface SolarCleanRepository {
     val devices: StateFlow<List<SolarCleanDeviceState>>
+    val controlSettings: StateFlow<Map<String, SolarCleanControlSettings>>
 
     suspend fun updateDeviceState(state: SolarCleanDeviceState)
 
@@ -25,12 +27,19 @@ interface SolarCleanRepository {
 
     suspend fun updateEvent(serialNumber: String, event: SolarCleanEvent)
 
+    fun updateControlSettings(
+        serialNumber: String,
+        transform: (SolarCleanControlSettings) -> SolarCleanControlSettings
+    )
+
     fun clearDevices()
 }
 
 class SolarCleanRepo : SolarCleanRepository {
     private val _devices = MutableStateFlow<List<SolarCleanDeviceState>>(emptyList())
     override val devices: StateFlow<List<SolarCleanDeviceState>> = _devices.asStateFlow()
+    private val _controlSettings = MutableStateFlow<Map<String, SolarCleanControlSettings>>(emptyMap())
+    override val controlSettings: StateFlow<Map<String, SolarCleanControlSettings>> = _controlSettings.asStateFlow()
 
     override suspend fun updateDeviceState(state: SolarCleanDeviceState) {
         _devices.update { current ->
@@ -152,9 +161,27 @@ class SolarCleanRepo : SolarCleanRepository {
         }
     }
 
+    override fun updateControlSettings(
+        serialNumber: String,
+        transform: (SolarCleanControlSettings) -> SolarCleanControlSettings
+    ) {
+        _controlSettings.update { current ->
+            val currentSettings = current[serialNumber] ?: SolarCleanControlSettings()
+            current + (serialNumber to transform(currentSettings).normalized())
+        }
+    }
+
     override fun clearDevices() {
         _devices.value = emptyList()
+        _controlSettings.value = emptyMap()
     }
+
+    private fun SolarCleanControlSettings.normalized(): SolarCleanControlSettings =
+        copy(
+            pumpPressurePercent = pumpPressurePercent.coerceIn(0.0, 100.0),
+            sprayAngleDegrees = sprayAngleDegrees.coerceIn(0.0, 40.0),
+            swingSpeedPercent = swingSpeedPercent.coerceIn(0.0, 100.0)
+        )
 
     private fun List<SolarCleanDeviceState>.updateOrCreate(
         serialNumber: String,

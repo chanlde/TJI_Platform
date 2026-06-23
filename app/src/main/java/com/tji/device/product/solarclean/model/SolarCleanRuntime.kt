@@ -30,6 +30,14 @@ data class SolarCleanDeviceState(
     val timestamp: Long? = null
 ) : ProductRuntimePayload
 
+data class SolarCleanControlSettings(
+    val pumpPressurePercent: Double = 50.0,
+    val sprayAngleDegrees: Double = 20.0,
+    val swingSpeedPercent: Double = 50.0,
+    val pumpOn: Boolean = false,
+    val swingOn: Boolean = false
+)
+
 data class SolarCleanDownloadState(
     val slot: Int,
     val active: Boolean,
