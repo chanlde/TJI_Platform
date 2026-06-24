@@ -29,7 +29,6 @@ import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.ui.components.PayloadActionButton
 import com.tji.device.ui.components.PayloadCard
 import com.tji.device.ui.components.PayloadInfoRow
-import com.tji.device.ui.components.PayloadSlider
 import com.tji.device.ui.components.PayloadStatusBadge
 import com.tji.device.ui.components.PayloadWaveMeter
 import com.tji.device.ui.theme.PayloadColors
@@ -190,27 +189,6 @@ internal fun SpeakerActionButton(
         modifier = modifier,
         soft = soft,
         onClick = onClick
-    )
-}
-
-@Composable
-internal fun SpeakerSmoothSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    color: Color = SpeakerAccent,
-    onValueChangeFinished: (() -> Unit)? = null
-) {
-    PayloadSlider(
-        value = value,
-        onValueChange = onValueChange,
-        valueRange = valueRange,
-        modifier = modifier,
-        enabled = enabled,
-        color = color,
-        onValueChangeFinished = onValueChangeFinished
     )
 }
 

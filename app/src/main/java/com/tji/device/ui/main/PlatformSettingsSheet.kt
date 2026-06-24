@@ -31,7 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.BuildConfig
-import com.tji.device.ui.components.PayloadSlider
+import com.tji.device.ui.components.TjiControlSlider
 import com.tji.device.ui.floating.FloatingWindowAppearance
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
@@ -204,11 +204,10 @@ private fun FloatingWindowOpacityRow(
             title = "悬浮窗透明度",
             value = "${(alpha * 100).toInt()}%"
         )
-        PayloadSlider(
+        TjiControlSlider(
             value = alpha,
             onValueChange = onAlphaChange,
-            valueRange = 0f..1f,
-            color = PayloadColors.Primary
+            valueRange = 0f..1f
         )
     }
 }

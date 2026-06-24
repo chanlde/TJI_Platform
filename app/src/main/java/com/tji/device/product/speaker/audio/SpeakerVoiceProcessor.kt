@@ -54,34 +54,38 @@ class SpeakerVoiceProcessor {
         // clean synthesized speech can click when high-pass/presence/large AGC sharpen its first word.
         if (profile != VoiceProfile.Playback) {
             removeDc(samples)
-            highPass(samples, stateful, sampleRate)
+            highPass(samples, stateful, sampleRate, toneSettings)
         }
-        val pttNoiseGate = if (profile == VoiceProfile.PushToTalk) createPushToTalkNoiseGate(samples) else null
+        val pttNoiseGate = if (profile == VoiceProfile.PushToTalk) {
+            createPushToTalkNoiseGate(samples, toneSettings)
+        } else {
+            null
+        }
         pttNoiseGate?.applyTo(samples)
         if (profile != VoiceProfile.Playback) {
-            addPresence(samples, stateful)
+            addPresence(samples, stateful, toneSettings)
         }
         applyToneEqualizer(samples, toneSettings, stateful)
         if (profile == VoiceProfile.Playback) {
             lowPass(
                 samples = samples,
-                cutoffHz = SpeakerAudioConfig.Voice.TTS_LOW_PASS_CUTOFF_HZ,
+                cutoffHz = toneSettings.playbackLowPassHz(profile),
                 passes = SpeakerAudioConfig.Voice.TTS_LOW_PASS_PASSES,
                 sampleRate = sampleRate
             )
         }
-        normalizeAndCompress(samples, stateful, profile)
+        normalizeAndCompress(samples, stateful, profile, toneSettings)
         if (profile == VoiceProfile.Playback) {
             lowPass(
                 samples = samples,
-                cutoffHz = SpeakerAudioConfig.Voice.TTS_LOW_PASS_CUTOFF_HZ,
+                cutoffHz = toneSettings.playbackLowPassHz(profile),
                 passes = SpeakerAudioConfig.Voice.TTS_LOW_PASS_PASSES,
                 sampleRate = sampleRate
             )
         } else if (profile == VoiceProfile.PushToTalk) {
             lowPass(
                 samples = samples,
-                cutoffHz = SpeakerAudioConfig.Voice.PTT_LOW_PASS_CUTOFF_HZ,
+                cutoffHz = toneSettings.playbackLowPassHz(profile),
                 passes = SpeakerAudioConfig.Voice.PTT_LOW_PASS_PASSES,
                 sampleRate = sampleRate
             )
@@ -107,10 +111,12 @@ class SpeakerVoiceProcessor {
         val noiseRms: Float,
         val closeRms: Float,
         val openRms: Float,
-        val windowSamples: Int
+        val windowSamples: Int,
+        val closedScale: Float,
+        val smoothing: Float
     ) {
         fun applyTo(samples: FloatArray) {
-            var gain = SpeakerAudioConfig.Voice.PTT_NOISE_GATE_CLOSED_SCALE
+            var gain = closedScale
             var offset = 0
 
             // Soft gate: reduce steady background noise without hard-cutting word starts.
@@ -118,16 +124,15 @@ class SpeakerVoiceProcessor {
                 val end = min(offset + windowSamples, samples.size)
                 val rms = samples.windowRms(offset, end)
                 val targetGain = when {
-                    rms <= closeRms -> SpeakerAudioConfig.Voice.PTT_NOISE_GATE_CLOSED_SCALE
+                    rms <= closeRms -> closedScale
                     rms >= openRms -> 1f
                     else -> {
                         val range = (openRms - closeRms).coerceAtLeast(Float.MIN_VALUE)
                         val position = ((rms - closeRms) / range).coerceIn(0f, 1f)
-                        SpeakerAudioConfig.Voice.PTT_NOISE_GATE_CLOSED_SCALE +
-                            position * (1f - SpeakerAudioConfig.Voice.PTT_NOISE_GATE_CLOSED_SCALE)
+                        closedScale + position * (1f - closedScale)
                     }
                 }
-                gain += (targetGain - gain) * SpeakerAudioConfig.Voice.PTT_NOISE_GATE_SMOOTHING
+                gain += (targetGain - gain) * smoothing
                 for (i in offset until end) {
                     samples[i] *= gain
                 }
@@ -137,17 +142,24 @@ class SpeakerVoiceProcessor {
 
     }
 
-    private fun createPushToTalkNoiseGate(samples: FloatArray): PushToTalkNoiseGate? {
+    private fun createPushToTalkNoiseGate(
+        samples: FloatArray,
+        toneSettings: SpeakerToneSettings
+    ): PushToTalkNoiseGate? {
+        val settings = toneSettings.normalized()
         val windowSamples = msToSamples(SpeakerAudioConfig.Voice.PTT_NOISE_GATE_WINDOW_MS)
             .coerceAtLeast(1)
         val noiseRms = estimatePushToTalkNoiseRms(samples)
-        val openRms = noiseRms * SpeakerAudioConfig.Voice.PTT_NOISE_GATE_OPEN_MULTIPLIER
+        val closeRms = noiseRms * settings.noiseGateCloseMultiplier()
+        val openRms = noiseRms * settings.noiseGateOpenMultiplier()
         if (samples.maxWindowRms(windowSamples) < openRms) return null
         return PushToTalkNoiseGate(
             noiseRms = noiseRms,
-            closeRms = noiseRms * SpeakerAudioConfig.Voice.PTT_NOISE_GATE_CLOSE_MULTIPLIER,
+            closeRms = closeRms,
             openRms = openRms,
-            windowSamples = windowSamples
+            windowSamples = windowSamples,
+            closedScale = settings.noiseGateClosedScale(),
+            smoothing = settings.noiseGateSmoothing()
         )
     }
 
@@ -186,8 +198,13 @@ class SpeakerVoiceProcessor {
         return maxOf(measured, SpeakerAudioConfig.Voice.PTT_NOISE_FLOOR_RMS)
     }
 
-    private fun highPass(samples: FloatArray, stateful: Boolean, sampleRate: Int) {
-        val rc = 1f / (TWO_PI * SpeakerAudioConfig.Voice.HIGH_PASS_CUTOFF_HZ)
+    private fun highPass(
+        samples: FloatArray,
+        stateful: Boolean,
+        sampleRate: Int,
+        toneSettings: SpeakerToneSettings
+    ) {
+        val rc = 1f / (TWO_PI * toneSettings.normalized().highPassCutoffHz())
         val dt = 1f / sampleRate.toFloat()
         val alpha = rc / (rc + dt)
         var lastInput = if (stateful) previousInput else 0f
@@ -205,12 +222,17 @@ class SpeakerVoiceProcessor {
         }
     }
 
-    private fun addPresence(samples: FloatArray, stateful: Boolean) {
+    private fun addPresence(
+        samples: FloatArray,
+        stateful: Boolean,
+        toneSettings: SpeakerToneSettings
+    ) {
+        val presenceGain = toneSettings.normalized().presenceEdgeGain()
         var previous = if (stateful) previousPresence else 0f
         for (i in samples.indices) {
             val current = samples[i]
             val edge = current - previous
-            samples[i] = (current + edge * SpeakerAudioConfig.Voice.PRESENCE_EDGE_GAIN)
+            samples[i] = (current + edge * presenceGain)
                 .coerceIn(SpeakerAudioConfig.Pcm.PCM_FLOAT_MIN, SpeakerAudioConfig.Pcm.PCM_FLOAT_MAX)
             previous = current
         }
@@ -244,7 +266,12 @@ class SpeakerVoiceProcessor {
         }
     }
 
-    private fun normalizeAndCompress(samples: FloatArray, stateful: Boolean, profile: VoiceProfile) {
+    private fun normalizeAndCompress(
+        samples: FloatArray,
+        stateful: Boolean,
+        profile: VoiceProfile,
+        toneSettings: SpeakerToneSettings
+    ) {
         var peak = 0f
         var sumSq = 0f
         for (sample in samples) {
@@ -253,7 +280,8 @@ class SpeakerVoiceProcessor {
             sumSq += sample * sample
         }
         val rms = sqrt(sumSq / samples.size)
-        val params = profile.params
+        val settings = toneSettings.normalized()
+        val params = profile.params(settings)
         if (rms < params.minActiveRms || peak < params.minActivePeak) return
 
         val targetGain = min(params.maxGain, params.targetRms / rms)
@@ -266,12 +294,11 @@ class SpeakerVoiceProcessor {
             var x = samples[i] * gain
             val sign = if (x < 0f) -1f else 1f
             var magnitude = abs(x)
-            if (magnitude > SpeakerAudioConfig.Voice.COMPRESS_THRESHOLD) {
-                magnitude = SpeakerAudioConfig.Voice.COMPRESS_THRESHOLD +
-                    (magnitude - SpeakerAudioConfig.Voice.COMPRESS_THRESHOLD) /
-                    SpeakerAudioConfig.Voice.COMPRESS_RATIO
+            val threshold = settings.compressThreshold()
+            if (magnitude > threshold) {
+                magnitude = threshold + (magnitude - threshold) / settings.compressRatio()
             }
-            magnitude = min(magnitude, SpeakerAudioConfig.Voice.LIMITER_CEILING)
+            magnitude = min(magnitude, settings.limiterCeiling())
             samples[i] = sign * magnitude
         }
     }
@@ -351,8 +378,13 @@ class SpeakerVoiceProcessor {
             if (samples.isEmpty()) return false
             val processor = SpeakerVoiceProcessor()
             processor.removeDc(samples)
-            processor.highPass(samples, stateful = false, sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE)
-            val gate = processor.createPushToTalkNoiseGate(samples) ?: return false
+            processor.highPass(
+                samples,
+                stateful = false,
+                sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE,
+                toneSettings = SpeakerToneSettings()
+            )
+            val gate = processor.createPushToTalkNoiseGate(samples, SpeakerToneSettings()) ?: return false
             val activeWindows = samples.countActiveSpeechWindows(gate.openRms, gate.windowSamples)
             return activeWindows >= SpeakerAudioConfig.Voice.PTT_MIN_SPEECH_WINDOWS
         }
@@ -539,31 +571,80 @@ private data class VoiceProcessingParams(
     val minActivePeak: Float
 )
 
-private enum class VoiceProfile(val params: VoiceProcessingParams) {
-    Live(
-        VoiceProcessingParams(
-            targetRms = SpeakerAudioConfig.Voice.LIVE_TARGET_RMS,
-            maxGain = SpeakerAudioConfig.Voice.LIVE_MAX_GAIN,
-            minActiveRms = SpeakerAudioConfig.Voice.LIVE_MIN_ACTIVE_RMS,
-            minActivePeak = SpeakerAudioConfig.Voice.LIVE_MIN_ACTIVE_PEAK
-        )
-    ),
-    PushToTalk(
-        VoiceProcessingParams(
-            targetRms = SpeakerAudioConfig.Voice.PTT_TARGET_RMS,
-            maxGain = SpeakerAudioConfig.Voice.PTT_MAX_GAIN,
-            minActiveRms = SpeakerAudioConfig.Voice.PTT_MIN_ACTIVE_RMS,
-            minActivePeak = SpeakerAudioConfig.Voice.PTT_MIN_ACTIVE_PEAK
-        )
-    ),
-    Playback(
-        VoiceProcessingParams(
-            targetRms = SpeakerAudioConfig.Voice.TTS_TARGET_RMS,
-            maxGain = SpeakerAudioConfig.Voice.TTS_MAX_GAIN,
-            minActiveRms = SpeakerAudioConfig.Voice.TTS_MIN_ACTIVE_RMS,
-            minActivePeak = SpeakerAudioConfig.Voice.TTS_MIN_ACTIVE_PEAK
-        )
-    )
+private enum class VoiceProfile {
+    Live,
+    PushToTalk,
+    Playback;
+
+    fun params(settings: SpeakerToneSettings): VoiceProcessingParams {
+        val normalized = settings.normalized()
+        val loudness = normalized.loudness / 100f
+        return when (this) {
+            Live -> VoiceProcessingParams(
+                targetRms = 0.12f + loudness * 0.13f,
+                maxGain = 3.5f + loudness * 8.5f,
+                minActiveRms = SpeakerAudioConfig.Voice.LIVE_MIN_ACTIVE_RMS,
+                minActivePeak = SpeakerAudioConfig.Voice.LIVE_MIN_ACTIVE_PEAK
+            )
+
+            PushToTalk -> VoiceProcessingParams(
+                targetRms = 0.16f + loudness * 0.14f,
+                maxGain = 5f + loudness * 16f,
+                minActiveRms = SpeakerAudioConfig.Voice.PTT_MIN_ACTIVE_RMS,
+                minActivePeak = SpeakerAudioConfig.Voice.PTT_MIN_ACTIVE_PEAK
+            )
+
+            Playback -> VoiceProcessingParams(
+                targetRms = 0.20f + loudness * 0.18f,
+                maxGain = 10f + loudness * 30f,
+                minActiveRms = SpeakerAudioConfig.Voice.TTS_MIN_ACTIVE_RMS,
+                minActivePeak = SpeakerAudioConfig.Voice.TTS_MIN_ACTIVE_PEAK
+            )
+        }
+    }
+}
+
+private fun SpeakerToneSettings.highPassCutoffHz(): Float =
+    (80f + normalized().lowCut * 1.7f).coerceIn(80f, 250f)
+
+private fun SpeakerToneSettings.presenceEdgeGain(): Float =
+    (0.04f + normalized().clarity * 0.0032f).coerceIn(0.02f, 0.38f)
+
+private fun SpeakerToneSettings.noiseGateCloseMultiplier(): Float =
+    (1.2f + normalized().noiseReduction * 0.018f).coerceIn(1.2f, 3.0f)
+
+private fun SpeakerToneSettings.noiseGateOpenMultiplier(): Float =
+    (2.0f + normalized().noiseReduction * 0.03f).coerceIn(2.0f, 5.0f)
+
+private fun SpeakerToneSettings.noiseGateClosedScale(): Float =
+    (0.14f - normalized().noiseReduction * 0.0012f).coerceIn(0.02f, 0.14f)
+
+private fun SpeakerToneSettings.noiseGateSmoothing(): Float =
+    (0.38f + normalized().noiseReduction * 0.003f).coerceIn(0.38f, 0.68f)
+
+private fun SpeakerToneSettings.compressThreshold(): Float {
+    val settings = normalized()
+    val protectionDrop = when (settings.protection) {
+        SpeakerLimiterProtection.Low -> 0.00f
+        SpeakerLimiterProtection.Medium -> 0.04f
+        SpeakerLimiterProtection.High -> 0.08f
+    }
+    return (0.74f - settings.loudness * 0.0022f - protectionDrop).coerceIn(0.45f, 0.78f)
+}
+
+private fun SpeakerToneSettings.compressRatio(): Float =
+    (1.6f + normalized().loudness * 0.038f).coerceIn(1.5f, 6.0f)
+
+private fun SpeakerToneSettings.limiterCeiling(): Float =
+    normalized().protection.ceiling.coerceIn(0.75f, SpeakerAudioConfig.Voice.LIMITER_CEILING)
+
+private fun SpeakerToneSettings.playbackLowPassHz(profile: VoiceProfile): Float {
+    val settings = normalized()
+    return when (profile) {
+        VoiceProfile.Playback -> (2_700f + settings.clarity * 6f).coerceIn(2_500f, 3_500f)
+        VoiceProfile.PushToTalk -> (2_900f + settings.clarity * 8f).coerceIn(2_800f, 3_800f)
+        VoiceProfile.Live -> SpeakerAudioConfig.Voice.PTT_LOW_PASS_CUTOFF_HZ
+    }
 }
 
 data class SpeakerPcmStats(

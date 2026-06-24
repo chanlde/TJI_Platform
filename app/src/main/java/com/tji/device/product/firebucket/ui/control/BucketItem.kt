@@ -16,11 +16,11 @@ import com.tji.device.product.firebucket.model.Switch
 import com.tji.device.product.firebucket.model.ControlMode
 import com.tji.device.product.firebucket.model.SwitchControlParms
 import com.tji.device.ui.components.BatteryIndicator
-import com.tji.device.ui.components.CustomSlider
 import com.tji.device.ui.components.DeviceInfoButton
 import com.tji.device.ui.components.StatusChip
 import com.tji.device.ui.components.TjiActionButton
 import com.tji.device.ui.components.TjiCardShell
+import com.tji.device.ui.components.TjiControlSlider
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.ui.theme.TjiWarning
@@ -164,9 +164,10 @@ fun AngleSlider(
                 color = PayloadColors.TextSecondary
             )
 
-            CustomSlider(
+            TjiControlSlider(
                 value = value,
                 onValueChange = onValueChange,
+                valueRange = minValue..maxValue,
                 modifier = Modifier
                     .weight(1f)  // 关键：让滑块占据剩余空间
                     .padding(horizontal = 20.dp)

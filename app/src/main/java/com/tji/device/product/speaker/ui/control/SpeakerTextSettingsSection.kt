@@ -16,12 +16,16 @@ import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerAudioQuality
 import com.tji.device.product.speaker.audio.SpeakerKokoroTtsSettings
 import com.tji.device.product.speaker.audio.SpeakerKokoroVoice
+import com.tji.device.product.speaker.audio.SpeakerLimiterProtection
 import com.tji.device.product.speaker.audio.SpeakerToneSettings
+import com.tji.device.product.speaker.audio.SpeakerTonePreset
 import com.tji.device.product.speaker.audio.SpeakerTtsEngine
 import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
 import com.tji.device.product.speaker.audio.customerLabel
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
+import com.tji.device.ui.components.TjiControlSlider
+import kotlin.math.roundToInt
 
 @Composable
 internal fun SpeakerOutputQualityCard(
@@ -40,52 +44,116 @@ internal fun SpeakerOutputQualityCard(
 
 @Composable
 internal fun SpeakerToneSettingsCard(
-    bassDb: Float,
-    trebleDb: Float,
+    toneSettings: SpeakerToneSettings,
     enabled: Boolean,
-    onToneChanged: (SpeakerToneSettings) -> Unit,
-    onBassChange: (Float) -> Unit,
-    onTrebleChange: (Float) -> Unit
+    onToneChanged: (SpeakerToneSettings) -> Unit
 ) {
-    SpeakerCard(title = "音色调节") {
+    val settings = toneSettings.normalized()
+    SpeakerCard(title = "音效调节") {
+        Text(
+            text = "音效模式",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SpeakerMuted
+        )
+        SpeakerTonePreset.entries.chunked(4).forEach { rowPresets ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                rowPresets.forEach { preset ->
+                    SpeakerActionButton(
+                        text = preset.label,
+                        enabled = enabled,
+                        color = if (settings.preset == preset) SpeakerWarning else SpeakerAccent,
+                        soft = settings.preset != preset,
+                        onClick = { onToneChanged(SpeakerToneSettings.fromPreset(preset)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                repeat(4 - rowPresets.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        PercentToneSlider(
+            label = "人声清晰",
+            value = settings.clarity,
+            onValueChange = { onToneChanged(settings.copy(clarity = it).asCustom()) }
+        )
+        PercentToneSlider(
+            label = "降噪",
+            value = settings.noiseReduction,
+            onValueChange = { onToneChanged(settings.copy(noiseReduction = it).asCustom()) }
+        )
+        PercentToneSlider(
+            label = "响度增强",
+            value = settings.loudness,
+            onValueChange = { onToneChanged(settings.copy(loudness = it).asCustom()) }
+        )
+        PercentToneSlider(
+            label = "低频削减",
+            value = settings.lowCut,
+            onValueChange = { onToneChanged(settings.copy(lowCut = it).asCustom()) }
+        )
         ToneSlider(
             label = "低音",
-            value = bassDb,
+            value = settings.bassDb,
             onValueChange = {
-                onBassChange(it)
-                onToneChanged(SpeakerToneSettings(bassDb = it, trebleDb = trebleDb))
+                onToneChanged(settings.copy(bassDb = it).asCustom())
             }
         )
         ToneSlider(
             label = "高音",
-            value = trebleDb,
+            value = settings.trebleDb,
             onValueChange = {
-                onTrebleChange(it)
-                onToneChanged(SpeakerToneSettings(bassDb = bassDb, trebleDb = it))
+                onToneChanged(settings.copy(trebleDb = it).asCustom())
             }
         )
+        Text(
+            text = "防破音保护",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SpeakerMuted
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf("原始" to 0f, "清晰" to 3f, "厚重" to -2f).forEach { (label, treble) ->
+            SpeakerLimiterProtection.entries.forEach { protection ->
                 SpeakerActionButton(
-                    text = label,
+                    text = protection.label,
                     enabled = enabled,
-                    color = SpeakerAccent,
-                    soft = label != "清晰",
-                    onClick = {
-                        val preset = when (label) {
-                            "清晰" -> SpeakerToneSettings(bassDb = 0f, trebleDb = treble)
-                            "厚重" -> SpeakerToneSettings(bassDb = 3f, trebleDb = treble)
-                            else -> SpeakerToneSettings()
-                        }
-                        onBassChange(preset.bassDb)
-                        onTrebleChange(preset.trebleDb)
-                        onToneChanged(preset)
-                    },
+                    color = if (settings.protection == protection) SpeakerWarning else SpeakerAccent,
+                    soft = settings.protection != protection,
+                    onClick = { onToneChanged(settings.copy(protection = protection).asCustom()) },
                     modifier = Modifier.weight(1f)
                 )
             }
         }
     }
+}
+
+@Composable
+private fun PercentToneSlider(
+    label: String,
+    value: Int,
+    onValueChange: (Int) -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = SpeakerFg
+        )
+        Text(
+            text = "$value",
+            style = MaterialTheme.typography.bodyMedium,
+            color = SpeakerMuted
+        )
+    }
+    TjiControlSlider(
+        value = value.toFloat(),
+        onValueChange = { onValueChange(it.roundToInt().coerceIn(0, 100)) },
+        valueRange = 0f..100f,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable
@@ -236,7 +304,7 @@ private fun ToneSlider(
             color = SpeakerMuted
         )
     }
-    SpeakerSmoothSlider(
+    TjiControlSlider(
         value = value,
         onValueChange = { onValueChange(it.coerceIn(SpeakerAudioConfig.Equalizer.MIN_DB, SpeakerAudioConfig.Equalizer.MAX_DB)) },
         valueRange = SpeakerAudioConfig.Equalizer.MIN_DB..SpeakerAudioConfig.Equalizer.MAX_DB,
@@ -296,7 +364,7 @@ private fun KokoroSpeedSlider(
             color = SpeakerMuted
         )
     }
-    SpeakerSmoothSlider(
+    TjiControlSlider(
         value = value,
         onValueChange = {
             onValueChange(

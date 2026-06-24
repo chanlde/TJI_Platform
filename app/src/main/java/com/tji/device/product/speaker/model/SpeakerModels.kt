@@ -21,8 +21,29 @@ data class SpeakerDeviceState(
     val storageStatus: SpeakerStorageStatus? = null,
     val lastRecordEvent: SpeakerRecordEvent? = null,
     val outputQuality: String? = null,
+    val audio: SpeakerAudioDiagnostics? = null,
     val timestamp: Long? = null
 ) : ProductRuntimePayload
+
+data class SpeakerAudioDiagnostics(
+    val packets: Long = 0L,
+    val lostPackets: Long = 0L,
+    val badPackets: Long = 0L,
+    val bufferedBytes: Int = 0,
+    val bufferedMinBytes: Int = 0,
+    val bufferedMaxBytes: Int = 0,
+    val outUnderruns: Long = 0L,
+    val saiErrors: Long = 0L,
+    val saiOvr: Long = 0L,
+    val dmaHalf: Long = 0L,
+    val dmaFull: Long = 0L,
+    val dmaErrors: Long = 0L,
+    val fillLate: Long = 0L,
+    val peakQ15: Int = 0,
+    val rmsQ15: Int = 0,
+    val clipCount: Long = 0L,
+    val limiterCount: Long = 0L
+)
 
 data class SpeakerAck(
     val msgId: String,

@@ -391,14 +391,131 @@ object SpeakerAudioConfig {
 }
 
 data class SpeakerToneSettings(
+    val preset: SpeakerTonePreset = SpeakerTonePreset.Standard,
+    val clarity: Int = SpeakerTonePreset.Standard.clarity,
+    val noiseReduction: Int = SpeakerTonePreset.Standard.noiseReduction,
+    val loudness: Int = SpeakerTonePreset.Standard.loudness,
+    val lowCut: Int = SpeakerTonePreset.Standard.lowCut,
+    val protection: SpeakerLimiterProtection = SpeakerTonePreset.Standard.protection,
     val bassDb: Float = SpeakerAudioConfig.Equalizer.DEFAULT_BASS_DB,
     val trebleDb: Float = SpeakerAudioConfig.Equalizer.DEFAULT_TREBLE_DB
 ) {
     fun normalized(): SpeakerToneSettings =
         copy(
+            clarity = clarity.coerceIn(0, 100),
+            noiseReduction = noiseReduction.coerceIn(0, 100),
+            loudness = loudness.coerceIn(0, 100),
+            lowCut = lowCut.coerceIn(0, 100),
             bassDb = bassDb.coerceIn(SpeakerAudioConfig.Equalizer.MIN_DB, SpeakerAudioConfig.Equalizer.MAX_DB),
             trebleDb = trebleDb.coerceIn(SpeakerAudioConfig.Equalizer.MIN_DB, SpeakerAudioConfig.Equalizer.MAX_DB)
         )
+
+    val requiresKotlinProcessor: Boolean
+        get() = true
+
+    fun asCustom(): SpeakerToneSettings = copy(preset = SpeakerTonePreset.Custom).normalized()
+
+    companion object {
+        fun fromPreset(preset: SpeakerTonePreset): SpeakerToneSettings =
+            SpeakerToneSettings(
+                preset = preset,
+                clarity = preset.clarity,
+                noiseReduction = preset.noiseReduction,
+                loudness = preset.loudness,
+                lowCut = preset.lowCut,
+                protection = preset.protection,
+                bassDb = preset.bassDb,
+                trebleDb = preset.trebleDb
+            ).normalized()
+    }
+}
+
+enum class SpeakerLimiterProtection(val label: String, val ceiling: Float) {
+    Low(label = "低", ceiling = 0.98f),
+    Medium(label = "中", ceiling = 0.92f),
+    High(label = "高", ceiling = 0.86f)
+}
+
+enum class SpeakerTonePreset(
+    val label: String,
+    val clarity: Int,
+    val noiseReduction: Int,
+    val loudness: Int,
+    val lowCut: Int,
+    val protection: SpeakerLimiterProtection,
+    val bassDb: Float,
+    val trebleDb: Float
+) {
+    Standard(
+        label = "标准",
+        clarity = 45,
+        noiseReduction = 35,
+        loudness = 45,
+        lowCut = 40,
+        protection = SpeakerLimiterProtection.Medium,
+        bassDb = 0f,
+        trebleDb = 0f
+    ),
+    Clear(
+        label = "清晰",
+        clarity = 68,
+        noiseReduction = 35,
+        loudness = 48,
+        lowCut = 58,
+        protection = SpeakerLimiterProtection.Medium,
+        bassDb = -1.5f,
+        trebleDb = 2.5f
+    ),
+    Loud(
+        label = "响亮",
+        clarity = 62,
+        noiseReduction = 45,
+        loudness = 76,
+        lowCut = 55,
+        protection = SpeakerLimiterProtection.High,
+        bassDb = -1f,
+        trebleDb = 2f
+    ),
+    Far(
+        label = "远距离",
+        clarity = 78,
+        noiseReduction = 50,
+        loudness = 72,
+        lowCut = 70,
+        protection = SpeakerLimiterProtection.High,
+        bassDb = -2.5f,
+        trebleDb = 3f
+    ),
+    Noise(
+        label = "抗噪",
+        clarity = 58,
+        noiseReduction = 78,
+        loudness = 58,
+        lowCut = 82,
+        protection = SpeakerLimiterProtection.High,
+        bassDb = -3f,
+        trebleDb = 1f
+    ),
+    Soft(
+        label = "柔和",
+        clarity = 32,
+        noiseReduction = 22,
+        loudness = 28,
+        lowCut = 25,
+        protection = SpeakerLimiterProtection.Medium,
+        bassDb = 1f,
+        trebleDb = -1.5f
+    ),
+    Custom(
+        label = "自定义",
+        clarity = Standard.clarity,
+        noiseReduction = Standard.noiseReduction,
+        loudness = Standard.loudness,
+        lowCut = Standard.lowCut,
+        protection = SpeakerLimiterProtection.Medium,
+        bassDb = 0f,
+        trebleDb = 0f
+    )
 }
 
 enum class SpeakerTtsVoicePreset(

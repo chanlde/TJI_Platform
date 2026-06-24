@@ -1,8 +1,16 @@
 # TJI Platform
 
-版本：`V2.0.5`
+版本：`V2.0.9`
 
 TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 App。当前项目由原来的消防吊桶控制 App 演进而来，目标是把消防吊桶、光伏清洗、六段抛投、喊话器、无线电侦测等产品统一放到同一个平台 App 中管理；大疆 MSDK 这类复杂产品暂不放入本 App。
+
+## V2.0.9 更新内容
+
+- 喊话器页面收口客户可见状态：按住喊话页不再展示底层设备状态数据，不再把设备 `lastError` 转成“设备处理失败，请重试”暴露给客户。
+- 录音库支持按时间排序切换，刷新和加载更多会按当前排序方向请求设备列表，并在 App 本地保持显示顺序一致。
+- 统一 App 滑动条样式，移除旧 `PayloadSlider` / `CustomSlider` / `SpeakerSmoothSlider`，全部收敛到光伏清洗同款 `TjiControlSlider`。
+- 修复小尺寸控制按钮中文显示不完整的问题，音效模式里的“远距离”“自定义”等按钮不再显示成省略号。
+- 完善喊话器音效参数、音频处理和 native speaker-core 对齐，继续保留 App/Kotlin fallback 与 native 优先链路。
 
 ## V2.0.5 更新内容
 
@@ -153,8 +161,8 @@ App 当前负责：
 当前版本配置在 `gradle.properties`：
 
 ```properties
-APP_VERSION_CODE=208
-APP_VERSION_NAME=V2.0.8
+APP_VERSION_CODE=209
+APP_VERSION_NAME=V2.0.9
 ```
 
 本地 Kokoro TTS 需要额外准备模型资源：

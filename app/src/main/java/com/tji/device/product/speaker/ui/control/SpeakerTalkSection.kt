@@ -39,9 +39,9 @@ import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedback
 import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedbackStatus
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
+import com.tji.device.ui.components.TjiControlSlider
 import com.tji.device.ui.theme.TjiError
 import com.tji.device.ui.theme.TjiOnline
-import com.tji.device.util.toUserVisibleDeviceMessage
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -104,13 +104,42 @@ internal fun SpeakerHeaderCard(
             label = "输出音量",
             value = "${(outputGain * 100f).toInt()}%"
         )
-        FeedbackBadge(feedback)
-        state?.lastError?.takeIf { it.isNotBlank() }?.let {
-            SpeakerStatusBadge(
-                text = it.toUserVisibleDeviceMessage("设备处理失败，请重试"),
-                color = SpeakerDanger
+        state?.audio?.let { audio ->
+            SpeakerSoftRow(
+                label = "输出峰值",
+                value = "${((audio.peakQ15.coerceAtLeast(0) / 32767f) * 100f).roundToInt().coerceIn(0, 100)}%"
+            )
+            SpeakerSoftRow(
+                label = "平均电平",
+                value = "${((audio.rmsQ15.coerceAtLeast(0) / 32767f) * 100f).roundToInt().coerceIn(0, 100)}%"
+            )
+            SpeakerSoftRow(
+                label = "播放缓存",
+                value = "${audio.bufferedBytes} / ${audio.bufferedMaxBytes}",
+                valueColor = if (audio.bufferedBytes == 0 && audio.outUnderruns > 0L) SpeakerWarning else SpeakerFg
+            )
+            SpeakerSoftRow(
+                label = "防破音",
+                value = audio.limiterCount.toString(),
+                valueColor = if (audio.limiterCount > 0L) SpeakerWarning else SpeakerFg
+            )
+            SpeakerSoftRow(
+                label = "播放断点",
+                value = audio.outUnderruns.toString(),
+                valueColor = if (audio.outUnderruns > 0L) SpeakerWarning else SpeakerFg
+            )
+            SpeakerSoftRow(
+                label = "输出异常",
+                value = (audio.saiErrors + audio.saiOvr + audio.dmaErrors + audio.fillLate).toString(),
+                valueColor = if (audio.saiErrors + audio.saiOvr + audio.dmaErrors + audio.fillLate > 0L) SpeakerDanger else SpeakerFg
+            )
+            SpeakerSoftRow(
+                label = "平稳输出",
+                value = "${audio.dmaHalf}/${audio.dmaFull}",
+                valueColor = if (audio.dmaHalf == 0L && state.playing) SpeakerWarning else SpeakerFg
             )
         }
+        FeedbackBadge(feedback)
     }
 }
 
@@ -147,8 +176,7 @@ internal fun OutputVolumeCard(
     enabled: Boolean,
     onVolumeGainChange: (Float) -> Unit,
     onVolumeCommitted: (Int) -> Unit,
-    onStop: () -> Unit,
-    onGetStatus: () -> Unit
+    onStop: () -> Unit
 ) {
     var sliderVolumeGain by remember { mutableFloatStateOf(volumeGain.coerceIn(0f, 1f)) }
     LaunchedEffect(volumeGain) {
@@ -172,7 +200,7 @@ internal fun OutputVolumeCard(
                 fontWeight = FontWeight.Bold
             )
         }
-        SpeakerSmoothSlider(
+        TjiControlSlider(
             value = sliderVolumeGain,
             onValueChange = {
                 val next = it.coerceIn(0f, 1f)
@@ -207,15 +235,7 @@ internal fun OutputVolumeCard(
                 enabled = enabled,
                 color = SpeakerDanger,
                 onClick = onStop,
-                modifier = Modifier.weight(1f)
-            )
-            SpeakerActionButton(
-                text = "查询状态",
-                enabled = enabled,
-                color = SpeakerAccent,
-                soft = true,
-                onClick = onGetStatus,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }

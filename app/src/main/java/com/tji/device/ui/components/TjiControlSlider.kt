@@ -27,7 +27,7 @@ fun TjiControlSlider(
     modifier: Modifier = Modifier,
     valueRange: ClosedFloatingPointRange<Float> = 0f..100f,
     enabled: Boolean = true,
-    thumbSize: Dp = 34.dp,
+    thumbSize: Dp = 14.dp,
     onValueChangeFinished: (() -> Unit)? = null
 ) {
     val clampedValue = value.coerceIn(valueRange.start, valueRange.endInclusive)

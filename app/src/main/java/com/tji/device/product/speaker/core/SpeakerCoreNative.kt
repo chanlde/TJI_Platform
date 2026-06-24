@@ -290,6 +290,7 @@ object SpeakerCoreNative {
         toneSettings: SpeakerToneSettings
     ): ByteArray? {
         val normalized = toneSettings.normalized()
+        if (normalized.requiresKotlinProcessor) return null
         return runNative {
             nativeProcessVoice(
                 pcm16le,
@@ -389,6 +390,7 @@ object SpeakerCoreNative {
         ): ByteArray? {
             val current = currentHandle() ?: return null
             val normalized = toneSettings.normalized()
+            if (normalized.requiresKotlinProcessor) return null
             return runNative {
                 nativeVoiceProcessorProcessFrame(
                     current,

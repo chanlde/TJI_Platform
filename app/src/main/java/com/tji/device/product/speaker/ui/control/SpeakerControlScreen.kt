@@ -32,7 +32,7 @@ import com.tji.device.di.AppContainer
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerKokoroTtsSettings
 import com.tji.device.product.speaker.audio.SpeakerToneSettings
-import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedback
+import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.viewmodel.SpeakerControlViewModel
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
 import com.tji.device.ui.theme.PayloadDimens
@@ -52,9 +52,6 @@ fun SpeakerControlScreen(
     }
     val devices by viewModel?.devices?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(emptyList()) }
-    }
-    val feedback by viewModel?.feedback?.collectAsStateWithLifecycle().let {
-        it ?: remember { mutableStateOf(SpeakerCommandFeedback()) }
     }
     val talkState by viewModel?.talkState?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerTalkState()) }
@@ -92,19 +89,18 @@ fun SpeakerControlScreen(
     val state = devices.firstOrNull { it.serialNumber == device.serialNumber }
         ?: if (isPreview) previewSpeakerState(device) else null
     var volumeGain by remember(outputGain) { mutableFloatStateOf(outputGain) }
-    var bassDb by remember(toneSettings.bassDb) { mutableFloatStateOf(toneSettings.bassDb) }
-    var trebleDb by remember(toneSettings.trebleDb) { mutableFloatStateOf(toneSettings.trebleDb) }
     var text by remember { mutableStateOf("前方危险，请立即撤离") }
     var recordName by remember { mutableStateOf("") }
     var recordQuery by remember { mutableStateOf("") }
+    var recordSortOrder by remember { mutableStateOf(SpeakerRecordSortOrder.NewestFirst) }
     var selectedPanel by remember { mutableStateOf(SpeakerPanel.Talk) }
     val visibleRecords = state?.records.orEmpty().filter {
         recordQuery.isBlank() || it.name.contains(recordQuery, ignoreCase = true)
-    }
+    }.sortedForDisplay(recordSortOrder)
 
     LaunchedEffect(selectedPanel, device.serialNumber, viewModel) {
         if (selectedPanel == SpeakerPanel.Records && viewModel != null) {
-            viewModel.refreshRecords(device.serialNumber)
+            viewModel.refreshRecords(device.serialNumber, order = recordSortOrder.wireName)
             viewModel.refreshStorageStatus(device.serialNumber)
         }
     }
@@ -128,9 +124,6 @@ fun SpeakerControlScreen(
                 SpeakerScreenTopBar(panel = selectedPanel, device = device)
             }
             if (selectedPanel == SpeakerPanel.Talk) item {
-                SpeakerHeaderCard(device = device, state = state, outputGain = outputGain, feedback = feedback)
-            }
-            if (selectedPanel == SpeakerPanel.Talk) item {
                 PushToTalkCard(
                     talkState = talkState,
                     enabled = viewModel != null,
@@ -147,8 +140,7 @@ fun SpeakerControlScreen(
                     enabled = viewModel != null,
                     onVolumeGainChange = { volumeGain = it },
                     onVolumeCommitted = { viewModel?.setVolume(device.serialNumber, it) },
-                    onStop = { viewModel?.stop(device.serialNumber) },
-                    onGetStatus = { viewModel?.getStatus(device.serialNumber) }
+                    onStop = { viewModel?.stop(device.serialNumber) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Records) item {
@@ -174,16 +166,23 @@ fun SpeakerControlScreen(
                     state = state,
                     enabled = viewModel != null,
                     currentVolume = (volumeGain * 100f).toInt(),
+                    sortOrderLabel = recordSortOrder.label,
                     onRecordQueryChange = { recordQuery = it },
+                    onSortOrderChange = {
+                        val nextOrder = recordSortOrder.toggle()
+                        recordSortOrder = nextOrder
+                        viewModel?.refreshRecords(device.serialNumber, order = nextOrder.wireName)
+                    },
                     onRefresh = {
-                        viewModel?.refreshRecords(device.serialNumber)
+                        viewModel?.refreshRecords(device.serialNumber, order = recordSortOrder.wireName)
                         viewModel?.refreshStorageStatus(device.serialNumber)
                     },
                     onLoadMore = {
                         viewModel?.refreshRecords(
                             serialNumber = device.serialNumber,
                             offset = state?.records.orEmpty().size,
-                            limit = 4
+                            limit = 4,
+                            order = recordSortOrder.wireName
                         )
                     },
                     onPlay = { viewModel?.playRecord(device.serialNumber, it, (volumeGain * 100f).toInt()) },
@@ -200,12 +199,9 @@ fun SpeakerControlScreen(
             }
             if (selectedPanel == SpeakerPanel.Settings) item {
                 SpeakerToneSettingsCard(
-                    bassDb = bassDb,
-                    trebleDb = trebleDb,
+                    toneSettings = toneSettings,
                     enabled = viewModel != null,
-                    onToneChanged = { viewModel?.setToneSettings(it) },
-                    onBassChange = { bassDb = it },
-                    onTrebleChange = { trebleDb = it }
+                    onToneChanged = { viewModel?.setToneSettings(it) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Settings) item {
@@ -240,3 +236,29 @@ fun SpeakerControlScreen(
         )
     }
 }
+
+private enum class SpeakerRecordSortOrder(
+    val wireName: String,
+    val label: String
+) {
+    NewestFirst("desc", "最新优先"),
+    OldestFirst("asc", "最早优先");
+
+    fun toggle(): SpeakerRecordSortOrder =
+        if (this == NewestFirst) OldestFirst else NewestFirst
+}
+
+private fun List<SpeakerRecord>.sortedForDisplay(order: SpeakerRecordSortOrder): List<SpeakerRecord> =
+    when (order) {
+        SpeakerRecordSortOrder.NewestFirst -> sortedWith(
+            compareByDescending<SpeakerRecord> { it.sortTimestamp() }
+                .thenByDescending { it.createdAt.orEmpty() }
+        )
+        SpeakerRecordSortOrder.OldestFirst -> sortedWith(
+            compareBy<SpeakerRecord> { it.sortTimestamp() }
+                .thenBy { it.createdAt.orEmpty() }
+        )
+    }
+
+private fun SpeakerRecord.sortTimestamp(): Long =
+    createdMs ?: recordId.substringAfterLast('_').toLongOrNull() ?: 0L

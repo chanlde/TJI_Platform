@@ -66,7 +66,9 @@ internal fun SpeakerRecordBrowser(
     state: SpeakerDeviceState?,
     enabled: Boolean,
     currentVolume: Int,
+    sortOrderLabel: String,
     onRecordQueryChange: (String) -> Unit,
+    onSortOrderChange: () -> Unit,
     onRefresh: () -> Unit,
     onLoadMore: () -> Unit,
     onPlay: (String) -> Unit,
@@ -98,6 +100,13 @@ internal fun SpeakerRecordBrowser(
                     style = MaterialTheme.typography.bodyMedium,
                     color = SpeakerMuted,
                     modifier = Modifier.weight(1f)
+                )
+                SpeakerActionButton(
+                    text = sortOrderLabel,
+                    enabled = enabled,
+                    color = SpeakerAccent,
+                    soft = true,
+                    onClick = onSortOrderChange
                 )
                 SpeakerActionButton(
                     text = "刷新",

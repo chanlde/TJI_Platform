@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,10 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -155,7 +153,7 @@ fun PayloadActionButton(
             disabledContainerColor = PayloadColors.Border.copy(alpha = 0.62f),
             disabledContentColor = PayloadColors.TextMuted.copy(alpha = 0.55f)
         ),
-        contentPadding = ButtonDefaults.ContentPadding
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
     ) {
         Text(
             text = text,
@@ -165,57 +163,6 @@ fun PayloadActionButton(
             overflow = TextOverflow.Ellipsis
         )
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PayloadSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    color: Color = PayloadColors.Primary,
-    onValueChangeFinished: (() -> Unit)? = null
-) {
-    Slider(
-        value = value.coerceIn(valueRange.start, valueRange.endInclusive),
-        onValueChange = { onValueChange(it.coerceIn(valueRange.start, valueRange.endInclusive)) },
-        onValueChangeFinished = onValueChangeFinished,
-        valueRange = valueRange,
-        enabled = enabled,
-        modifier = modifier,
-        thumb = {
-            Box(
-                modifier = Modifier
-                    .size(width = 8.dp, height = 34.dp)
-                    .clip(CircleShape)
-                    .background(if (enabled) color else PayloadColors.TextMuted.copy(alpha = 0.42f))
-            )
-        },
-        track = { sliderState ->
-            SliderDefaults.Track(
-                sliderState = sliderState,
-                modifier = Modifier.height(10.dp),
-                thumbTrackGapSize = 6.dp,
-                trackInsideCornerSize = 5.dp,
-                colors = SliderDefaults.colors(
-                    activeTrackColor = if (enabled) color else PayloadColors.TextMuted.copy(alpha = 0.30f),
-                    inactiveTrackColor = color.copy(alpha = if (enabled) 0.14f else 0.08f),
-                    disabledActiveTrackColor = PayloadColors.TextMuted.copy(alpha = 0.30f),
-                    disabledInactiveTrackColor = PayloadColors.TextMuted.copy(alpha = 0.10f)
-                )
-            )
-        },
-        colors = SliderDefaults.colors(
-            thumbColor = color,
-            activeTrackColor = color,
-            inactiveTrackColor = color.copy(alpha = 0.14f),
-            disabledThumbColor = PayloadColors.TextMuted.copy(alpha = 0.42f),
-            disabledActiveTrackColor = PayloadColors.TextMuted.copy(alpha = 0.30f),
-            disabledInactiveTrackColor = PayloadColors.TextMuted.copy(alpha = 0.10f)
-        )
-    )
 }
 
 @Composable

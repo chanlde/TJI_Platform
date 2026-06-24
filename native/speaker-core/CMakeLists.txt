@@ -37,6 +37,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(tji_speaker_core PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+if(MSVC)
+    target_compile_options(tji_speaker_core PRIVATE /utf-8)
+endif()
+
 if(TJI_SPEAKER_CORE_BUILD_TESTS)
     enable_testing()
 
@@ -45,6 +49,10 @@ if(TJI_SPEAKER_CORE_BUILD_TESTS)
     )
 
     target_link_libraries(tji_speaker_core_tests PRIVATE tji_speaker_core)
+
+    if(MSVC)
+        target_compile_options(tji_speaker_core_tests PRIVATE /utf-8)
+    endif()
 
     add_test(NAME tji_speaker_core_tests COMMAND tji_speaker_core_tests)
     set_tests_properties(tji_speaker_core_tests PROPERTIES
@@ -58,4 +66,8 @@ if(TJI_SPEAKER_CORE_BUILD_TOOLS)
     )
 
     target_link_libraries(tji_speaker_core_sample PRIVATE tji_speaker_core)
+
+    if(MSVC)
+        target_compile_options(tji_speaker_core_sample PRIVATE /utf-8)
+    endif()
 endif()

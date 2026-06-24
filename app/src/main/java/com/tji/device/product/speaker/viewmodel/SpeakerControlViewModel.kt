@@ -205,14 +205,19 @@ class SpeakerControlViewModel(
         send(serialNumber, SpeakerCommand.GetStatus(newMsgId("status")), "状态查询")
     }
 
-    fun refreshRecords(serialNumber: String, offset: Int = 0, limit: Int = RECORD_LIST_PAGE_SIZE) {
+    fun refreshRecords(
+        serialNumber: String,
+        offset: Int = 0,
+        limit: Int = RECORD_LIST_PAGE_SIZE,
+        order: String = "desc"
+    ) {
         send(
             serialNumber = serialNumber,
             command = SpeakerCommand.ListRecords(
                 msgId = newMsgId("record-list"),
                 offset = offset.coerceAtLeast(0),
                 limit = limit.coerceIn(1, RECORD_LIST_PAGE_SIZE),
-                order = "desc"
+                order = order.ifBlank { "desc" }
             ),
             label = "录音列表"
         )

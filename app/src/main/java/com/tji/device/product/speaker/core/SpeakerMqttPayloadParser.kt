@@ -1,6 +1,7 @@
 package com.tji.device.product.speaker.core
 
 import com.tji.device.product.speaker.model.SpeakerAck
+import com.tji.device.product.speaker.model.SpeakerAudioDiagnostics
 import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerRecordEvent
@@ -11,7 +12,8 @@ import org.json.JSONObject
 object SpeakerMqttPayloadParser {
     fun parseState(serialNumber: String, json: JSONObject, allowOnline: Boolean): SpeakerDeviceState {
         val native = SpeakerCoreNative.parseMqttStateJsonOrNull(serialNumber, json.toString(), allowOnline)
-        return native?.let { JSONObject(it).toState() } ?: parseStateFallback(serialNumber, json, allowOnline)
+        val parsed = native?.let { JSONObject(it).toState() } ?: parseStateFallback(serialNumber, json, allowOnline)
+        return parsed.copy(audio = json.parseAudioDiagnostics() ?: native?.let { JSONObject(it).parseAudioDiagnostics() })
     }
 
     fun parseAck(json: JSONObject): SpeakerAck {
@@ -46,6 +48,7 @@ object SpeakerMqttPayloadParser {
             lastError = optString("lastError").ifBlank { null },
             network = optString("network").ifBlank { null },
             outputQuality = optString("outputQuality").ifBlank { null },
+            audio = parseAudioDiagnostics(),
             timestamp = optNullableLong("timestamp")
         )
 
@@ -131,8 +134,32 @@ object SpeakerMqttPayloadParser {
                 .ifBlank { json.optString("audioQuality") }
                 .ifBlank { json.optString("quality") }
                 .ifBlank { null },
+            audio = json.parseAudioDiagnostics(),
             timestamp = json.optNullableLong("ts")
         )
+
+    private fun JSONObject.parseAudioDiagnostics(): SpeakerAudioDiagnostics? {
+        val audio = optJSONObject("audio") ?: return null
+        return SpeakerAudioDiagnostics(
+            packets = audio.optLong("packets", 0L),
+            lostPackets = audio.optLong("lostPackets", 0L),
+            badPackets = audio.optLong("badPackets", 0L),
+            bufferedBytes = audio.optInt("bufferedBytes", 0),
+            bufferedMinBytes = audio.optInt("bufferedMinBytes", 0),
+            bufferedMaxBytes = audio.optInt("bufferedMaxBytes", 0),
+            outUnderruns = audio.optLong("outUnderruns", audio.optLong("underruns", 0L)),
+            saiErrors = audio.optLong("saiErrors", 0L),
+            saiOvr = audio.optLong("saiOvr", 0L),
+            dmaHalf = audio.optLong("dmaHalf", 0L),
+            dmaFull = audio.optLong("dmaFull", 0L),
+            dmaErrors = audio.optLong("dmaErrors", 0L),
+            fillLate = audio.optLong("fillLate", 0L),
+            peakQ15 = audio.optInt("peakQ15", 0),
+            rmsQ15 = audio.optInt("rmsQ15", 0),
+            clipCount = audio.optLong("clipCount", 0L),
+            limiterCount = audio.optLong("limiterCount", 0L)
+        )
+    }
 
     private fun parseAckFallback(json: JSONObject): SpeakerAck =
         SpeakerAck(

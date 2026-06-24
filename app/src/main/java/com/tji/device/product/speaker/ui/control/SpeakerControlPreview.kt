@@ -78,8 +78,7 @@ private fun SpeakerOutputVolumeCardPreview() {
             enabled = true,
             onVolumeGainChange = {},
             onVolumeCommitted = {},
-            onStop = {},
-            onGetStatus = {}
+            onStop = {}
         )
     }
 }
