@@ -269,7 +269,7 @@ private fun TtsEngineSelector(
         color = SpeakerMuted
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        SpeakerTtsEngine.entries.forEach { engine ->
+        SpeakerAudioConfig.Tts.AVAILABLE_ENGINES.forEach { engine ->
             SpeakerActionButton(
                 text = engine.label,
                 enabled = enabled,

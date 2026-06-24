@@ -275,6 +275,9 @@ object SpeakerAudioConfig {
         // Default TTS engine. System TTS is the only engine wired to playback today.
         val DEFAULT_ENGINE: SpeakerTtsEngine = SpeakerTtsEngine.System
 
+        // Customer builds do not package Kokoro/onnxruntime native libraries or model assets.
+        val AVAILABLE_ENGINES: List<SpeakerTtsEngine> = listOf(SpeakerTtsEngine.System)
+
         // Asset directory for the offline Kokoro model. Put model.onnx, voices.bin,
         // tokens.txt, lexicons, rule FSTs, and espeak-ng-data under this folder.
         const val LOCAL_KOKORO_MODEL_DIR = "kokoro-multi-lang-v1_0"

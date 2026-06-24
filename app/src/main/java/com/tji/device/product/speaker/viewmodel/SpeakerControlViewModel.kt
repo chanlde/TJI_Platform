@@ -174,7 +174,11 @@ class SpeakerControlViewModel(
     }
 
     fun setTtsEngine(engine: SpeakerTtsEngine) {
-        _ttsEngine.value = engine
+        _ttsEngine.value = if (engine in SpeakerAudioConfig.Tts.AVAILABLE_ENGINES) {
+            engine
+        } else {
+            SpeakerAudioConfig.Tts.DEFAULT_ENGINE
+        }
     }
 
     fun setOutputQuality(serialNumber: String, quality: SpeakerAudioQuality) {
@@ -460,7 +464,8 @@ class SpeakerControlViewModel(
     }
 
     private suspend fun getOrSynthesizeTtsPcm(text: String): ByteArray {
-        val engine = _ttsEngine.value
+        val engine = _ttsEngine.value.takeIf { it in SpeakerAudioConfig.Tts.AVAILABLE_ENGINES }
+            ?: SpeakerAudioConfig.Tts.DEFAULT_ENGINE.also { _ttsEngine.value = it }
         val quality = _outputQuality.value
         val cacheKey = buildTtsCacheKey(text, engine)
         synchronized(ttsPcmCache) {

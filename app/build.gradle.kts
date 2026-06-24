@@ -123,6 +123,8 @@ android {
         jniLibs {
             // App 通过 libsherpa-onnx-jni.so 调用 sherpa-onnx，不直接使用 C/C++ API。
             excludes += setOf(
+                "**/libonnxruntime.so",
+                "**/libsherpa-onnx-jni.so",
                 "**/libsherpa-onnx-c-api.so",
                 "**/libsherpa-onnx-cxx-api.so"
             )

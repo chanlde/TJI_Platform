@@ -1,8 +1,13 @@
 # TJI Platform
 
-版本：`V2.0.9`
+版本：`V2.0.10`
 
 TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 App。当前项目由原来的消防吊桶控制 App 演进而来，目标是把消防吊桶、光伏清洗、六段抛投、喊话器、无线电侦测等产品统一放到同一个平台 App 中管理；大疆 MSDK 这类复杂产品暂不放入本 App。
+
+## V2.0.10 更新内容
+
+- 瘦身客户安装包：移除未启用的离线 Kokoro TTS native runtime（onnxruntime / sherpa-onnx），文字喊话保留手机系统 TTS，避免无模型情况下空占约 29MB。
+- 隐藏喊话器“内置语音”入口，防止客户点到未打包的离线 TTS 链路。
 
 ## V2.0.9 更新内容
 
@@ -161,11 +166,11 @@ App 当前负责：
 当前版本配置在 `gradle.properties`：
 
 ```properties
-APP_VERSION_CODE=209
-APP_VERSION_NAME=V2.0.9
+APP_VERSION_CODE=210
+APP_VERSION_NAME=V2.0.10
 ```
 
-本地 Kokoro TTS 需要额外准备模型资源：
+本地 Kokoro TTS 当前不进入客户包。如需重新启用离线 TTS 开发包，需要额外恢复 sherpa-onnx/onnxruntime native runtime，并准备模型资源：
 
 ```text
 app/src/main/assets/kokoro-multi-lang-v1_0/
