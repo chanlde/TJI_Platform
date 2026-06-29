@@ -7,6 +7,8 @@ data class SpeakerDeviceState(
     val name: String? = null,
     val isOnline: Boolean = false,
     val playing: Boolean = false,
+    val talking: Boolean = false,
+    val currentTalkId: String? = null,
     val currentFile: String? = null,
     val volume: Int = DEFAULT_SPEAKER_VOLUME,
     val servoAngle: Int? = null,

@@ -9,6 +9,9 @@ import com.tji.device.product.firebucket.mqtt.FireBucketMqttInbound
 import com.tji.device.product.firebucket.repository.FireBucketLinkRepository
 import com.tji.device.product.firebucket.repository.FireBucketSwitchRepository
 import com.tji.device.product.firebucket.runtime.FireBucketRuntimeController
+import com.tji.device.product.glassbreaker.mqtt.GlassBreakerMqttInbound
+import com.tji.device.product.glassbreaker.repository.GlassBreakerRepository
+import com.tji.device.product.glassbreaker.runtime.GlassBreakerRuntimeController
 import com.tji.device.product.radiodetection.mqtt.RadioDetectionMqttInbound
 import com.tji.device.product.radiodetection.repository.RadioDetectionRepository
 import com.tji.device.product.radiodetection.replay.RadioDetectionReplayStore
@@ -191,6 +194,34 @@ class SpeakerProductModule(
     override val productType: ProductType = ProductType.Speaker
     override val runtimeController: ProductRuntimeController =
         SpeakerRuntimeController(repository)
+
+    override suspend fun handleJsonEvent(
+        serialNumber: String,
+        eventType: String,
+        json: JSONObject,
+        isRetained: Boolean
+    ) {
+        inbound.handleEvent(
+            serialNumber = serialNumber,
+            eventType = eventType,
+            json = json,
+            isRetained = isRetained
+        )
+    }
+
+    override fun cleanup() {
+        inbound.cleanup()
+    }
+}
+
+class GlassBreakerProductModule(
+    repository: GlassBreakerRepository
+) : ProductModule {
+    private val inbound = GlassBreakerMqttInbound(repository)
+
+    override val productType: ProductType = ProductType.BreakWindowProjectile
+    override val runtimeController: ProductRuntimeController =
+        GlassBreakerRuntimeController(repository)
 
     override suspend fun handleJsonEvent(
         serialNumber: String,

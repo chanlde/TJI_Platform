@@ -126,6 +126,7 @@ class SpeakerAdpcmPacketizer(
     private fun buildFlags(type: SpeakerUdpStreamType, isLastPacket: Boolean): Int {
         var flags = if (isLastPacket) FLAG_LAST_PACKET else 0
         flags = flags or when (type) {
+            SpeakerUdpStreamType.LiveTalk -> FLAG_PLAYBACK
             SpeakerUdpStreamType.Playback -> FLAG_PLAYBACK
             SpeakerUdpStreamType.RecordStore -> FLAG_STORE_TO_SD
             SpeakerUdpStreamType.PlaybackFeedback -> FLAG_PLAYBACK or FLAG_FEEDBACK
@@ -240,6 +241,7 @@ data class SpeakerUdpStreamContext(
 )
 
 enum class SpeakerUdpStreamType(val code: Int) {
+    LiveTalk(0),
     Playback(0),
     RecordStore(1),
     PlaybackFeedback(2)

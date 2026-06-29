@@ -159,9 +159,37 @@ internal fun PushToTalkCard(
             enabled = enabled,
             hasMicPermission = hasMicPermission,
             mode = talkState.mode,
-            idleLabel = "按住说话",
-            activeLabel = "正在喊话",
-            footer = if (hasMicPermission) "松开结束" else "需要麦克风权限",
+            idleLabel = "按住录音",
+            activeLabel = "录音中",
+            footer = if (hasMicPermission) "松手后发送到设备播放" else "需要麦克风权限",
+            requestPermission = requestPermission,
+            onPress = onPress,
+            onRelease = onRelease,
+            onCancel = onCancel
+        )
+    }
+}
+
+@Composable
+internal fun LiveTalkCard(
+    talkState: SpeakerTalkState,
+    enabled: Boolean,
+    hasMicPermission: Boolean,
+    requestPermission: () -> Unit,
+    onPress: () -> Unit,
+    onRelease: () -> Unit,
+    onCancel: () -> Unit
+) {
+    SpeakerCard(title = "实时喊话") {
+        PushToTalkButton(
+            enabled = enabled,
+            hasMicPermission = hasMicPermission,
+            mode = talkState.mode,
+            idleLabel = "按住实时说话",
+            activeLabel = "实时喊话中",
+            footer = if (hasMicPermission) "声音会实时发送，松手立即停止" else "需要麦克风权限",
+            compact = true,
+            activeModes = setOf(SpeakerTalkMode.Live),
             requestPermission = requestPermission,
             onPress = onPress,
             onRelease = onRelease,
@@ -291,12 +319,13 @@ internal fun PushToTalkButton(
     activeLabel: String,
     footer: String,
     compact: Boolean = false,
+    activeModes: Set<SpeakerTalkMode> = setOf(SpeakerTalkMode.Recording, SpeakerTalkMode.RecordingToStore),
     requestPermission: () -> Unit,
     onPress: () -> Unit,
     onRelease: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val active = mode == SpeakerTalkMode.Recording || mode == SpeakerTalkMode.RecordingToStore
+    val active = mode in activeModes
     val buttonSize = if (compact) 112.dp else 184.dp
     val stageHeight = if (compact) 176.dp else 275.dp
     val scale by animateFloatAsState(

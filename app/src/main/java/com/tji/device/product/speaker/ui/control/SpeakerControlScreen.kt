@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -34,6 +35,7 @@ import com.tji.device.product.speaker.audio.SpeakerKokoroTtsSettings
 import com.tji.device.product.speaker.audio.SpeakerToneSettings
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.viewmodel.SpeakerControlViewModel
+import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
 import com.tji.device.ui.theme.PayloadDimens
 
@@ -104,6 +106,11 @@ fun SpeakerControlScreen(
             viewModel.refreshStorageStatus(device.serialNumber)
         }
     }
+    DisposableEffect(device.serialNumber, viewModel) {
+        onDispose {
+            viewModel?.stopRealtimeTalk(device.serialNumber)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -126,12 +133,24 @@ fun SpeakerControlScreen(
             if (selectedPanel == SpeakerPanel.Talk) item {
                 PushToTalkCard(
                     talkState = talkState,
-                    enabled = viewModel != null,
+                    enabled = viewModel != null && talkState.mode != SpeakerTalkMode.Live,
                     hasMicPermission = hasMicPermission,
                     requestPermission = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                     onPress = { viewModel?.startPushToTalkRecord() },
                     onRelease = { viewModel?.finishPushToTalkRecord(device.serialNumber) },
                     onCancel = { viewModel?.cancelPushToTalkRecord() }
+                )
+            }
+            if (selectedPanel == SpeakerPanel.Talk) item {
+                LiveTalkCard(
+                    talkState = talkState,
+                    enabled = viewModel != null &&
+                        (talkState.mode == SpeakerTalkMode.Idle || talkState.mode == SpeakerTalkMode.Live),
+                    hasMicPermission = hasMicPermission,
+                    requestPermission = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+                    onPress = { viewModel?.startRealtimeTalk(device.serialNumber) },
+                    onRelease = { viewModel?.stopRealtimeTalk(device.serialNumber) },
+                    onCancel = { viewModel?.stopRealtimeTalk(device.serialNumber) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Talk) item {

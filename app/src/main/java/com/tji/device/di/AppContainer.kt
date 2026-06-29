@@ -14,6 +14,11 @@ import com.tji.device.product.firebucket.repository.FireBucketLinkRepository
 import com.tji.device.product.firebucket.repository.FireBucketSwitchRepository
 import com.tji.device.product.firebucket.repository.SwitchRepo
 import com.tji.device.product.firebucket.viewmodel.FireBucketSwitchViewModelFactory
+import com.tji.device.product.glassbreaker.repository.GlassBreakerControlRepo
+import com.tji.device.product.glassbreaker.repository.GlassBreakerControlRepository
+import com.tji.device.product.glassbreaker.repository.GlassBreakerRepo
+import com.tji.device.product.glassbreaker.repository.GlassBreakerRepository
+import com.tji.device.product.glassbreaker.viewmodel.GlassBreakerControlViewModelFactory
 import com.tji.device.product.ota.ProductOtaMqttCommandPublisher
 import com.tji.device.product.ota.ProductOtaRepo
 import com.tji.device.product.ota.ProductOtaRepository
@@ -100,6 +105,14 @@ object AppContainer {
         SpeakerControlRepo()
     }
 
+    val glassBreakerRepository: GlassBreakerRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        GlassBreakerRepo()
+    }
+
+    val glassBreakerControlRepository: GlassBreakerControlRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        GlassBreakerControlRepo()
+    }
+
     val speakerAudioRelay: SpeakerAudioRelay by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         SpeakerAudioRelay()
     }
@@ -140,7 +153,8 @@ object AppContainer {
                     repository = radioDetectionRepository,
                     replayStore = radioDetectionReplayStore
                 ),
-                SpeakerProductModule(speakerRepository)
+                SpeakerProductModule(speakerRepository),
+                GlassBreakerProductModule(glassBreakerRepository)
             )
         )
     }
@@ -197,6 +211,13 @@ object AppContainer {
             ttsSynthesizer = speakerTtsSynthesizer,
             localKokoroTtsClient = speakerLocalKokoroTtsClient,
             recordUploadClient = speakerRecordUploadClient
+        )
+    }
+
+    val glassBreakerControlViewModelFactory: GlassBreakerControlViewModelFactory by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        GlassBreakerControlViewModelFactory(
+            stateRepository = glassBreakerRepository,
+            controlRepository = glassBreakerControlRepository
         )
     }
 

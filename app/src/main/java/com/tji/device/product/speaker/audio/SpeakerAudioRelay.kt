@@ -31,15 +31,17 @@ class SpeakerAudioRelay(
     suspend fun streamMicrophone(
         outputGain: Float,
         toneSettings: SpeakerToneSettings = SpeakerToneSettings(),
+        streamContext: SpeakerUdpStreamContext? = null,
         onPacketSent: (Int) -> Unit
     ) {
-        val packetizer = SpeakerAdpcmPacketizer()
-        val kotlinShadowPacketizer = SpeakerAdpcmPacketizer(useNative = false)
+        val packetizer = SpeakerAdpcmPacketizer(streamContext)
+        val kotlinShadowPacketizer = SpeakerAdpcmPacketizer(streamContext, useNative = false)
         val shadowSession = SpeakerCoreShadowVerifier.createUdpPacketSessionOrNull()
         val voiceProcessor = SpeakerCoreAudioEngine.createLiveVoiceProcessor()
         var frameCount = 0
         var debugFrameCount = 0
-        logUdpShadowAvailability(shadowSession, "live-legacy-udp")
+        val shadowPath = if (streamContext == null) "live-legacy-udp" else "live-v2-udp"
+        logUdpShadowAvailability(shadowSession, shadowPath)
         try {
             DatagramSocket().use { socket ->
                 val address = InetAddress.getByName(config.host)
@@ -60,11 +62,11 @@ class SpeakerAudioRelay(
                             val kotlinPacket = kotlinShadowPacketizer.packetize(processedFrame)
                             logUdpPacketShadowResult(
                                 session = shadowSession,
-                                path = "live-legacy-udp",
+                                path = shadowPath,
                                 kotlinPacket = kotlinPacket,
                                 pcm16le = processedFrame,
                                 sequence = sequence,
-                                context = null,
+                                context = streamContext,
                                 isLastPacket = false
                             )
                             sendPacket(socket, address, packet)

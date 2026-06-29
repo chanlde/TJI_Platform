@@ -4,6 +4,7 @@ import com.tji.device.product.speaker.audio.SpeakerAdpcmPacketizer
 import com.tji.device.product.speaker.audio.SpeakerHadpCodec
 import com.tji.device.product.speaker.audio.SpeakerHadpFile
 import com.tji.device.product.speaker.model.SpeakerCommand
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -133,6 +134,30 @@ class SpeakerCoreNativeTest {
         assertEquals(8_000, json.getInt("sampleRate"))
         assertEquals(1, json.getInt("channels"))
         assertEquals(40, json.getInt("packetMs"))
+    }
+
+    @Test
+    fun mqttStateParserReadsRealtimeTalkState() {
+        val state = SpeakerMqttPayloadParser.parseState(
+            serialNumber = "T12345678",
+            allowOnline = true,
+            json = JSONObject(
+                """
+                {
+                  "type":"state",
+                  "deviceId":"T12345678",
+                  "playing":false,
+                  "talking":true,
+                  "currentTalkId":"TALK_T12345678_ABCD",
+                  "volume":45
+                }
+                """.trimIndent()
+            )
+        )
+
+        assertTrue(state.talking)
+        assertEquals("TALK_T12345678_ABCD", state.currentTalkId)
+        assertEquals(45, state.volume)
     }
 
     @Test

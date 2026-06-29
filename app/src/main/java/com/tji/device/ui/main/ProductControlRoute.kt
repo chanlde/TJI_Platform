@@ -43,6 +43,7 @@ import com.tji.device.di.AppContainer
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.firebucket.ui.control.FireBucketControlScreen
 import com.tji.device.product.droppersixstage.ui.control.DropperSixStageControlScreen
+import com.tji.device.product.glassbreaker.ui.control.GlassBreakerControlScreen
 import com.tji.device.product.ota.toProductDeviceInfo
 import com.tji.device.product.ota.toProductOtaStatus
 import com.tji.device.product.radiodetection.ui.control.RadioDetectionControlScreen
@@ -102,7 +103,11 @@ fun ProductControlRoute(
             modifier = modifier
         )
 
-        ProductType.BreakWindowProjectile,
+        ProductType.BreakWindowProjectile -> GlassBreakerControlScreen(
+            device = device,
+            modifier = modifier
+        )
+
         ProductType.Searchlight -> UnsupportedProductControlScreen(
             device = device,
             modifier = modifier

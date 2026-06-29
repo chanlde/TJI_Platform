@@ -2,6 +2,7 @@ package com.tji.device.product.ota
 
 import com.tji.device.product.droppersixstage.model.DropperSixStageState
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
+import com.tji.device.product.glassbreaker.model.GlassBreakerState
 import com.tji.device.product.runtime.ProductRuntimePayload
 import com.tji.device.product.solarclean.model.SolarCleanDeviceState
 import com.tji.device.product.speaker.model.SpeakerDeviceState
@@ -87,6 +88,13 @@ fun ProductRuntimePayload?.toProductDeviceInfo(): ProductDeviceInfo? {
             timestamp = timestamp
         )
         is SpeakerDeviceState -> ProductDeviceInfo(
+            timestamp = timestamp
+        )
+        is GlassBreakerState -> ProductDeviceInfo(
+            hardwareVersion = hardwareVersion,
+            firmwareVersion = firmwareVersion,
+            firmwareInnerVersion = firmwareInnerVersion,
+            batteryPercent = batteryPercent,
             timestamp = timestamp
         )
         else -> null

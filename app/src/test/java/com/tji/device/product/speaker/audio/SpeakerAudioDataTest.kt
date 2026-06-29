@@ -311,6 +311,54 @@ class SpeakerAudioDataTest {
     }
 
     @Test
+    fun liveTalkPacketHeaderCarriesSessionAndTalkIds() {
+        val packetizer = SpeakerAdpcmPacketizer(
+            SpeakerUdpStreamContext(
+                deviceId = "T12345678",
+                taskId = "LIVE_T12345678_ABCD",
+                type = SpeakerUdpStreamType.LiveTalk,
+                talkId = "TALK_T12345678_ABCD"
+            )
+        )
+        val packet = packetizer.packetize(syntheticVoicePcm(amplitude = 0.08f))!!
+        val header = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN)
+        val deviceId = "T12345678"
+        val sessionId = "LIVE_T12345678_ABCD"
+        val talkId = "TALK_T12345678_ABCD"
+        val expectedHeaderLen = 28 + deviceId.length + sessionId.length + talkId.length
+
+        assertEquals(0xA55A, header.short.toInt() and 0xFFFF)
+        assertEquals(2, header.get().toInt() and 0xFF)
+        assertEquals(1, header.get().toInt() and 0xFF)
+        assertEquals(expectedHeaderLen, header.short.toInt() and 0xFFFF)
+        assertEquals(0x04, header.short.toInt() and 0xFFFF)
+        assertEquals(0, header.int)
+        assertEquals(0, header.int)
+        assertEquals(8_000, header.short.toInt() and 0xFFFF)
+        assertEquals(1, header.get().toInt() and 0xFF)
+        assertEquals(40, header.get().toInt() and 0xFF)
+        assertEquals(164, header.short.toInt() and 0xFFFF)
+        assertEquals(320, header.short.toInt() and 0xFFFF)
+        val deviceLen = header.get().toInt() and 0xFF
+        val sessionLen = header.get().toInt() and 0xFF
+        val talkLen = header.get().toInt() and 0xFF
+        assertEquals(deviceId.length, deviceLen)
+        assertEquals(sessionId.length, sessionLen)
+        assertEquals(talkId.length, talkLen)
+        assertEquals(0, header.get().toInt() and 0xFF)
+        val deviceBytes = ByteArray(deviceLen)
+        header.get(deviceBytes)
+        val sessionBytes = ByteArray(sessionLen)
+        header.get(sessionBytes)
+        val talkBytes = ByteArray(talkLen)
+        header.get(talkBytes)
+
+        assertEquals(deviceId, deviceBytes.toString(Charsets.UTF_8))
+        assertEquals(sessionId, sessionBytes.toString(Charsets.UTF_8))
+        assertEquals(talkId, talkBytes.toString(Charsets.UTF_8))
+    }
+
+    @Test
     fun hadpEncoderCreatesFullHadpFileWithHeaderAndCrc() {
         val pcm = syntheticVoicePcm(
             amplitude = 0.08f,

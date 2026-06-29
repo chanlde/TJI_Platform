@@ -29,6 +29,7 @@ import com.tji.device.product.speaker.audio.SpeakerVoiceProcessor
 import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import com.tji.device.product.speaker.core.SpeakerCoreShadowVerifier
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
+import com.tji.device.product.speaker.model.SpeakerAck
 import com.tji.device.product.speaker.model.SpeakerCommand
 import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
@@ -36,6 +37,7 @@ import com.tji.device.product.speaker.model.SpeakerRecordEvent
 import com.tji.device.product.speaker.repository.SpeakerControlRepository
 import com.tji.device.product.speaker.repository.SpeakerRepository
 import com.tji.device.util.toUserVisibleMessage
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -44,6 +46,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -88,6 +91,7 @@ class SpeakerControlViewModel(
     val kokoroTtsSettings: StateFlow<SpeakerKokoroTtsSettings> = _kokoroTtsSettings.asStateFlow()
 
     private val pendingCommands = mutableMapOf<String, String>()
+    private val pendingAckWaiters = mutableMapOf<String, CompletableDeferred<SpeakerAck>>()
     private val localAudioPlayer = SpeakerLocalAudioPlayer()
     private val ttsPcmCache = object : LinkedHashMap<String, ByteArray>(
         SpeakerAudioConfig.Tts.PCM_CACHE_MAX_ITEMS,
@@ -105,6 +109,7 @@ class SpeakerControlViewModel(
     private var pendingRecordProgressConfirmJob: Job? = null
     private var lastHandledRecordEventKey: String? = null
     private var lastHandledRecordMutationEventKey: String? = null
+    private var realtimeTalkSession: RealtimeTalkSession? = null
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -126,6 +131,7 @@ class SpeakerControlViewModel(
                 states.asSequence()
                     .mapNotNull { it.lastAck }
                     .forEach { ack ->
+                        pendingAckWaiters.remove(ack.msgId)?.complete(ack)
                         val label = pendingCommands.remove(ack.msgId) ?: return@forEach
                         val text = if (ack.ok) "${label}已确认" else "${label}失败"
                         _feedback.value = SpeakerCommandFeedback(
@@ -605,35 +611,83 @@ class SpeakerControlViewModel(
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    fun startLiveTalk() {
+    fun startRealtimeTalk(serialNumber: String) {
         if (liveJob?.isActive == true) return
-        pttRecordJob?.cancel()
+        cancelPushToTalkRecord()
+        val stamp = System.currentTimeMillis().toString(36).uppercase(Locale.US)
+        val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }
+            .takeLast(12)
+            .ifBlank { "DEVICE" }
+        val sessionId = "LIVE_${cleanDeviceId}_$stamp"
+        val talkId = "TALK_${cleanDeviceId}_$stamp"
+        val startMsgId = newMsgId("live-start")
+        val session = RealtimeTalkSession(
+            serialNumber = serialNumber,
+            sessionId = sessionId,
+            talkId = talkId,
+            startMsgId = startMsgId
+        )
+        realtimeTalkSession = session
         _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Live)
         liveJob = viewModelScope.launch(Dispatchers.IO) {
-            runCatching {
+            var streamStarted = false
+            try {
+                val ack = sendAndAwaitAck(
+                    serialNumber = serialNumber,
+                    command = SpeakerCommand.StartTalk(
+                        msgId = startMsgId,
+                        sessionId = sessionId,
+                        talkId = talkId,
+                        sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE,
+                        channels = SpeakerAdpcmPacketizer.CHANNELS,
+                        packetMs = SpeakerAdpcmPacketizer.PACKET_MS,
+                        codec = "ima_adpcm"
+                    ),
+                    label = "实时喊话准备"
+                ) ?: return@launch failRealtimeTalk("设备无响应，实时喊话未开始")
+                if (!ack.ok) {
+                    failRealtimeTalk(ack.toRealtimeTalkError())
+                    return@launch
+                }
+                _feedback.value = SpeakerCommandFeedback(
+                    status = SpeakerCommandFeedbackStatus.Pending,
+                    text = "正在实时喊话"
+                )
+                streamStarted = true
                 audioRelay.streamMicrophone(
                     outputGain = _outputGain.value,
-                    toneSettings = _toneSettings.value
+                    toneSettings = _toneSettings.value,
+                    streamContext = SpeakerUdpStreamContext(
+                        deviceId = serialNumber,
+                        taskId = sessionId,
+                        type = SpeakerUdpStreamType.LiveTalk,
+                        talkId = talkId
+                    )
                 ) {
                     incrementPacketCount(SpeakerTalkMode.Live)
                 }
-            }.onFailure { throwable ->
+            } catch (throwable: Throwable) {
                 if (throwable !is CancellationException) {
-                    _talkState.value = SpeakerTalkState(
-                        mode = SpeakerTalkMode.Idle,
-                        error = throwable.toUserVisibleMessage("实时喊话失败")
-                    )
+                    if (streamStarted) sendStopTalkForSession(session)
+                    failRealtimeTalk(throwable.toUserVisibleMessage("实时喊话失败"))
                 }
             }
         }
     }
 
-    fun stopLiveTalk() {
+    fun stopRealtimeTalk(serialNumber: String) {
+        val session = realtimeTalkSession?.takeIf { it.serialNumber == serialNumber } ?: realtimeTalkSession
         liveJob?.cancel()
         liveJob = null
+        realtimeTalkSession = null
         if (_talkState.value.mode == SpeakerTalkMode.Live) {
-            _talkState.value = _talkState.value.copy(mode = SpeakerTalkMode.Idle)
+            _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle)
         }
+        session?.let(::sendStopTalkForSession)
+    }
+
+    fun stopLiveTalk() {
+        stopRealtimeTalk(realtimeTalkSession?.serialNumber.orEmpty())
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
@@ -1016,6 +1070,64 @@ class SpeakerControlViewModel(
         }
     }
 
+    private suspend fun sendAndAwaitAck(
+        serialNumber: String,
+        command: SpeakerCommand,
+        label: String
+    ): SpeakerAck? {
+        val waiter = CompletableDeferred<SpeakerAck>()
+        pendingAckWaiters[command.msgId] = waiter
+        pendingCommands[command.msgId] = label
+        _feedback.value = SpeakerCommandFeedback(
+            msgId = command.msgId,
+            status = SpeakerCommandFeedbackStatus.Pending,
+            text = "${label}已发送"
+        )
+        controlRepository.sendCommand(serialNumber, command)
+        val ack = withTimeoutOrNull(COMMAND_ACK_TIMEOUT_MS) {
+            waiter.await()
+        }
+        if (ack == null) {
+            pendingAckWaiters.remove(command.msgId)
+            pendingCommands.remove(command.msgId)
+            _feedback.value = SpeakerCommandFeedback(
+                msgId = command.msgId,
+                status = SpeakerCommandFeedbackStatus.Timeout,
+                text = "${label}无响应"
+            )
+        }
+        return ack
+    }
+
+    private fun sendStopTalkForSession(session: RealtimeTalkSession) {
+        viewModelScope.launch {
+            controlRepository.sendCommand(
+                session.serialNumber,
+                SpeakerCommand.StopTalk(newMsgId("live-stop"))
+            )
+        }
+    }
+
+    private fun failRealtimeTalk(message: String) {
+        liveJob = null
+        realtimeTalkSession = null
+        _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = message)
+        _feedback.value = SpeakerCommandFeedback(
+            status = SpeakerCommandFeedbackStatus.Failed,
+            text = message
+        )
+    }
+
+    private fun SpeakerAck.toRealtimeTalkError(): String =
+        when (code) {
+            404 -> "设备离线，实时喊话未开始"
+            460 -> "设备音频通道未就绪"
+            461 -> "实时喊话会话已过期"
+            462 -> "设备暂不支持当前音频格式"
+            463 -> "实时喊话会话不匹配"
+            else -> message.ifBlank { "实时喊话未开始" }
+        }
+
     private fun handleRecordSaveEvent(serialNumber: String, event: SpeakerRecordEvent) {
         val pending = pendingRecordSave ?: return
         if (pending.serialNumber != serialNumber || event.recordId != pending.recordId) return
@@ -1302,6 +1414,13 @@ private data class PendingRecordSave(
     val cacheRecord: Boolean = true,
     val timeoutMs: Long = 20_000L,
     val autoPlayLabel: String = "播放文件"
+)
+
+private data class RealtimeTalkSession(
+    val serialNumber: String,
+    val sessionId: String,
+    val talkId: String,
+    val startMsgId: String
 )
 
 private fun SpeakerRecordUploadResult.toSpeakerRecord(name: String, createdAt: String): SpeakerRecord =
