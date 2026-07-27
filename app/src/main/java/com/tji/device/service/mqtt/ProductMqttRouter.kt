@@ -2,7 +2,7 @@ package com.tji.device.service.mqtt
 
 import android.util.Log
 import com.tji.device.data.model.ProductType
-import com.tji.network.MQTTConfig
+import com.tji.network.MqttConnectionConfig
 import com.tji.network.MqttManager
 import com.tji.network.MqttProfiles
 
@@ -21,14 +21,14 @@ object ProductMqttRouter {
         )
         MqttManager.reset(
             profileKey = MqttProfiles.PLATFORM,
-            config = MQTTConfig.platform(
+            config = MqttConnectionConfig.platform(
                 username = account,
                 clientId = platformClientId
             )
         )
         MqttManager.reset(
             profileKey = MqttProfiles.RADIO_DETECTION_LEGACY,
-            config = MQTTConfig.radioDetectionLegacy(
+            config = MqttConnectionConfig.radioDetectionLegacy(
                 clientId = radioDetectionClientId
             )
         )

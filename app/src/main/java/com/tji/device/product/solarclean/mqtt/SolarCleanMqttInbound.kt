@@ -1,6 +1,7 @@
 package com.tji.device.product.solarclean.mqtt
 
 import android.util.Log
+import com.tji.device.BuildConfig
 import com.tji.device.product.solarclean.model.SolarCleanAck
 import com.tji.device.product.solarclean.model.SolarCleanDeviceInfo
 import com.tji.device.product.solarclean.model.SolarCleanDeviceState
@@ -26,9 +27,13 @@ import org.json.JSONObject
  * Payload 使用 type 字段区分 ack/state/event，topic 固定走平台三主题。
  */
 class SolarCleanMqttInbound(
-    private val repository: SolarCleanRepository
+    private val repository: SolarCleanRepository,
+    private val onlineTtlMillis: Long = DEFAULT_ONLINE_TTL_MILLIS,
+    private val monotonicMillis: () -> Long = {
+        System.nanoTime() / NANOS_PER_MILLISECOND
+    }
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var scope = newOnlineTimeoutScope()
     private val timeoutLock = Any()
     private val onlineTimeoutJobs = mutableMapOf<String, Job>()
     private val lastOnlineSignalAt = mutableMapOf<String, Long>()
@@ -42,43 +47,49 @@ class SolarCleanMqttInbound(
         when (eventType) {
             "online" -> {
                 if (isRetained) {
-                    Log.d(TAG, "忽略 retained online: deviceId=$linkSn")
+                    debugLog { "忽略 retained online: deviceId=$linkSn" }
                     return
                 }
                 val timestamp = json.optNullableLong("ts")
-                repository.updateOnlineStatus(linkSn, isOnline = true, timestamp = timestamp)
-                resetOnlineTimeout(linkSn)
-                Log.d(TAG, "SolarClean online: deviceId=$linkSn ts=$timestamp")
+                if (repository.updateOnlineStatus(linkSn, isOnline = true, timestamp = timestamp)) {
+                    resetOnlineTimeout(linkSn)
+                }
+                debugLog { "online: deviceId=$linkSn ts=$timestamp" }
             }
             "offline" -> {
                 val timestamp = json.optNullableLong("ts")
-                cancelOnlineTimeout(linkSn)
-                repository.updateOnlineStatus(linkSn, isOnline = false, timestamp = timestamp)
-                Log.d(TAG, "SolarClean offline: deviceId=$linkSn ts=$timestamp")
+                if (repository.updateOnlineStatus(linkSn, isOnline = false, timestamp = timestamp)) {
+                    cancelOnlineTimeout(linkSn)
+                }
+                debugLog { "offline: deviceId=$linkSn ts=$timestamp" }
             }
             "ack" -> {
                 val ack = parseAck(json)
                 repository.updateAck(linkSn, ack)
-                Log.d(TAG, "SolarClean ack: $ack")
+                debugLog { "ack: $ack" }
             }
             "state" -> {
                 val state = parseState(linkSn, json, allowRealtimeOnline = !isRetained)
-                repository.updateDeviceState(state)
-                if (state.isOnline) {
+                val applied = repository.updateDeviceState(state)
+                if (!isRetained && applied && state.isOnline) {
                     resetOnlineTimeout(linkSn)
-                } else {
-                    cancelOnlineTimeout(linkSn)
                 }
-                Log.d(TAG, "SolarClean state: $state")
+                debugLog { "state: $state" }
             }
             "deviceInfo" -> {
                 val info = parseDeviceInfo(linkSn, json)
                 repository.updateDeviceInfo(linkSn, info)
                 if (!isRetained && isFreshOrRealtimeSignal(info.timestamp)) {
-                    repository.updateOnlineStatus(linkSn, isOnline = true, timestamp = onlineTimestamp(info.timestamp))
-                    resetOnlineTimeout(linkSn)
+                    val applied = repository.updateOnlineStatus(
+                        linkSn,
+                        isOnline = true,
+                        timestamp = onlineTimestamp(info.timestamp)
+                    )
+                    if (applied) {
+                        resetOnlineTimeout(linkSn)
+                    }
                 }
-                Log.d(TAG, "SolarClean device info: $info")
+                debugLog { "device info: $info" }
             }
             "otaStatus" -> {
                 val status = parseOtaStatus(json)
@@ -86,7 +97,7 @@ class SolarCleanMqttInbound(
                 if (!isRetained) {
                     resetOnlineTimeout(linkSn)
                 }
-                Log.d(TAG, "SolarClean OTA status: $status")
+                debugLog { "OTA status: $status" }
             }
             "downloadProgress",
             "downloadDone",
@@ -97,12 +108,12 @@ class SolarCleanMqttInbound(
                 if (event != null) {
                     repository.updateEvent(linkSn, event)
                 }
-                Log.d(TAG, "SolarClean event: $event")
+                debugLog { "event: $event" }
             }
-            else -> Log.d(
-                TAG,
-                "SolarClean MQTT 未处理 link=$linkSn event=$eventType keys=${json.keys().asSequence().joinToString()}"
-            )
+            else -> debugLog {
+                "MQTT 未处理 link=$linkSn event=$eventType " +
+                    "keys=${json.keys().asSequence().joinToString()}"
+            }
         }
     }
 
@@ -253,7 +264,7 @@ class SolarCleanMqttInbound(
     private fun isFreshOrRealtimeSignal(timestamp: Long?): Boolean {
         if (timestamp == null) return true
         if (!looksLikeUnixMillis(timestamp)) return true
-        return System.currentTimeMillis() - timestamp <= STATE_ONLINE_TTL_MS
+        return System.currentTimeMillis() - timestamp <= onlineTtlMillis
     }
 
     private fun onlineTimestamp(timestamp: Long?): Long {
@@ -265,7 +276,7 @@ class SolarCleanMqttInbound(
     }
 
     private fun resetOnlineTimeout(serialNumber: String) {
-        val signalAt = System.currentTimeMillis()
+        val signalAt = monotonicMillis()
         synchronized(timeoutLock) {
             lastOnlineSignalAt[serialNumber] = signalAt
             onlineTimeoutJobs.remove(serialNumber)?.cancel()
@@ -276,14 +287,16 @@ class SolarCleanMqttInbound(
     }
 
     private suspend fun markOfflineIfStale(serialNumber: String, signalAt: Long) {
-        delay(STATE_ONLINE_TTL_MS)
+        delay(onlineTtlMillis)
         val shouldMarkOffline = synchronized(timeoutLock) {
-            val latestSignalAt = lastOnlineSignalAt[serialNumber] ?: return@synchronized true
-            val ageMs = System.currentTimeMillis() - latestSignalAt
-            latestSignalAt == signalAt && ageMs >= STATE_ONLINE_TTL_MS
+            val latestSignalAt = lastOnlineSignalAt[serialNumber] ?: return@synchronized false
+            val ageMs = monotonicMillis() - latestSignalAt
+            latestSignalAt == signalAt && ageMs >= onlineTtlMillis
         }
         if (shouldMarkOffline) {
-            repository.updateOnlineStatus(serialNumber, isOnline = false, timestamp = System.currentTimeMillis())
+            // 本地 TTL 不是设备消息，没有设备时钟域时间戳；传 null 可保留最后设备时间，
+            // 同时避免设备时钟略快于手机时把本地离线判定误当成旧消息。
+            repository.updateOnlineStatus(serialNumber, isOnline = false, timestamp = null)
             Log.w(TAG, "SolarClean state timeout, mark offline: deviceId=$serialNumber")
             synchronized(timeoutLock) {
                 if (lastOnlineSignalAt[serialNumber] == signalAt) {
@@ -305,27 +318,35 @@ class SolarCleanMqttInbound(
             onlineTimeoutJobs.values.forEach { it.cancel() }
             onlineTimeoutJobs.clear()
             lastOnlineSignalAt.clear()
+            scope.cancel()
+            scope = newOnlineTimeoutScope()
         }
-        scope.cancel()
+    }
+
+    private fun newOnlineTimeoutScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private inline fun debugLog(message: () -> String) {
+        if (BuildConfig.DEBUG) Log.d(TAG, message())
     }
 
     private fun JSONObject.optNullableDouble(name: String): Double? =
-        if (has(name) && !isNull(name)) optDouble(name) else null
+        if (has(name) && !isNull(name)) runCatching { getDouble(name) }.getOrNull() else null
 
     private fun JSONObject.optNullableInt(name: String): Int? {
         if (!has(name) || isNull(name)) return null
         return when (val value = opt(name)) {
             is Number -> value.toInt()
             is String -> value.trim().toIntOrNull()
-            else -> optInt(name)
+            else -> null
         }
     }
 
     private fun JSONObject.optNullableLong(name: String): Long? =
-        if (has(name) && !isNull(name)) optLong(name) else null
+        if (has(name) && !isNull(name)) runCatching { getLong(name) }.getOrNull() else null
 
     private fun JSONObject.optNullableBoolean(name: String): Boolean? =
-        if (has(name) && !isNull(name)) optBoolean(name) else null
+        if (has(name) && !isNull(name)) runCatching { getBoolean(name) }.getOrNull() else null
 
     private fun JSONObject.payloadObject(): JSONObject =
         optJSONObject("data") ?: optJSONObject("params") ?: this
@@ -343,7 +364,8 @@ class SolarCleanMqttInbound(
 
     private companion object {
         const val TAG = "SolarCleanMqttInbound"
-        const val STATE_ONLINE_TTL_MS = 10_000L
+        const val DEFAULT_ONLINE_TTL_MILLIS = 10_000L
         const val MIN_REASONABLE_UNIX_MILLIS = 1_600_000_000_000L
+        const val NANOS_PER_MILLISECOND = 1_000_000L
     }
 }

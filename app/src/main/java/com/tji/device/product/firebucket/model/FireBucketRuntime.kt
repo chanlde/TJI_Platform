@@ -19,14 +19,14 @@ data class FireBucketLinkDevice(
     val swVersion: String,
     val uptime: Int,
     val deviceConfig: String,
-    val subDevices: List<Switch>,
+    val subDevices: List<FireBucketSwitchState>,
     val timestamp: String,
     val productType: ProductType = ProductType.FireBucket
 ) : ProductRuntimePayload
 
 data class FireBucketLinkUiState(
     val isLoading: Boolean = false,
-    val switchDevices: List<Switch> = emptyList(),
+    val switchDevices: List<FireBucketSwitchState> = emptyList(),
     val errorMessage: String? = null,
     val selectedDevice: FireBucketLinkDevice? = null
 )

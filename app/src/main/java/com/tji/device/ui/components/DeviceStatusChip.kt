@@ -11,12 +11,12 @@ fun StatusChip(isOnline: Boolean) {
 
 @Preview(showBackground = true)
 @Composable
-fun onlineExample() {
+private fun OnlineStatusPreview() {
     StatusChip(isOnline = false)
 }
 
 @Preview(showBackground = true)
 @Composable
-fun offlineExample() {
+private fun OfflineStatusPreview() {
     StatusChip(isOnline = true)
 }

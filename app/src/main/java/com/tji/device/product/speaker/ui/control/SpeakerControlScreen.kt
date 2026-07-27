@@ -31,10 +31,17 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.di.AppContainer
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
-import com.tji.device.product.speaker.audio.SpeakerKokoroTtsSettings
 import com.tji.device.product.speaker.audio.SpeakerToneSettings
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.viewmodel.SpeakerControlViewModel
+import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophoneState
+import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_CYCLES
+import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_HOLD_MS
+import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_INTERVAL_MS
+import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_SPEED_DPS
+import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_STEP_ANGLE
+import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_ANGLE
+import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_ANGLE
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
 import com.tji.device.ui.theme.PayloadDimens
@@ -42,8 +49,8 @@ import com.tji.device.ui.theme.PayloadDimens
 @Composable
 fun SpeakerControlScreen(
     device: BoundAccountDevice,
-    onBack: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null
 ) {
     val isPreview = LocalInspectionMode.current
     val context = LocalContext.current
@@ -58,6 +65,9 @@ fun SpeakerControlScreen(
     val talkState by viewModel?.talkState?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerTalkState()) }
     }
+    val mcuMicrophoneState by viewModel?.mcuMicrophoneState?.collectAsStateWithLifecycle().let {
+        it ?: remember { mutableStateOf(SpeakerMcuMicrophoneState()) }
+    }
     val outputGain by viewModel?.outputGain?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableFloatStateOf(1f) }
     }
@@ -70,14 +80,8 @@ fun SpeakerControlScreen(
     val availableTtsVoicePresets by viewModel?.availableTtsVoicePresets?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(listOf(SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET)) }
     }
-    val ttsEngine by viewModel?.ttsEngine?.collectAsStateWithLifecycle().let {
-        it ?: remember { mutableStateOf(SpeakerAudioConfig.Tts.DEFAULT_ENGINE) }
-    }
     val outputQuality by viewModel?.outputQuality?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerAudioConfig.Tts.DEFAULT_TTS_QUALITY) }
-    }
-    val kokoroTtsSettings by viewModel?.kokoroTtsSettings?.collectAsStateWithLifecycle().let {
-        it ?: remember { mutableStateOf(SpeakerKokoroTtsSettings()) }
     }
     var hasMicPermission by remember {
         mutableStateOf(
@@ -90,15 +94,45 @@ fun SpeakerControlScreen(
     }
     val state = devices.firstOrNull { it.serialNumber == device.serialNumber }
         ?: if (isPreview) previewSpeakerState(device) else null
+    val deviceControlsEnabled = viewModel != null && state?.isOnline == true
     var volumeGain by remember(outputGain) { mutableFloatStateOf(outputGain) }
     var text by remember { mutableStateOf("前方危险，请立即撤离") }
     var recordName by remember { mutableStateOf("") }
     var recordQuery by remember { mutableStateOf("") }
     var recordSortOrder by remember { mutableStateOf(SpeakerRecordSortOrder.NewestFirst) }
     var selectedPanel by remember { mutableStateOf(SpeakerPanel.Talk) }
-    val visibleRecords = state?.records.orEmpty().filter {
-        recordQuery.isBlank() || it.name.contains(recordQuery, ignoreCase = true)
-    }.sortedForDisplay(recordSortOrder)
+    var servoAngle by remember { mutableFloatStateOf(90f) }
+    var servoAngleEdited by remember { mutableStateOf(false) }
+    var servoSpeedDps by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_SPEED_DPS.toFloat()) }
+    var servoMinAngle by remember { mutableFloatStateOf(30f) }
+    var servoMaxAngle by remember { mutableFloatStateOf(120f) }
+    var servoCycles by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_CYCLES.toFloat()) }
+    var servoHoldMs by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_HOLD_MS.toFloat()) }
+    var servoStepAngle by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_STEP_ANGLE.toFloat()) }
+    var servoIntervalMs by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_INTERVAL_MS.toFloat()) }
+    val records = state?.records.orEmpty()
+    val visibleRecords = remember(records, recordQuery, recordSortOrder) {
+        records.filter {
+            recordQuery.isBlank() || it.name.contains(recordQuery, ignoreCase = true)
+        }.sortedForDisplay(recordSortOrder)
+    }
+
+    LaunchedEffect(device.serialNumber) {
+        servoAngleEdited = false
+    }
+
+    LaunchedEffect(
+        device.serialNumber,
+        state?.servo?.targetAngle,
+        state?.servo?.currentAngle,
+        state?.servoAngle,
+        servoAngleEdited
+    ) {
+        if (!servoAngleEdited) {
+            val reported = state?.servo?.targetAngle ?: state?.servo?.currentAngle ?: state?.servoAngle
+            servoAngle = (reported ?: 90).coerceIn(SPEAKER_SERVO_MIN_ANGLE, SPEAKER_SERVO_MAX_ANGLE).toFloat()
+        }
+    }
 
     LaunchedEffect(selectedPanel, device.serialNumber, viewModel) {
         if (selectedPanel == SpeakerPanel.Records && viewModel != null) {
@@ -108,7 +142,8 @@ fun SpeakerControlScreen(
     }
     DisposableEffect(device.serialNumber, viewModel) {
         onDispose {
-            viewModel?.stopRealtimeTalk(device.serialNumber)
+            viewModel?.cancelPushToTalkRecord(device.serialNumber)
+            viewModel?.setMcuMicrophoneListening(device.serialNumber, enabled = false)
         }
     }
 
@@ -133,30 +168,28 @@ fun SpeakerControlScreen(
             if (selectedPanel == SpeakerPanel.Talk) item {
                 PushToTalkCard(
                     talkState = talkState,
-                    enabled = viewModel != null && talkState.mode != SpeakerTalkMode.Live,
+                    enabled = deviceControlsEnabled && talkState.mode == SpeakerTalkMode.Idle,
                     hasMicPermission = hasMicPermission,
                     requestPermission = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                    onPress = { viewModel?.startPushToTalkRecord() },
-                    onRelease = { viewModel?.finishPushToTalkRecord(device.serialNumber) },
-                    onCancel = { viewModel?.cancelPushToTalkRecord() }
+                    onPress = { viewModel?.startPushToTalkRecord(device.serialNumber) },
+                    onRelease = { viewModel?.finishPushToTalkRecord() },
+                    onCancel = { viewModel?.cancelPushToTalkRecord(device.serialNumber) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Talk) item {
-                LiveTalkCard(
-                    talkState = talkState,
-                    enabled = viewModel != null &&
-                        (talkState.mode == SpeakerTalkMode.Idle || talkState.mode == SpeakerTalkMode.Live),
-                    hasMicPermission = hasMicPermission,
-                    requestPermission = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                    onPress = { viewModel?.startRealtimeTalk(device.serialNumber) },
-                    onRelease = { viewModel?.stopRealtimeTalk(device.serialNumber) },
-                    onCancel = { viewModel?.stopRealtimeTalk(device.serialNumber) }
+                McuMicrophoneMonitorCard(
+                    state = mcuMicrophoneState,
+                    enabled = deviceControlsEnabled,
+                    onEnabledChange = {
+                        viewModel?.setMcuMicrophoneListening(device.serialNumber, it)
+                    }
                 )
             }
             if (selectedPanel == SpeakerPanel.Talk) item {
                 OutputVolumeCard(
                     volumeGain = volumeGain,
-                    enabled = viewModel != null,
+                    enabled = deviceControlsEnabled,
+                    stopEnabled = viewModel != null,
                     onVolumeGainChange = { volumeGain = it },
                     onVolumeCommitted = { viewModel?.setVolume(device.serialNumber, it) },
                     onStop = { viewModel?.stop(device.serialNumber) }
@@ -168,14 +201,14 @@ fun SpeakerControlScreen(
             if (selectedPanel == SpeakerPanel.Records) item {
                 SpeakerRecordSaveCard(
                     recordName = recordName,
-                    enabled = viewModel != null,
+                    enabled = deviceControlsEnabled && talkState.mode == SpeakerTalkMode.Idle,
                     hasMicPermission = hasMicPermission,
                     mode = talkState.mode,
                     onRecordNameChange = { recordName = it },
                     requestPermission = { micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
-                    onPress = { viewModel?.startPushToTalkSaveRecord(recordName) },
-                    onRelease = { viewModel?.finishPushToTalkSaveRecord(device.serialNumber) },
-                    onCancel = { viewModel?.cancelPushToTalkRecord() }
+                    onPress = { viewModel?.startPushToTalkSaveRecord(device.serialNumber, recordName) },
+                    onRelease = { viewModel?.finishPushToTalkSaveRecord() },
+                    onCancel = { viewModel?.cancelPushToTalkRecord(device.serialNumber) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Records) item {
@@ -183,7 +216,7 @@ fun SpeakerControlScreen(
                     recordQuery = recordQuery,
                     visibleRecords = visibleRecords,
                     state = state,
-                    enabled = viewModel != null,
+                    enabled = deviceControlsEnabled,
                     currentVolume = (volumeGain * 100f).toInt(),
                     sortOrderLabel = recordSortOrder.label,
                     onRecordQueryChange = { recordQuery = it },
@@ -212,8 +245,8 @@ fun SpeakerControlScreen(
             if (selectedPanel == SpeakerPanel.Settings) item {
                 SpeakerOutputQualityCard(
                     selected = outputQuality,
-                    enabled = viewModel != null,
-                    onSelect = { viewModel?.setOutputQuality(device.serialNumber, it) }
+                    enabled = deviceControlsEnabled,
+                    onSelect = { viewModel?.setOutputQuality(it) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Settings) item {
@@ -224,25 +257,79 @@ fun SpeakerControlScreen(
                 )
             }
             if (selectedPanel == SpeakerPanel.Settings) item {
+                SpeakerServoAngleCard(
+                    angle = servoAngle,
+                    speedDps = servoSpeedDps,
+                    minAngle = servoMinAngle,
+                    maxAngle = servoMaxAngle,
+                    cycles = servoCycles,
+                    holdMs = servoHoldMs,
+                    stepAngle = servoStepAngle,
+                    intervalMs = servoIntervalMs,
+                    reportedAngle = state?.servoAngle,
+                    servoState = state?.servo,
+                    enabled = deviceControlsEnabled,
+                    onAngleChange = {
+                        servoAngleEdited = true
+                        servoAngle = it
+                    },
+                    onSpeedChange = { servoSpeedDps = it },
+                    onMinAngleChange = { servoMinAngle = it },
+                    onMaxAngleChange = { servoMaxAngle = it },
+                    onCyclesChange = { servoCycles = it },
+                    onHoldMsChange = { servoHoldMs = it },
+                    onStepAngleChange = { servoStepAngle = it },
+                    onIntervalMsChange = { servoIntervalMs = it },
+                    onApply = {
+                        viewModel?.setServoAngle(
+                            serialNumber = device.serialNumber,
+                            angle = servoAngle.toInt(),
+                            speedDps = servoSpeedDps.toInt()
+                        )
+                    },
+                    onTest = {
+                        viewModel?.testServo(
+                            serialNumber = device.serialNumber,
+                            speedDps = servoSpeedDps.toInt()
+                        )
+                    },
+                    onSweepTest = {
+                        viewModel?.sweepServo(
+                            serialNumber = device.serialNumber,
+                            minAngle = servoMinAngle.toInt(),
+                            maxAngle = servoMaxAngle.toInt(),
+                            speedDps = servoSpeedDps.toInt(),
+                            cycles = servoCycles.toInt(),
+                            durationMs = servoHoldMs.toInt()
+                        )
+                    },
+                    onStepTest = {
+                        viewModel?.stepServo(
+                            serialNumber = device.serialNumber,
+                            minAngle = servoMinAngle.toInt(),
+                            maxAngle = servoMaxAngle.toInt(),
+                            stepAngle = servoStepAngle.toInt(),
+                            speedDps = servoSpeedDps.toInt(),
+                            intervalMs = servoIntervalMs.toInt()
+                        )
+                    }
+                )
+            }
+            if (selectedPanel == SpeakerPanel.Settings) item {
                 SpeakerBuzzerCard(
                     talkState = talkState,
-                    enabled = viewModel != null,
+                    enabled = deviceControlsEnabled,
                     onPlayBuzzer = { viewModel?.playToneTest(device.serialNumber) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Text) item {
                 SpeakerTextSpeechCard(
                     text = text,
-                    ttsEngine = ttsEngine,
-                    kokoroTtsSettings = kokoroTtsSettings,
                     ttsVoicePreset = ttsVoicePreset,
                     availableTtsVoicePresets = availableTtsVoicePresets,
                     talkState = talkState,
-                    enabled = viewModel != null,
+                    enabled = deviceControlsEnabled,
                     onTextChange = { text = it },
-                    onTtsEngineSelect = { viewModel?.setTtsEngine(it) },
-                    onKokoroVoiceSelect = { viewModel?.setKokoroVoice(it) },
-                    onKokoroSpeedChange = { viewModel?.setKokoroSpeed(it) },
                     onTtsVoicePresetSelect = { viewModel?.setTtsVoicePreset(it) },
                     onSpeak = { viewModel?.speakText(device.serialNumber, text, (volumeGain * 100f).toInt()) }
                 )

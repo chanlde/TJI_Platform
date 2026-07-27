@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.tji.network.data.ApiResponse
+import kotlinx.coroutines.CancellationException
 import retrofit2.HttpException
 
 internal class NetworkResponseHandler(
@@ -17,8 +18,10 @@ internal class NetworkResponseHandler(
             if (response.code == 200) {
                 response
             } else {
-                ApiResponse(code = response.code, message = "${response.message}", data = null)
+                ApiResponse(code = response.code, message = response.message.orEmpty(), data = null)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(tag, "API调用异常", e)
             ApiResponse(code = -1, message = handleException(e), data = null)

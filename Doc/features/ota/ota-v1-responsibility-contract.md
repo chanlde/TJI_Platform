@@ -486,7 +486,7 @@ SolarClean/devices/PV-CLEAN-0001/status
 - 提供 `/api/data/appversion/getAppVersion` 接口
 - 使用 `type=1` 区分 App 更新，`type=2` 区分设备固件更新
 - 光伏清洗固件使用 `productId=3&type=2`
-- 消防吊桶固件使用 `productId=4&type=2`
+- 消防吊桶固件使用 `productId=2&type=2`
 - 提供固件 bin 文件下载
 
 ### 9.3 单片机

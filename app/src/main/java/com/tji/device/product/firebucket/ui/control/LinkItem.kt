@@ -32,7 +32,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
-import com.tji.device.product.firebucket.model.Switch
 import com.tji.device.ui.components.TjiCardShell
 import com.tji.device.ui.components.TjiOnlineStatus
 import com.tji.device.ui.icon.product.productIconVector
@@ -120,7 +119,7 @@ fun LinkItem(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.heightIn(max = 400.dp)
                     ) {
-                        items(link.subDevices) { switch ->
+                        items(link.subDevices, key = { it.serialNumber }) { switch ->
                             SwitchItemComposable(link.serial_number, switch = switch)
                         }
                     }
@@ -132,7 +131,7 @@ fun LinkItem(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.heightIn(max = 400.dp)
                     ) {
-                        items(link.subDevices) { switch ->
+                        items(link.subDevices, key = { it.serialNumber }) { switch ->
                             SwitchItemComposable(link.serial_number, switch = switch)
                         }
                     }

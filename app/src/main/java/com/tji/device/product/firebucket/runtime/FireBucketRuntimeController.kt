@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class FireBucketRuntimeController(
-    private val repository: FireBucketLinkRepository
+    private val repository: FireBucketLinkRepository,
+    private val cancelBackgroundWork: () -> Unit = {}
 ) : ProductRuntimeController {
     override val productType: ProductType = ProductType.FireBucket
 
@@ -27,6 +28,7 @@ class FireBucketRuntimeController(
         }
 
     override fun clear() {
+        cancelBackgroundWork()
         repository.clearLinks()
     }
 }

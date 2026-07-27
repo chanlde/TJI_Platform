@@ -29,8 +29,6 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.tji.device.data.model.ProductType
 import com.tji.device.di.AppContainer
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.update
 import kotlin.math.roundToInt
 
 class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStateRegistryOwner {
@@ -64,8 +62,6 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
         }
     }
 
-    private val sizeState = MutableStateFlow(WindowSize(width = 140, height = 140))
-
     private fun dpToPx(dp: Int): Int =
         (dp * resources.displayMetrics.density).roundToInt()
 
@@ -93,7 +89,8 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
         ViewModelProvider(
             this, FloatingWindowViewModelFactory(
                 productRuntimeRegistry = AppContainer.productRuntimeRegistry,
-                floatingQuickControlFor = AppContainer::floatingQuickControlFor
+                floatingQuickControlFor = AppContainer::floatingQuickControlFor,
+                sessionStore = AppContainer.appSessionStore
             )
         ).get(FloatingWindowViewModel::class.java)
     }
@@ -146,12 +143,10 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
                     onToggleExpand = { isExpanded = !isExpanded },
                     onMinimize = {
                         isExpanded = false
-                        viewModel.minimize()
                     },
                     onClose = { stopSelf() },
                     onSwitchQuickToggle = viewModel::toggleSwitch,
-                    onMove = { dx, dy -> adjustPosition(dx, dy) },
-                    onResize = { _, _ -> }
+                    onMove = { dx, dy -> adjustPosition(dx, dy) }
                 )
 
             }
@@ -213,19 +208,6 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
         windowManager.updateViewLayout(rootContainer, layoutParams)
     }
 
-    private fun adjustSize(dx: Float, dy: Float) {
-        Log.v(TAG, "adjustSize dx=$dx dy=$dy")
-        sizeState.update { size ->
-            val newWidth = (size.width + dx).roundToInt().coerceIn(dpToPx(MIN_WIDTH_DP), dpToPx(MAX_WIDTH_DP))
-            val newHeight = (size.height + dy).roundToInt().coerceIn(dpToPx(MIN_HEIGHT_DP), dpToPx(MAX_HEIGHT_DP))
-            WindowSize(newWidth, newHeight)
-        }
-        val size = sizeState.value
-        layoutParams.width = size.width
-        layoutParams.height = size.height
-        windowManager.updateViewLayout(rootContainer, layoutParams)
-    }
-
     inner class LocalBinder : Binder() {
         fun getService(): FloatingWindowService = this@FloatingWindowService
     }
@@ -237,9 +219,5 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
 
     companion object {
         private const val TAG = "FloatingWindowService"
-        private const val MIN_WIDTH_DP = 240
-        private const val MIN_HEIGHT_DP = 220
-        private const val MAX_WIDTH_DP = 800
-        private const val MAX_HEIGHT_DP = 1200
     }
 }

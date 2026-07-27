@@ -16,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import com.tji.device.wifi.WifiData
 
 @Composable
@@ -35,27 +37,33 @@ fun WebViewScreen(
     // 文件选择回调变量
     var filePathCallback by remember { mutableStateOf<ValueCallback<Uri>?>(null) }
     var filesPathCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+    val cancelPendingFileSelection = {
+        filePathCallback?.onReceiveValue(null)
+        filesPathCallback?.onReceiveValue(null)
+        filePathCallback = null
+        filesPathCallback = null
+    }
 
     // 文件选择启动器
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val data = result.data
+        val pendingSingle = filePathCallback
+        val pendingMultiple = filesPathCallback
+        filePathCallback = null
+        filesPathCallback = null
         if (result.resultCode == Activity.RESULT_OK) {
             // 处理单文件回调 (Android 4.1-5.0)
-            filePathCallback?.let { callback ->
-                val uri = data?.data ?: Uri.EMPTY
-                callback.onReceiveValue(uri)
-                filePathCallback = null
-            }
+            pendingSingle?.onReceiveValue(data?.data)
 
             // 处理多文件回调 (Android 5.0+)
-            filesPathCallback?.let { callback ->
+            pendingMultiple?.let { callback ->
                 val uris = mutableListOf<Uri>()
                 data?.let { intent ->
                     // 处理单个文件
                     intent.dataString?.let { dataString ->
-                        uris.add(Uri.parse(dataString))
+                        uris.add(dataString.toUri())
                     }
                     // 处理多个文件
                     intent.clipData?.let { clipData ->
@@ -64,15 +72,11 @@ fun WebViewScreen(
                         }
                     }
                 }
-                callback.onReceiveValue(if (uris.isEmpty()) emptyArray() else uris.toTypedArray())
-                filesPathCallback = null
+                callback.onReceiveValue(uris.takeIf { it.isNotEmpty() }?.toTypedArray())
             }
         } else {
-            // 取消选择时也要回调
-            filePathCallback?.onReceiveValue(Uri.EMPTY)
-            filesPathCallback?.onReceiveValue(emptyArray())
-            filePathCallback = null
-            filesPathCallback = null
+            pendingSingle?.onReceiveValue(null)
+            pendingMultiple?.onReceiveValue(null)
         }
     }
 
@@ -99,8 +103,11 @@ fun WebViewScreen(
             webChromeClient = object : WebChromeClient() {
                 // For Android 4.1 - 5.0
                 fun openFileChooser(uploadMsg: ValueCallback<Uri>, acceptType: String, capture: String) {
+                    cancelPendingFileSelection()
                     filePathCallback = uploadMsg
-                    openFileSelector(acceptType, filePickerLauncher)
+                    if (!openFileSelector(acceptType, allowMultiple = false, filePickerLauncher)) {
+                        cancelPendingFileSelection()
+                    }
                 }
 
                 // For Android 5.0+
@@ -109,13 +116,30 @@ fun WebViewScreen(
                     filePathCallback: ValueCallback<Array<Uri>>,
                     fileChooserParams: FileChooserParams
                 ): Boolean {
+                    cancelPendingFileSelection()
                     filesPathCallback = filePathCallback
                     val acceptTypes = fileChooserParams.acceptTypes
                     val acceptType = if (acceptTypes.isNotEmpty()) acceptTypes[0] else "*/*"
-                    openFileSelector(acceptType, filePickerLauncher)
-                    return true
+                    val launched = openFileSelector(
+                        acceptType = acceptType,
+                        allowMultiple = fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE,
+                        launcher = filePickerLauncher
+                    )
+                    if (!launched) {
+                        cancelPendingFileSelection()
+                    }
+                    return launched
                 }
             }
+        }
+    }
+    DisposableEffect(webView) {
+        onDispose {
+            cancelPendingFileSelection()
+            webView.stopLoading()
+            webView.webChromeClient = null
+            webView.webViewClient = WebViewClient()
+            webView.destroy()
         }
     }
 
@@ -124,7 +148,9 @@ fun WebViewScreen(
             factory = { webView },
             modifier = Modifier.fillMaxSize()
         ) { view ->
-            view.loadUrl(url)
+            if (view.url != url) {
+                view.loadUrl(url)
+            }
         }
 
         BackHandler {
@@ -142,8 +168,9 @@ fun WebViewScreen(
  */
 private fun openFileSelector(
     acceptType: String,
+    allowMultiple: Boolean,
     launcher: ActivityResultLauncher<Intent>
-) {
+): Boolean {
     val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
         addCategory(Intent.CATEGORY_OPENABLE)
         type = when {
@@ -157,8 +184,10 @@ private fun openFileSelector(
             }
             else -> "*/*"
         }
-        // 允许多选
-        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
     }
-    launcher.launch(Intent.createChooser(intent, "请选择文件"))
+    return runCatching {
+        launcher.launch(Intent.createChooser(intent, "请选择文件"))
+        true
+    }.getOrDefault(false)
 }

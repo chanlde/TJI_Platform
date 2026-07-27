@@ -12,6 +12,7 @@ data class SpeakerDeviceState(
     val currentFile: String? = null,
     val volume: Int = DEFAULT_SPEAKER_VOLUME,
     val servoAngle: Int? = null,
+    val servo: SpeakerServoState? = null,
     val lastError: String? = null,
     val network: String? = null,
     val lastAck: SpeakerAck? = null,
@@ -20,12 +21,28 @@ data class SpeakerDeviceState(
     val recordLimit: Int = 8,
     val recordTotal: Int = 0,
     val recordHasMore: Boolean = false,
+    val recordListTimestamp: Long? = null,
     val storageStatus: SpeakerStorageStatus? = null,
     val lastRecordEvent: SpeakerRecordEvent? = null,
     val outputQuality: String? = null,
     val audio: SpeakerAudioDiagnostics? = null,
     val timestamp: Long? = null
 ) : ProductRuntimePayload
+
+data class SpeakerServoState(
+    val currentAngle: Int? = null,
+    val targetAngle: Int? = null,
+    val speedDps: Int? = null,
+    val moving: Boolean = false,
+    val sweepActive: Boolean = false,
+    val stepMode: Boolean = false,
+    val stepAngle: Int? = null,
+    val minAngle: Int? = null,
+    val maxAngle: Int? = null,
+    val cyclesLeft: Int? = null,
+    val cyclesDone: Int? = null,
+    val infinite: Boolean = false
+)
 
 data class SpeakerAudioDiagnostics(
     val packets: Long = 0L,
@@ -99,20 +116,42 @@ sealed class SpeakerCommand(
 
     class SetServoAngle(
         msgId: String,
-        val angle: Int
+        val angle: Int,
+        val speedDps: Int = 60
     ) : SpeakerCommand(msgId, 107, "SET_SERVO_ANGLE")
 
-    class StartTalk(
+    class ServoSweepTest(
         msgId: String,
-        val sessionId: String,
-        val talkId: String,
-        val sampleRate: Int = 8_000,
+        val minAngle: Int,
+        val maxAngle: Int,
+        val speedDps: Int = 60,
+        val cycles: Int = 1,
+        val durationMs: Int = 300
+    ) : SpeakerCommand(msgId, 125, "SERVO_SWEEP_TEST")
+
+    class ServoStepTest(
+        msgId: String,
+        val minAngle: Int,
+        val maxAngle: Int,
+        val stepAngle: Int = 10,
+        val speedDps: Int = 30,
+        val intervalMs: Int = 2_000
+    ) : SpeakerCommand(msgId, 126, "SERVO_STEP_TEST")
+
+    /**
+     * 开关 MCU 板载麦克风回传。与手机麦克风录音/喊话无关。
+     */
+    class SetMcuMicrophoneFeedback(
+        msgId: String,
+        val enabled: Boolean,
+        val sessionId: String = "",
+        val talkId: String = "",
+        val codec: String = "ima_adpcm",
+        val sampleRate: Int = 16_000,
         val channels: Int = 1,
         val packetMs: Int = 40,
-        val codec: String = "ima_adpcm"
-    ) : SpeakerCommand(msgId, 108, "START_TALK")
-
-    class StopTalk(msgId: String) : SpeakerCommand(msgId, 109, "STOP_TALK")
+        val ttlMs: Long = 30_000L
+    ) : SpeakerCommand(msgId, 116, "SET_PLAYBACK_FEEDBACK")
 
     class StartRecordStore(
         msgId: String,

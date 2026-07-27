@@ -36,7 +36,7 @@ import com.tji.device.ui.theme.PayloadDimens
 internal fun TargetSheet(
     state: RadioDetectionUiState,
     expanded: Boolean,
-    statusFilter: RadioListStatus?,
+    targetFilter: RadioTargetFilter,
     onHide: () -> Unit,
     onOpenFilter: () -> Unit,
     onReplayLatestRid: () -> Unit,
@@ -45,8 +45,8 @@ internal fun TargetSheet(
     onTargetAction: (RadioDetectionTarget) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val targets = remember(state.targets, statusFilter) {
-        statusFilter?.let { status -> state.targets.filter { it.listStatus == status } } ?: state.targets
+    val targets = remember(state.targets, targetFilter) {
+        state.targets.filteredBy(targetFilter)
     }
     val sheetShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
     Column(
@@ -60,10 +60,12 @@ internal fun TargetSheet(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (!expanded) {
-            val primary = targets.firstOrNull() ?: state.targets.firstOrNull()
+            val primary = targets.firstOrNull()
             if (primary == null) {
                 EmptyCompactTargetRow(
+                    hasUnfilteredTargets = state.targets.isNotEmpty(),
                     onHide = onHide,
+                    onOpenFilter = onOpenFilter,
                     onReplayLatestRid = onReplayLatestRid
                 )
             } else {
@@ -96,14 +98,20 @@ internal fun TargetSheet(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusChip("全部 ${state.discoveredTargetCount}", statusFilter == null, Blue)
-                StatusChip("黑名单 ${state.blacklistCount}", statusFilter == RadioListStatus.Blacklist, Red)
-                StatusChip("白名单 ${state.whitelistCount}", statusFilter == RadioListStatus.Whitelist, Green)
-                StatusChip("未知 ${state.unknownCount}", statusFilter == RadioListStatus.Unknown, Amber)
+                StatusChip("全部 ${state.discoveredTargetCount}", targetFilter.listStatus == null, Blue)
+                StatusChip("黑名单 ${state.blacklistCount}", targetFilter.listStatus == RadioListStatus.Blacklist, Red)
+                StatusChip("白名单 ${state.whitelistCount}", targetFilter.listStatus == RadioListStatus.Whitelist, Green)
+                StatusChip("未知 ${state.unknownCount}", targetFilter.listStatus == RadioListStatus.Unknown, Amber)
             }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (targets.isEmpty()) {
-                    item { EmptyRealtimeTargetCard(onReplayLatestRid) }
+                    item {
+                        EmptyRealtimeTargetCard(
+                            hasUnfilteredTargets = state.targets.isNotEmpty(),
+                            onOpenFilter = onOpenFilter,
+                            onReplayLatestRid = onReplayLatestRid
+                        )
+                    }
                 } else {
                     items(targets, key = { it.id }) { target ->
                         TargetCard(
@@ -121,7 +129,9 @@ internal fun TargetSheet(
 
 @Composable
 private fun EmptyCompactTargetRow(
+    hasUnfilteredTargets: Boolean,
     onHide: () -> Unit,
+    onOpenFilter: () -> Unit,
     onReplayLatestRid: () -> Unit
 ) {
     Row(
@@ -133,16 +143,34 @@ private fun EmptyCompactTargetRow(
     ) {
         StatusChip("目标 0", true, Blue)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("等待真实远程识别数据", color = TextPrimary, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text("收到无人机和飞手位置后会自动刷新", color = TextMuted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (hasUnfilteredTargets) "无符合筛选的目标" else "等待真实远程识别数据",
+                color = TextPrimary,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                if (hasUnfilteredTargets) "调整筛选条件可查看其他实时目标" else "收到无人机和飞手位置后会自动刷新",
+                color = TextMuted,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        OutlineAction("回放", onClick = onReplayLatestRid)
+        OutlineAction(
+            if (hasUnfilteredTargets) "筛选" else "回放",
+            onClick = if (hasUnfilteredTargets) onOpenFilter else onReplayLatestRid
+        )
         CompactHideAction(onHide)
     }
 }
 
 @Composable
-private fun EmptyRealtimeTargetCard(onReplayLatestRid: () -> Unit) {
+private fun EmptyRealtimeTargetCard(
+    hasUnfilteredTargets: Boolean,
+    onOpenFilter: () -> Unit,
+    onReplayLatestRid: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -154,9 +182,20 @@ private fun EmptyRealtimeTargetCard(onReplayLatestRid: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("暂无实时目标", color = TextMuted, style = MaterialTheme.typography.bodyMedium)
-        Text("真实远程识别数据到达后会显示在这里", color = TextMuted, style = MaterialTheme.typography.labelSmall)
-        OutlineAction("回放缓存", onClick = onReplayLatestRid)
+        Text(
+            if (hasUnfilteredTargets) "无符合筛选的目标" else "暂无实时目标",
+            color = TextMuted,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Text(
+            if (hasUnfilteredTargets) "调整筛选条件可查看其他实时目标" else "真实远程识别数据到达后会显示在这里",
+            color = TextMuted,
+            style = MaterialTheme.typography.labelSmall
+        )
+        OutlineAction(
+            if (hasUnfilteredTargets) "调整筛选" else "回放缓存",
+            onClick = if (hasUnfilteredTargets) onOpenFilter else onReplayLatestRid
+        )
     }
 }
 
@@ -232,7 +271,7 @@ private fun TargetCard(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlineAction("定位", Modifier.weight(1f), onLocate)
             OutlineAction("详情", Modifier.weight(1f), onDetail)
-            OutlineAction(if (target.listStatus == RadioListStatus.Blacklist) "处置" else "加入名单", Modifier.weight(1f), onAction)
+            OutlineAction(target.primaryAction().label, Modifier.weight(1f), onAction)
         }
     }
 }

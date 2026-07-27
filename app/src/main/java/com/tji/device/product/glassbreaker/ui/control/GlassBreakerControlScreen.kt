@@ -79,6 +79,8 @@ fun GlassBreakerControlScreen(
     val feedback by viewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(GlassBreakerCommandFeedback()) }
     }
+    val visibleFeedback = feedback.takeIf { it.serialNumber == null || it.serialNumber == device.serialNumber }
+        ?: GlassBreakerCommandFeedback()
 
     val state = devices.firstOrNull { it.serialNumber == device.serialNumber }
     val displayState = if (isPreview) previewGlassBreakerState(device.serialNumber, device.name) else state
@@ -101,7 +103,7 @@ fun GlassBreakerControlScreen(
             GlassBreakerHeaderCard(
                 device = device,
                 state = displayState,
-                feedback = feedback
+                feedback = visibleFeedback
             )
         }
         item {
@@ -130,7 +132,7 @@ fun GlassBreakerControlScreen(
             FireControlCard(
                 state = displayState,
                 enabled = canFire,
-                onConfirmFire = { viewModel?.fireSelectedChannel(device.serialNumber, displayState) }
+                onConfirmFire = { viewModel?.fireSelectedChannel(device.serialNumber) }
             )
         }
     }

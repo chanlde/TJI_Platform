@@ -23,7 +23,11 @@ class MqttEventHandlerTest {
     @Test
     fun dispatchesPlainOnlineOfflineLifecycleMessagesToRegisteredProductHandler() = runBlocking {
         val module = RecordingProductModule(ProductType.Speaker)
-        val handler = MqttEventHandler(ProductModuleRegistry(listOf(module)))
+        val otaRepo = RecordingOtaRuntimeRepository()
+        val handler = MqttEventHandler(
+            productModules = ProductModuleRegistry(listOf(module)),
+            productOtaRuntimeRepository = otaRepo
+        )
 
         handler.handleMessage(
             serialNumber = SERIAL,
@@ -37,6 +41,55 @@ class MqttEventHandlerTest {
         assertEquals("online", event.eventType)
         assertEquals(true, event.isRetained)
         assertEquals("online", event.json.optString("type"))
+        val lifecycle = otaRepo.lifecycleUpdates.single()
+        assertEquals(ProductType.Speaker, lifecycle.productType)
+        assertEquals(SERIAL, lifecycle.serialNumber)
+        assertEquals("online", lifecycle.eventType)
+        assertEquals(true, lifecycle.isRetained)
+    }
+
+    @Test
+    fun cachesJsonLifecycleOnlineForCommonOtaRuntime() = runBlocking {
+        val module = RecordingProductModule(ProductType.SolarClean)
+        val otaRepo = RecordingOtaRuntimeRepository()
+        val handler = MqttEventHandler(
+            productModules = ProductModuleRegistry(listOf(module)),
+            productOtaRuntimeRepository = otaRepo,
+            nowMillis = { 1_800_000_000_000L }
+        )
+
+        handler.handleMessage(
+            serialNumber = SERIAL,
+            productType = ProductType.SolarClean,
+            message = """{"type":"online","ts":12345}"""
+        )
+
+        val lifecycle = otaRepo.lifecycleUpdates.single()
+        assertEquals(ProductType.SolarClean, lifecycle.productType)
+        assertEquals(SERIAL, lifecycle.serialNumber)
+        assertEquals("online", lifecycle.eventType)
+        assertEquals(false, lifecycle.isRetained)
+        assertEquals(1_800_000_000_000L, lifecycle.timestamp)
+        assertEquals("online", module.events.single().eventType)
+    }
+
+    @Test
+    fun cachesTrustedJsonLifecycleTimestampForOtaOrdering() = runBlocking {
+        val module = RecordingProductModule(ProductType.SolarClean)
+        val otaRepo = RecordingOtaRuntimeRepository()
+        val handler = MqttEventHandler(
+            productModules = ProductModuleRegistry(listOf(module)),
+            productOtaRuntimeRepository = otaRepo,
+            nowMillis = { 1_800_000_000_000L }
+        )
+
+        handler.handleMessage(
+            serialNumber = SERIAL,
+            productType = ProductType.SolarClean,
+            message = """{"type":"offline","ts":1700000000123}"""
+        )
+
+        assertEquals(1_700_000_000_123L, otaRepo.lifecycleUpdates.single().timestamp)
     }
 
     @Test
@@ -106,6 +159,55 @@ class MqttEventHandlerTest {
     }
 
     @Test
+    fun cachesCommonOtaStatusBeforeRawProductHandlerConsumesMessage() = runBlocking {
+        val module = RecordingProductModule(
+            productType = ProductType.RadioDetection,
+            consumeRawMessages = true
+        )
+        val otaRepo = RecordingOtaRuntimeRepository()
+        val handler = MqttEventHandler(
+            productModules = ProductModuleRegistry(listOf(module)),
+            productOtaRuntimeRepository = otaRepo
+        )
+
+        handler.handleMessage(
+            serialNumber = SERIAL,
+            productType = ProductType.RadioDetection,
+            message = """{"type":"ota_status","cmdId":"radio-ota","otaStatus":"OTA_DOWNLOADING","progress":60}"""
+        )
+
+        val cached = otaRepo.otaStatusUpdates.single()
+        assertEquals(ProductType.RadioDetection, cached.productType)
+        assertEquals("radio-ota", cached.otaStatus.cmdId)
+        assertEquals(60, cached.otaStatus.progress)
+        assertEquals(1, module.rawMessages.size)
+        assertEquals("ota_status", module.rawJsonMessages.single()?.optString("type"))
+        assertEquals(emptyList<HandledEvent>(), module.events)
+    }
+
+    @Test
+    fun nonJsonRawPayloadReachesProductWithoutRouterJsonParsing() = runBlocking {
+        val module = RecordingProductModule(
+            productType = ProductType.RadioDetection,
+            consumeRawMessages = true
+        )
+        val handler = MqttEventHandler(
+            productModules = ProductModuleRegistry(listOf(module))
+        )
+        val hexRidPayload = "7b2274797065223a22726964227d"
+
+        handler.handleMessage(
+            serialNumber = SERIAL,
+            productType = ProductType.RadioDetection,
+            message = hexRidPayload
+        )
+
+        assertEquals(listOf(hexRidPayload), module.rawMessages)
+        assertEquals(listOf<JSONObject?>(null), module.rawJsonMessages)
+        assertEquals(emptyList<HandledEvent>(), module.events)
+    }
+
+    @Test
     fun ignoresMessagesForUnregisteredProductWithoutCachingCommonOtaPayload() = runBlocking {
         val otaRepo = RecordingOtaRuntimeRepository()
         val handler = MqttEventHandler(
@@ -124,9 +226,12 @@ class MqttEventHandlerTest {
     }
 
     private class RecordingProductModule(
-        override val productType: ProductType
+        override val productType: ProductType,
+        private val consumeRawMessages: Boolean = false
     ) : ProductModule {
         val events = mutableListOf<HandledEvent>()
+        val rawMessages = mutableListOf<String>()
+        val rawJsonMessages = mutableListOf<JSONObject?>()
 
         override val runtimeController: ProductRuntimeController =
             object : ProductRuntimeController {
@@ -134,6 +239,17 @@ class MqttEventHandlerTest {
                 override val devices: Flow<List<ProductDeviceRuntimeSnapshot>> = emptyFlow()
                 override fun clear() = Unit
             }
+
+        override suspend fun handleRawMessage(
+            serialNumber: String,
+            message: String,
+            isRetained: Boolean,
+            parsedJson: JSONObject?
+        ): Boolean {
+            rawMessages += message
+            rawJsonMessages += parsedJson
+            return consumeRawMessages
+        }
 
         override suspend fun handleJsonEvent(
             serialNumber: String,
@@ -152,6 +268,7 @@ class MqttEventHandlerTest {
             MutableStateFlow(emptyList())
         val deviceInfoUpdates = mutableListOf<DeviceInfoUpdate>()
         val otaStatusUpdates = mutableListOf<OtaStatusUpdate>()
+        val lifecycleUpdates = mutableListOf<LifecycleUpdate>()
 
         override fun updateDeviceInfo(
             productType: ProductType,
@@ -168,6 +285,18 @@ class MqttEventHandlerTest {
         ) {
             otaStatusUpdates += OtaStatusUpdate(productType, serialNumber, otaStatus)
         }
+
+        override fun updateLifecycle(
+            productType: ProductType,
+            serialNumber: String,
+            eventType: String,
+            timestamp: Long?,
+            isRetained: Boolean
+        ) {
+            lifecycleUpdates += LifecycleUpdate(productType, serialNumber, eventType, timestamp, isRetained)
+        }
+
+        override fun clearAll() = Unit
     }
 
     private data class HandledEvent(
@@ -187,6 +316,14 @@ class MqttEventHandlerTest {
         val productType: ProductType,
         val serialNumber: String,
         val otaStatus: ProductOtaStatus
+    )
+
+    private data class LifecycleUpdate(
+        val productType: ProductType,
+        val serialNumber: String,
+        val eventType: String,
+        val timestamp: Long?,
+        val isRetained: Boolean
     )
 
     private companion object {

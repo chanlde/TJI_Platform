@@ -115,25 +115,61 @@ class SpeakerCoreNativeTest {
     }
 
     @Test
-    fun commandJsonFallbackBuildsStartTalkCommandWithTopLevelIds() {
+    fun commandJsonFallbackBuildsServoAngleCommand() {
         val json = SpeakerCommandJson.encode(
-            command = SpeakerCommand.StartTalk(
-                msgId = "speaker-talk-start-1",
-                sessionId = "PLAY_PTT_1",
-                talkId = "PLAY_PTT_1"
+            command = SpeakerCommand.SetServoAngle(
+                msgId = "speaker-servo-angle-1",
+                angle = 220,
+                speedDps = 500
             ),
             deviceId = "T12345678",
             timestampMs = 123456789L
         )
 
-        assertEquals(108, json.getInt("cmd"))
-        assertEquals("START_TALK", json.getString("cmdName"))
-        assertEquals("PLAY_PTT_1", json.getString("sessionId"))
-        assertEquals("PLAY_PTT_1", json.getString("talkId"))
-        assertEquals("ima_adpcm", json.getString("codec"))
-        assertEquals(8_000, json.getInt("sampleRate"))
-        assertEquals(1, json.getInt("channels"))
-        assertEquals(40, json.getInt("packetMs"))
+        assertEquals(107, json.getInt("cmd"))
+        assertEquals("SET_SERVO_ANGLE", json.getString("cmdName"))
+        assertEquals(180, json.getJSONObject("params").getInt("angle"))
+        assertEquals(360, json.getJSONObject("params").getInt("speedDps"))
+        assertEquals(180, json.getInt("angle"))
+        assertEquals(360, json.getInt("speedDps"))
+    }
+
+    @Test
+    fun commandJsonFallbackBuildsServoSweepAndStepCommands() {
+        val sweep = SpeakerCommandJson.encode(
+            command = SpeakerCommand.ServoSweepTest(
+                msgId = "speaker-servo-sweep-1",
+                minAngle = 30,
+                maxAngle = 120,
+                speedDps = 60,
+                cycles = 0,
+                durationMs = 300
+            ),
+            deviceId = "T12345678",
+            timestampMs = 123456789L
+        )
+        assertEquals(125, sweep.getInt("cmd"))
+        assertEquals("SERVO_SWEEP_TEST", sweep.getString("cmdName"))
+        assertEquals(30, sweep.getJSONObject("params").getInt("minAngle"))
+        assertEquals(120, sweep.getJSONObject("params").getInt("maxAngle"))
+        assertEquals(0, sweep.getJSONObject("params").getInt("cycles"))
+
+        val step = SpeakerCommandJson.encode(
+            command = SpeakerCommand.ServoStepTest(
+                msgId = "speaker-servo-step-1",
+                minAngle = 0,
+                maxAngle = 180,
+                stepAngle = 10,
+                speedDps = 30,
+                intervalMs = 2_000
+            ),
+            deviceId = "T12345678",
+            timestampMs = 123456789L
+        )
+        assertEquals(126, step.getInt("cmd"))
+        assertEquals("SERVO_STEP_TEST", step.getString("cmdName"))
+        assertEquals(10, step.getJSONObject("params").getInt("stepAngle"))
+        assertEquals(2_000, step.getJSONObject("params").getInt("intervalMs"))
     }
 
     @Test
@@ -263,19 +299,6 @@ class SpeakerCoreNativeTest {
 
         assertEquals(4, pcm.size)
         assertEquals(0, pcm.readLeI16(0))
-    }
-
-    @Test
-    fun audioToolFallbackConvertsFloat32ToPcm16() {
-        val pcm = SpeakerCoreAudioEngine.float32ToPcm16(
-            samples = floatArrayOf(-1f, -0.5f, 0f, 0.5f, 1f),
-            sourceSampleRate = 8_000,
-            targetSampleRate = 8_000
-        )
-
-        assertEquals(10, pcm.size)
-        assertEquals(Short.MIN_VALUE.toInt(), pcm.readLeI16(0))
-        assertEquals(Short.MAX_VALUE.toInt(), pcm.readLeI16(8))
     }
 
     private fun syntheticVoicePcm(

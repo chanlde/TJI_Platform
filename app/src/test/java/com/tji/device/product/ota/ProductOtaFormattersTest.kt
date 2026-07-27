@@ -175,4 +175,24 @@ class ProductOtaFormattersTest {
             ).isStartable()
         )
     }
+
+    @Test
+    fun resolvesFirmwareDownloadUrlsAndRejectsBlankValues() {
+        val baseUrl = "https://ota.example.com/releases/"
+
+        assertNull(resolveProductOtaDownloadUrl(null, baseUrl))
+        assertNull(resolveProductOtaDownloadUrl("  ", baseUrl))
+        assertEquals(
+            "https://cdn.example.com/fw.bin",
+            resolveProductOtaDownloadUrl(" https://cdn.example.com/fw.bin ", baseUrl)
+        )
+        assertEquals(
+            "https://ota.example.com/releases/fw.bin",
+            resolveProductOtaDownloadUrl("/fw.bin", baseUrl)
+        )
+        assertEquals(
+            "https://ota.example.com/releases/fw.bin",
+            resolveProductOtaDownloadUrl("fw.bin", baseUrl)
+        )
+    }
 }

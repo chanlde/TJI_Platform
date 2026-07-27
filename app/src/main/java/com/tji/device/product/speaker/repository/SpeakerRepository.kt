@@ -1,6 +1,8 @@
 package com.tji.device.product.speaker.repository
 
 import android.util.Log
+import com.tji.device.BuildConfig
+import com.tji.device.data.model.ProductType
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
 import com.tji.device.product.speaker.model.SpeakerAck
 import com.tji.device.product.speaker.model.SpeakerCommand
@@ -8,9 +10,11 @@ import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerRecordEvent
 import com.tji.device.product.speaker.model.SpeakerStorageStatus
+import com.tji.device.product.common.isOlderDeviceTimestamp
+import com.tji.device.product.common.mergeDeviceTimestamp
 import com.tji.device.product.speaker.core.SpeakerCommandJson
 import com.tji.device.product.speaker.mqtt.SpeakerMqttTopics
-import com.tji.network.MqttManager
+import com.tji.device.service.mqtt.ProductMqttRouter
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -54,6 +58,9 @@ class SpeakerRepo : SpeakerRepository {
     override suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?) {
         _devices.update { current ->
             current.updateOrCreate(serialNumber, { SpeakerDeviceState(serialNumber, isOnline = isOnline, timestamp = timestamp) }) {
+                if (isOlderDeviceTimestamp(timestamp, it.timestamp)) {
+                    return@updateOrCreate it
+                }
                 it.copy(isOnline = isOnline, timestamp = timestamp ?: it.timestamp)
             }
         }
@@ -62,23 +69,30 @@ class SpeakerRepo : SpeakerRepository {
     override suspend fun updateState(state: SpeakerDeviceState) {
         _devices.update { current ->
             current.updateOrCreate(state.serialNumber, { state }) { old ->
+                if (state.isOlderThan(old)) return@updateOrCreate old
                 state.copy(
                     name = state.name ?: old.name,
-                    isOnline = state.isOnline || old.isOnline,
+                    isOnline = state.isOnline,
                     lastAck = state.lastAck ?: old.lastAck,
                     records = old.records,
                     recordOffset = old.recordOffset,
                     recordLimit = old.recordLimit,
                     recordTotal = old.recordTotal,
                     recordHasMore = old.recordHasMore,
+                    recordListTimestamp = old.recordListTimestamp,
                     storageStatus = old.storageStatus,
                     lastRecordEvent = old.lastRecordEvent,
                     outputQuality = state.outputQuality ?: old.outputQuality,
+                    servo = state.servo ?: old.servo,
+                    audio = state.audio ?: old.audio,
                     timestamp = state.timestamp ?: old.timestamp
                 )
             }
         }
     }
+
+    private fun SpeakerDeviceState.isOlderThan(current: SpeakerDeviceState): Boolean =
+        isOlderDeviceTimestamp(timestamp, current.timestamp)
 
     override suspend fun updateAck(serialNumber: String, ack: SpeakerAck) {
         _devices.update { current ->
@@ -99,6 +113,9 @@ class SpeakerRepo : SpeakerRepository {
     ) {
         _devices.update { current ->
             current.updateOrCreate(serialNumber, { SpeakerDeviceState(serialNumber = serialNumber) }) {
+                if (isOlderDeviceTimestamp(timestamp, it.recordListTimestamp)) {
+                    return@updateOrCreate it
+                }
                 val mergedRecords = mergeRecordPage(
                     existing = it.records,
                     incoming = records,
@@ -112,7 +129,8 @@ class SpeakerRepo : SpeakerRepository {
                     recordLimit = limit,
                     recordTotal = total,
                     recordHasMore = hasMore,
-                    timestamp = timestamp ?: it.timestamp
+                    recordListTimestamp = mergeDeviceTimestamp(it.recordListTimestamp, timestamp),
+                    timestamp = mergeDeviceTimestamp(it.timestamp, timestamp)
                 )
             }
         }
@@ -121,8 +139,14 @@ class SpeakerRepo : SpeakerRepository {
     override suspend fun updateStorageStatus(serialNumber: String, status: SpeakerStorageStatus) {
         _devices.update { current ->
             current.updateOrCreate(serialNumber, { SpeakerDeviceState(serialNumber = serialNumber, storageStatus = status) }) {
+                if (isOlderDeviceTimestamp(status.timestamp, it.storageStatus?.timestamp)) {
+                    return@updateOrCreate it
+                }
                 val mergedStatus = mergeStorageStatus(previous = it.storageStatus, incoming = status)
-                it.copy(storageStatus = mergedStatus, timestamp = status.timestamp ?: it.timestamp)
+                it.copy(
+                    storageStatus = mergedStatus,
+                    timestamp = mergeDeviceTimestamp(it.timestamp, status.timestamp)
+                )
             }
         }
     }
@@ -130,6 +154,9 @@ class SpeakerRepo : SpeakerRepository {
     override suspend fun updateRecordEvent(serialNumber: String, event: SpeakerRecordEvent) {
         _devices.update { current ->
             current.updateOrCreate(serialNumber, { SpeakerDeviceState(serialNumber = serialNumber, lastRecordEvent = event) }) {
+                if (isOlderDeviceTimestamp(event.timestamp, it.recordListTimestamp)) {
+                    return@updateOrCreate it
+                }
                 val isDeleteGone = event.isDeleteAlreadyGone()
                 val records = if (!event.recordId.isNullOrBlank()) {
                     when (event.type) {
@@ -158,7 +185,8 @@ class SpeakerRepo : SpeakerRepository {
                     records = records,
                     recordTotal = recordTotal,
                     lastRecordEvent = event,
-                    timestamp = event.timestamp ?: it.timestamp
+                    recordListTimestamp = mergeDeviceTimestamp(it.recordListTimestamp, event.timestamp),
+                    timestamp = mergeDeviceTimestamp(it.timestamp, event.timestamp)
                 )
             }
         }
@@ -206,7 +234,9 @@ class SpeakerRepo : SpeakerRepository {
         if (incoming.code == SPEAKER_STORAGE_BUSY_CODE ||
             incoming.message.equals("record store active", ignoreCase = true)
         ) {
-            return previous.copy(timestamp = incoming.timestamp ?: previous.timestamp)
+            return previous.copy(
+                timestamp = mergeDeviceTimestamp(previous.timestamp, incoming.timestamp)
+            )
         }
         val incomingHasCapacity = incoming.totalBytes > 0L || incoming.freeBytes > 0L
         if (incomingHasCapacity) return incoming
@@ -294,24 +324,21 @@ class SpeakerControlRepo : SpeakerControlRepository {
     override suspend fun sendCommand(serialNumber: String, command: SpeakerCommand) {
         val topic = SpeakerMqttTopics.controlTopic(serialNumber)
         val message = SpeakerCommandJson.encode(command = command, deviceId = serialNumber).toString()
-        val messageBytes = message.toByteArray(Charsets.UTF_8).size
-        val requestAt = System.currentTimeMillis()
-        MqttManager.getInstance().publish(
+        val requestAt = if (BuildConfig.DEBUG) System.currentTimeMillis() else 0L
+        ProductMqttRouter.managerFor(ProductType.Speaker).publishAwait(
             topic = topic,
             message = message,
             qos = 1,
-            queueWhenDisconnected = false,
-            onSuccess = {
-                Log.d(
-                    TAG,
-                    "Speaker command sent: topic=$topic cmd=${command.commandName} " +
-                        "msgId=${command.msgId} bytes=$messageBytes"
-                )
-            },
-            onError = { throwable ->
-                Log.e(TAG, "Speaker command failed: cost=${System.currentTimeMillis() - requestAt}ms", throwable)
-            }
-        )
+            queueWhenDisconnected = false
+        ).getOrThrow()
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                TAG,
+                "Speaker command sent: topic=$topic cmd=${command.commandName} " +
+                    "msgId=${command.msgId} bytes=${message.toByteArray().size} " +
+                    "cost=${System.currentTimeMillis() - requestAt}ms"
+            )
+        }
     }
 
     private companion object {

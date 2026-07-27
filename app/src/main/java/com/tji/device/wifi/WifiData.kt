@@ -50,6 +50,15 @@ class WifiData(private val context: Context) {
     }
 
     /**
+     * 只读取当前 SSID，供不需要 IP、MAC 等完整网络信息的调用方使用。
+     */
+    @RequiresPermission(allOf = [Manifest.permission.ACCESS_WIFI_STATE, Manifest.permission.ACCESS_FINE_LOCATION])
+    fun getCurrentSsid(): String? {
+        if (!wifiManager.isWifiEnabled) return null
+        return cleanSSID(currentAndroidWifiInfo()?.ssid)
+    }
+
+    /**
      * 检查 WiFi 是否已连接
      */
     private fun isWifiConnected(): Boolean {

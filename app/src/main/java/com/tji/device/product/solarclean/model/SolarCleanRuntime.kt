@@ -148,12 +148,24 @@ sealed interface SolarCleanCommand {
     data class PumpPressure(
         override val msgId: String,
         val percent: Double
-    ) : SolarCleanCommand
+    ) : SolarCleanCommand {
+        init {
+            require(SolarCleanControlLimits.isValidPressure(percent)) {
+                "Solar pump pressure out of range: $percent"
+            }
+        }
+    }
 
     data class SprayAngle(
         override val msgId: String,
         val amplitudeDeg: Double
-    ) : SolarCleanCommand
+    ) : SolarCleanCommand {
+        init {
+            require(SolarCleanControlLimits.isValidSprayAngle(amplitudeDeg)) {
+                "Solar spray angle out of range: $amplitudeDeg"
+            }
+        }
+    }
 
     data class ServoSwing(
         override val msgId: String,
@@ -165,7 +177,13 @@ sealed interface SolarCleanCommand {
     data class SwingSpeed(
         override val msgId: String,
         val speedPercent: Double
-    ) : SolarCleanCommand
+    ) : SolarCleanCommand {
+        init {
+            require(SolarCleanControlLimits.isValidSwingSpeed(speedPercent)) {
+                "Solar swing speed out of range: $speedPercent"
+            }
+        }
+    }
 
     data class GetDeviceInfo(override val msgId: String) : SolarCleanCommand
 
@@ -193,4 +211,32 @@ sealed interface SolarCleanCommand {
         override val msgId: String,
         val slot: Int
     ) : SolarCleanCommand
+}
+
+object SolarCleanControlLimits {
+    const val MIN_PERCENT = 0.0
+    const val MAX_PERCENT = 100.0
+    const val MIN_SPRAY_ANGLE_DEGREES = 0.0
+    const val MAX_SPRAY_ANGLE_DEGREES = 40.0
+
+    fun normalizePressure(value: Double): Double? =
+        value.normalizeFinite(MIN_PERCENT, MAX_PERCENT)
+
+    fun normalizeSprayAngle(value: Double): Double? =
+        value.normalizeFinite(MIN_SPRAY_ANGLE_DEGREES, MAX_SPRAY_ANGLE_DEGREES)
+
+    fun normalizeSwingSpeed(value: Double): Double? =
+        value.normalizeFinite(MIN_PERCENT, MAX_PERCENT)
+
+    fun isValidPressure(value: Double): Boolean =
+        value.isFinite() && value in MIN_PERCENT..MAX_PERCENT
+
+    fun isValidSprayAngle(value: Double): Boolean =
+        value.isFinite() && value in MIN_SPRAY_ANGLE_DEGREES..MAX_SPRAY_ANGLE_DEGREES
+
+    fun isValidSwingSpeed(value: Double): Boolean =
+        value.isFinite() && value in MIN_PERCENT..MAX_PERCENT
+
+    private fun Double.normalizeFinite(min: Double, max: Double): Double? =
+        takeIf { it.isFinite() }?.coerceIn(min, max)
 }

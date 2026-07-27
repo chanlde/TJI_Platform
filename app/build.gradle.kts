@@ -27,6 +27,19 @@ android {
     namespace = "com.tji.device"
     compileSdk = 35
 
+    flavorDimensions += "map"
+
+    productFlavors {
+        create("noMap") {
+            dimension = "map"
+            buildConfigField("boolean", "ENABLE_AMAP", "false")
+        }
+        create("map") {
+            dimension = "map"
+            buildConfigField("boolean", "ENABLE_AMAP", "true")
+        }
+    }
+
     defaultConfig {
         applicationId = "com.tji.device"
         minSdk = 24
@@ -38,8 +51,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
         ndk {
-            // 本地 Kokoro TTS 只面向真实 Android 手机测试；现代小米/华为等设备基本都是 arm64。
-            // 这样不会把 x86/armeabi-v7a 的 sherpa/onnxruntime so 一起打进 APK。
+            // 当前设备端 native 音频核心只发布 arm64，避免打入未交付的 ABI。
             abiFilters += listOf("arm64-v8a")
         }
         externalNativeBuild {
@@ -56,6 +68,11 @@ android {
             "int",
             "TJI_SPEAKER_RELAY_PORT",
             configString("TJI_SPEAKER_RELAY_PORT", "7000")
+        )
+        buildConfigField(
+            "String",
+            "TJI_SPEAKER_RELAY_TOKEN",
+            "\"${configString("TJI_SPEAKER_RELAY_TOKEN", "hydrolink")}\""
         )
         buildConfigField(
             "String",
@@ -118,10 +135,8 @@ android {
         }
     }
 
-    // 添加 packaging 配置
     packaging {
         jniLibs {
-            // App 通过 libsherpa-onnx-jni.so 调用 sherpa-onnx，不直接使用 C/C++ API。
             excludes += setOf(
                 "**/libonnxruntime.so",
                 "**/libsherpa-onnx-jni.so",
@@ -153,7 +168,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.security.crypto)
-    implementation(libs.amap3dmap)
+    // 仅地图产品包下载和打包高德 SDK；noMap 包使用无线电侦测的示意地图。
+    add("mapImplementation", libs.amap3dmap)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class SolarCleanRuntimeController(
-    private val repository: SolarCleanRepository
+    private val repository: SolarCleanRepository,
+    private val cancelBackgroundWork: () -> Unit = {}
 ) : ProductRuntimeController {
     override val productType: ProductType = ProductType.SolarClean
 
@@ -27,6 +28,7 @@ class SolarCleanRuntimeController(
         }
 
     override fun clear() {
+        cancelBackgroundWork()
         repository.clearDevices()
     }
 }

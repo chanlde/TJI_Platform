@@ -1,7 +1,7 @@
 package com.tji.device.ui.floating
 
 import com.tji.device.data.model.ProductType
-import com.tji.device.product.firebucket.model.Switch
+import com.tji.device.product.firebucket.model.FireBucketSwitchState
 
 enum class FloatingWindowMode {
     ICON,
@@ -33,7 +33,7 @@ data class FloatingLinkSummary(
             name: String,
             isOnline: Boolean,
             productType: ProductType,
-            switches: List<Switch>
+            switches: List<FireBucketSwitchState>
         ): FloatingLinkSummary {
             val online = mutableListOf<FloatingSwitchSummary>()
             val offline = mutableListOf<FloatingSwitchSummary>()
@@ -65,23 +65,18 @@ data class FloatingLinkSummary(
 }
 
 data class FloatingWindowUiState(
-    var mode: FloatingWindowMode = FloatingWindowMode.ICON,
     val links: List<FloatingLinkSummary> = emptyList(),
     val selectedLinkSerial: String? = null,
     val selectedLinkName: String? = null,
-    val preferredProductType: ProductType = ProductType.FireBucket,
-    val isLoading: Boolean = true,
-    val errorMessage: String? = null,
-    val showOfflineSwitches: Boolean = false
+    val preferredProductType: ProductType = ProductType.FireBucket
 ) {
-    val hasLinks: Boolean
-        get() = links.isNotEmpty()
-
     val selectedLink: FloatingLinkSummary?
         get() {
             val serial = selectedLinkSerial
             return if (serial != null) {
-                links.firstOrNull { it.serialNumber == serial }
+                links.firstOrNull {
+                    it.productType == preferredProductType && it.serialNumber == serial
+                }
                     ?: FloatingLinkSummary(
                         serialNumber = serial,
                         name = selectedLinkName?.takeIf { it.isNotBlank() } ?: serial,

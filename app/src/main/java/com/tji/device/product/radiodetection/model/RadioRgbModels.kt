@@ -70,6 +70,7 @@ data class RadioRgbAck(
 }
 
 data class RadioRgbCommandFeedback(
+    val serialNumber: String,
     val msgId: String,
     val text: String,
     val pending: Boolean,

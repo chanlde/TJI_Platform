@@ -9,6 +9,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class ProductModuleRegistryTest {
@@ -42,6 +43,18 @@ class ProductModuleRegistryTest {
             NoOpProductFloatingQuickControl,
             registry.floatingQuickControlFor(ProductType.FireBucket)
         )
+    }
+
+    @Test
+    fun rejectsDuplicateProductModulesInsteadOfSilentlyReplacingOne() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductModuleRegistry(
+                listOf(
+                    FakeProductModule(ProductType.FireBucket),
+                    FakeProductModule(ProductType.FireBucket)
+                )
+            )
+        }
     }
 
     private class FakeProductModule(

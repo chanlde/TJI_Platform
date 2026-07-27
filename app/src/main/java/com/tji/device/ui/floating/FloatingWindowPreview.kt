@@ -14,8 +14,7 @@ private fun FloatingWindowCollapsedPreview() {
         onMinimize = {},
         onClose = {},
         onSwitchQuickToggle = { _, _, _ -> },
-        onMove = { _, _ -> },
-        onResize = { _, _ -> }
+        onMove = { _, _ -> }
     )
 }
 
@@ -29,8 +28,7 @@ private fun FloatingWindowExpandedPreview() {
         onMinimize = {},
         onClose = {},
         onSwitchQuickToggle = { _, _, _ -> },
-        onMove = { _, _ -> },
-        onResize = { _, _ -> }
+        onMove = { _, _ -> }
     )
 }
 
@@ -44,8 +42,7 @@ private fun FloatingWindowMultiSwitchPreview() {
         onMinimize = {},
         onClose = {},
         onSwitchQuickToggle = { _, _, _ -> },
-        onMove = { _, _ -> },
-        onResize = { _, _ -> }
+        onMove = { _, _ -> }
     )
 }
 
@@ -59,8 +56,7 @@ private fun FloatingWindowEmptyStatePreview() {
         onMinimize = {},
         onClose = {},
         onSwitchQuickToggle = { _, _, _ -> },
-        onMove = { _, _ -> },
-        onResize = { _, _ -> }
+        onMove = { _, _ -> }
     )
 }
 
@@ -85,13 +81,9 @@ private fun previewUiState(includeDevice: Boolean): FloatingWindowUiState {
     )
 
     return FloatingWindowUiState(
-        mode = if (includeDevice) FloatingWindowMode.EXPANDED else FloatingWindowMode.ICON,
         links = listOf(link),
         selectedLinkSerial = link.serialNumber,
-        preferredProductType = ProductType.FireBucket,
-        isLoading = false,
-        errorMessage = if (includeDevice) null else "暂无设备",
-        showOfflineSwitches = false
+        preferredProductType = ProductType.FireBucket
     )
 }
 
@@ -106,13 +98,9 @@ private fun previewUiStateEmpty(): FloatingWindowUiState {
     )
 
     return FloatingWindowUiState(
-        mode = FloatingWindowMode.EXPANDED,
         links = listOf(link),
         selectedLinkSerial = link.serialNumber,
-        preferredProductType = ProductType.SolarClean,
-        isLoading = false,
-        errorMessage = null,
-        showOfflineSwitches = false
+        preferredProductType = ProductType.SolarClean
     )
 }
 
@@ -135,12 +123,8 @@ private fun previewUiStateMultiSwitch(): FloatingWindowUiState {
     )
 
     return FloatingWindowUiState(
-        mode = FloatingWindowMode.EXPANDED,
         links = listOf(link),
         selectedLinkSerial = link.serialNumber,
-        preferredProductType = ProductType.FireBucket,
-        isLoading = false,
-        errorMessage = null,
-        showOfflineSwitches = false
+        preferredProductType = ProductType.FireBucket
     )
 }

@@ -596,19 +596,6 @@ void test_decode_wav_pcm16_mono() {
     require_eq(u16le(pcm.buffer.data), static_cast<uint16_t>(0), "decoded wav first averaged sample");
 }
 
-void test_float32_to_pcm16() {
-    const float samples[] = {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f};
-    OwnedBuffer pcm;
-    require_eq(
-        tji_sc_float32_to_pcm16(samples, 5, 8000, 8000, &pcm.buffer),
-        TJI_SC_OK,
-        "float32 to pcm16"
-    );
-    require_eq(pcm.buffer.size, 10, "float32 pcm size");
-    require_eq(u16le(pcm.buffer.data), static_cast<uint16_t>(0x8000), "float32 negative clamp");
-    require_eq(u16le(pcm.buffer.data + 8), static_cast<uint16_t>(0x7FFF), "float32 positive clamp");
-}
-
 void test_mqtt_state_parser() {
     OwnedBuffer json;
     require_eq(
@@ -700,7 +687,6 @@ int main() {
         test_generate_tone_pcm16();
         test_prepend_silence_and_pad_frame();
         test_decode_wav_pcm16_mono();
-        test_float32_to_pcm16();
         test_mqtt_state_parser();
         test_mqtt_state_parser_decodes_unicode_escapes();
         test_mqtt_record_list_parser();

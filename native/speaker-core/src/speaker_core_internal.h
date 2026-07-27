@@ -216,12 +216,6 @@ std::vector<uint8_t> decode_wav_pcm16_mono(
     int target_sample_rate
 );
 /** 将归一化浮点 PCM 转成 PCM16，可选重采样。 */
-std::vector<uint8_t> float32_to_pcm16(
-    const float *samples,
-    size_t sample_count,
-    int source_sample_rate,
-    int target_sample_rate
-);
 /** 归一化单片机 MQTT 状态负载 JSON。 */
 std::vector<uint8_t> parse_mqtt_state_json(
     const std::string &serial_number,

@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.TjiControlDisabled
@@ -68,7 +69,7 @@ fun TjiMiniSwitch(
     ) {
         Box(
             modifier = Modifier
-                .offset(x = thumbOffset)
+                .offset { IntOffset(thumbOffset.roundToPx(), 0) }
                 .size(14.dp)
                 .shadow(1.5.dp, CircleShape)
                 .clip(CircleShape)

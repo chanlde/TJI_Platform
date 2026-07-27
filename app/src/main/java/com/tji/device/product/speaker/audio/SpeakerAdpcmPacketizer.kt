@@ -11,6 +11,9 @@ class SpeakerAdpcmPacketizer(
     private val useNative: Boolean = true
 ) : Closeable {
     private val nativePacketizer = if (useNative) SpeakerCoreNative.createAdpcmPacketizerOrNull() else null
+    private val v2DeviceBytes = streamContext?.deviceId?.boundedUtf8Bytes()
+    private val v2TaskBytes = streamContext?.taskId?.boundedUtf8Bytes()
+    private val v2TalkBytes = streamContext?.talkId?.boundedUtf8Bytes()
     private var sequence: Int = 0
     private var legacyTimestampSamples: Int = 0
     private var timestampMs: Int = 0
@@ -94,9 +97,9 @@ class SpeakerAdpcmPacketizer(
         encoded: EncodedAdpcm,
         isLastPacket: Boolean
     ): ByteArray {
-        val deviceBytes = context.deviceId.toByteArray(Charsets.UTF_8).take(MAX_ID_BYTES).toByteArray()
-        val taskBytes = context.taskId.toByteArray(Charsets.UTF_8).take(MAX_ID_BYTES).toByteArray()
-        val talkBytes = context.talkId.toByteArray(Charsets.UTF_8).take(MAX_ID_BYTES).toByteArray()
+        val deviceBytes = checkNotNull(v2DeviceBytes)
+        val taskBytes = checkNotNull(v2TaskBytes)
+        val talkBytes = checkNotNull(v2TalkBytes)
         val headerLen = V2_FIXED_HEADER_BYTES + deviceBytes.size + taskBytes.size + talkBytes.size
         val flags = buildFlags(context.type, isLastPacket)
         return ByteBuffer.allocate(headerLen)
@@ -126,10 +129,8 @@ class SpeakerAdpcmPacketizer(
     private fun buildFlags(type: SpeakerUdpStreamType, isLastPacket: Boolean): Int {
         var flags = if (isLastPacket) FLAG_LAST_PACKET else 0
         flags = flags or when (type) {
-            SpeakerUdpStreamType.LiveTalk -> FLAG_PLAYBACK
             SpeakerUdpStreamType.Playback -> FLAG_PLAYBACK
             SpeakerUdpStreamType.RecordStore -> FLAG_STORE_TO_SD
-            SpeakerUdpStreamType.PlaybackFeedback -> FLAG_PLAYBACK or FLAG_FEEDBACK
         }
         return flags
     }
@@ -138,11 +139,12 @@ class SpeakerAdpcmPacketizer(
         val sampleCount = length / 2
         var predictor = readLeI16(pcm, 0)
         var index = initialStepIndex.coerceIn(0, 88)
-        val out = ArrayList<Byte>(4 + sampleCount / 2)
-        out.add((predictor and 0xFF).toByte())
-        out.add(((predictor shr 8) and 0xFF).toByte())
-        out.add(index.toByte())
-        out.add(0)
+        val out = ByteArray(4 + sampleCount / 2)
+        out[0] = (predictor and 0xFF).toByte()
+        out[1] = ((predictor shr 8) and 0xFF).toByte()
+        out[2] = index.toByte()
+        out[3] = 0
+        var outputIndex = 4
         var pending: Int? = null
 
         for (sampleIndex in 1 until sampleCount) {
@@ -178,12 +180,17 @@ class SpeakerAdpcmPacketizer(
             if (pending == null) {
                 pending = nibble and 0x0F
             } else {
-                out.add((pending or ((nibble and 0x0F) shl 4)).toByte())
+                out[outputIndex++] = (pending or ((nibble and 0x0F) shl 4)).toByte()
                 pending = null
             }
         }
-        if (pending != null) out.add(pending.toByte())
-        return EncodedAdpcm(out.toByteArray(), sampleCount, index)
+        if (pending != null) out[outputIndex] = pending.toByte()
+        return EncodedAdpcm(out, sampleCount, index)
+    }
+
+    private fun String.boundedUtf8Bytes(): ByteArray {
+        val bytes = toByteArray(Charsets.UTF_8)
+        return if (bytes.size <= MAX_ID_BYTES) bytes else bytes.copyOf(MAX_ID_BYTES)
     }
 
     private fun readLeI16(bytes: ByteArray, offset: Int): Int {
@@ -211,7 +218,6 @@ class SpeakerAdpcmPacketizer(
         private const val FLAG_LAST_PACKET = 0x01
         private const val FLAG_STORE_TO_SD = 0x02
         private const val FLAG_PLAYBACK = 0x04
-        private const val FLAG_FEEDBACK = 0x08
         private const val MAX_ID_BYTES = 255
 
         private val IMA_INDEX_TABLE = intArrayOf(
@@ -241,8 +247,6 @@ data class SpeakerUdpStreamContext(
 )
 
 enum class SpeakerUdpStreamType(val code: Int) {
-    LiveTalk(0),
     Playback(0),
-    RecordStore(1),
-    PlaybackFeedback(2)
+    RecordStore(1)
 }

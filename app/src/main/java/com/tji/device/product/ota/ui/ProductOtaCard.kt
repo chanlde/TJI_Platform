@@ -34,7 +34,6 @@ import com.tji.device.product.ota.ProductOtaStatus
 import com.tji.device.product.ota.displayProgressPercent
 import com.tji.device.product.ota.isDeviceAtLatest
 import com.tji.device.product.ota.isOtaBusy
-import com.tji.device.product.ota.isStartable
 import com.tji.device.product.ota.normalizedOtaStatus
 import com.tji.device.product.ota.otaProgressTitle
 import com.tji.device.product.ota.otaStatusColor
@@ -65,7 +64,7 @@ fun ProductOtaCard(
     otaStatus: ProductOtaStatus?,
     otaCheckState: ProductOtaCheckState,
     commandFeedback: ProductOtaCommandFeedback,
-    enabled: Boolean,
+    deviceOnline: Boolean,
     onRefreshDeviceInfo: () -> Unit,
     onCheckUpdate: () -> Unit,
     onStartOta: () -> Unit
@@ -84,7 +83,6 @@ fun ProductOtaCard(
     }
     val hasUpdate = otaCheckState.hasUpdate && !deviceReachedLatest
     val isOtaBusy = effectiveOtaStatus?.isOtaBusy() == true
-    val latestStartable = latest?.isStartable() == true
     val displayOtaStatus = effectiveOtaStatus?.takeUnless {
         it.status.normalizedOtaStatus() == "SUCCESS" && !showSuccessNotice
     }
@@ -117,19 +115,19 @@ fun ProductOtaCard(
         ) {
             TjiActionButton(
                 text = "刷新信息",
-                enabled = enabled,
+                enabled = deviceOnline,
                 color = PayloadColors.Primary,
                 onClick = onRefreshDeviceInfo
             )
             TjiActionButton(
                 text = if (otaCheckState.isChecking) "检测中" else "检测更新",
-                enabled = enabled && !otaCheckState.isChecking,
+                enabled = !otaCheckState.isChecking,
                 color = PayloadColors.Primary,
                 onClick = onCheckUpdate
             )
             TjiActionButton(
                 text = "立即升级",
-                enabled = enabled && !isOtaBusy && hasUpdate && latestStartable,
+                enabled = deviceOnline && !isOtaBusy && hasUpdate && latest != null,
                 color = TjiWarning,
                 onClick = onStartOta
             )

@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,6 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
+import com.tji.device.data.session.deviceKey
 import com.tji.device.di.AppContainer
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.firebucket.ui.control.FireBucketControlScreen
@@ -58,60 +60,61 @@ import com.tji.device.ui.theme.PayloadDimens
 fun ProductControlRoute(
     device: BoundAccountDevice,
     fireBucketLink: FireBucketLinkDevice?,
+    modifier: Modifier = Modifier,
     runtimeDevice: ProductDeviceRuntimeSnapshot? = null,
     showSettings: Boolean = false,
     onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> },
-    onBack: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    onBack: (() -> Unit)? = null
 ) {
-    if (showSettings) {
-        CommonDeviceSettingsScreen(
-            device = device,
-            runtimeDevice = runtimeDevice,
-            onRenameDevice = { newName -> onRenameDevice(device, newName) },
-            modifier = modifier
-        )
-        return
-    }
+    key(device.deviceKey) {
+        if (showSettings) {
+            CommonDeviceSettingsScreen(
+                device = device,
+                runtimeDevice = runtimeDevice,
+                onRenameDevice = { newName -> onRenameDevice(device, newName) },
+                modifier = modifier
+            )
+        } else {
+            when (device.productType) {
+                ProductType.FireBucket -> FireBucketControlScreen(
+                    link = fireBucketLink ?: fireBucketLinkPlaceholderFromBoundAccount(device),
+                    modifier = modifier
+                )
 
-    when (device.productType) {
-        ProductType.FireBucket -> FireBucketControlScreen(
-            link = fireBucketLink ?: fireBucketLinkPlaceholderFromBoundAccount(device),
-            modifier = modifier
-        )
+                ProductType.SolarClean -> SolarCleanControlScreen(
+                    device = device,
+                    onRenameDevice = onRenameDevice,
+                    modifier = modifier
+                )
 
-        ProductType.SolarClean -> SolarCleanControlScreen(
-            device = device,
-            onRenameDevice = onRenameDevice,
-            modifier = modifier
-        )
+                ProductType.DropperSixStage -> DropperSixStageControlScreen(
+                    device = device,
+                    modifier = modifier
+                )
 
-        ProductType.DropperSixStage -> DropperSixStageControlScreen(
-            device = device,
-            modifier = modifier
-        )
+                ProductType.RadioDetection -> RadioDetectionControlScreen(
+                    device = device,
+                    onBack = onBack,
+                    modifier = modifier
+                )
 
-        ProductType.RadioDetection -> RadioDetectionControlScreen(
-            device = device,
-            onBack = onBack,
-            modifier = modifier
-        )
+                ProductType.Speaker -> SpeakerControlScreen(
+                    device = device,
+                    onBack = onBack,
+                    modifier = modifier
+                )
 
-        ProductType.Speaker -> SpeakerControlScreen(
-            device = device,
-            onBack = onBack,
-            modifier = modifier
-        )
+                ProductType.BreakWindowProjectile -> GlassBreakerControlScreen(
+                    device = device,
+                    modifier = modifier
+                )
 
-        ProductType.BreakWindowProjectile -> GlassBreakerControlScreen(
-            device = device,
-            modifier = modifier
-        )
-
-        ProductType.Searchlight -> UnsupportedProductControlScreen(
-            device = device,
-            modifier = modifier
-        )
+                ProductType.Searchlight -> UnsupportedProductControlScreen(
+                    device = device,
+                    modifier = modifier
+                )
+            }
+        }
     }
 }
 
@@ -157,8 +160,19 @@ private fun CommonDeviceSettingsScreen(
     val otaStatus = commonOtaRuntime?.otaStatus ?: runtimeDevice?.payload.toProductOtaStatus()
 
     LaunchedEffect(device.serialNumber, device.productType) {
-        otaViewModel.resetForDevice()
-        otaViewModel.requestDeviceInfo(device.serialNumber, device.productType)
+        otaViewModel.resetForDevice(device.serialNumber, device.productType)
+    }
+    LaunchedEffect(device.serialNumber, device.productType, runtimeDevice?.isOnline) {
+        if (runtimeDevice?.isOnline == true) {
+            otaViewModel.requestDeviceInfo(device.serialNumber, device.productType)
+        }
+    }
+    LaunchedEffect(device.serialNumber, device.productType, otaStatus) {
+        otaViewModel.onOtaStatusChanged(
+            serialNumber = device.serialNumber,
+            productType = device.productType,
+            status = otaStatus
+        )
     }
 
     LazyColumn(
@@ -197,12 +211,12 @@ private fun CommonDeviceSettingsScreen(
                 otaStatus = otaStatus,
                 otaCheckState = otaCheckState,
                 commandFeedback = commandFeedback,
-                enabled = true,
+                deviceOnline = runtimeDevice?.isOnline == true,
                 onRefreshDeviceInfo = {
                     otaViewModel.requestDeviceInfo(device.serialNumber, device.productType)
                 },
                 onCheckUpdate = {
-                    otaViewModel.checkOta(device.productType, deviceInfo)
+                    otaViewModel.checkOta(device.serialNumber, device.productType, deviceInfo)
                 },
                 onStartOta = {
                     otaViewModel.startOta(device.serialNumber, device.productType, deviceInfo)

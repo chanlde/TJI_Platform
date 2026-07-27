@@ -1,6 +1,5 @@
 package com.tji.device.product.firebucket.ui.control
 
-import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.HorizontalDivider
@@ -12,9 +11,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.tji.device.product.firebucket.model.Switch
+import com.tji.device.product.firebucket.model.FireBucketSwitchState
 import com.tji.device.product.firebucket.model.ControlMode
-import com.tji.device.product.firebucket.model.SwitchControlParms
+import com.tji.device.product.firebucket.model.FireBucketSwitchControlParams
 import com.tji.device.ui.components.BatteryIndicator
 import com.tji.device.ui.components.DeviceInfoButton
 import com.tji.device.ui.components.StatusChip
@@ -27,19 +26,27 @@ import com.tji.device.ui.theme.TjiWarning
 
 @Composable
 fun SwitchItem(
-    linkSn: String,
-    switch: Switch,
-    scParms: SwitchControlParms,
-    onControl: (SwitchControlParms) -> Unit,
-    onAngleChange: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    switch: FireBucketSwitchState,
+    controlParams: FireBucketSwitchControlParams,
+    onControl: (FireBucketSwitchControlParams) -> Unit,
+    modifier: Modifier = Modifier,
+    errorMessage: String? = null
 ) {
-    var angle by remember { mutableFloatStateOf(switch.currentAngle?.toFloat() ?: scParms.angle?.toFloat() ?: 30f) }
+    var angle by remember(switch.serialNumber) {
+        mutableFloatStateOf(switch.currentAngle.toFloat())
+    }
+    var isUserEditingAngle by remember(switch.serialNumber) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(switch.serialNumber, switch.currentAngle) {
+        if (!isUserEditingAngle) {
+            angle = switch.currentAngle.toFloat()
+        }
+    }
     fun updateAngleAndControl(newAngle: Float) {
+        isUserEditingAngle = false
         angle = newAngle
-        scParms.angle = newAngle.toInt()
-        scParms.speed = 100
-        onControl(scParms)
+        onControl(controlParams.copy(angle = newAngle.toInt(), speed = 100))
     }
 
     TjiCardShell(
@@ -87,11 +94,14 @@ fun SwitchItem(
             Spacer(modifier = Modifier.height(5.dp))
             AngleSlider(
                 value = angle,
+                enabled = switch.isOnline,
                 onValueChange = { newAngle ->
+                    isUserEditingAngle = true
                     angle = newAngle
-                    scParms.angle = newAngle.toInt()
-                    onAngleChange(newAngle.toInt())
-                    Log.d("SwitchItem", "滑块角度更新: $linkSn,$newAngle, scParms.angle: ${scParms.angle}")
+                },
+                onValueChangeFinished = {
+                    isUserEditingAngle = false
+                    onControl(controlParams.copy(angle = angle.toInt(), speed = 100))
                 },
                 modifier = Modifier.fillMaxWidth(),
                 minValue = 0f,
@@ -101,14 +111,14 @@ fun SwitchItem(
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 0.dp)
                 .padding(bottom = 12.dp)
         ) {
             TjiActionButton(
                 text = "打开",
-                enabled = true,
+                enabled = switch.isOnline,
                 color = PayloadColors.Primary,
                 onClick = { updateAngleAndControl(90f) },
                 modifier = Modifier
@@ -117,11 +127,20 @@ fun SwitchItem(
 
             TjiActionButton(
                 text = "关闭",
-                enabled = true,
+                enabled = switch.isOnline,
                 color = TjiWarning,
                 onClick = { updateAngleAndControl(0f) },
                 modifier = Modifier
                     .weight(1f)
+            )
+        }
+
+        if (!errorMessage.isNullOrBlank()) {
+            Text(
+                text = errorMessage,
+                style = MaterialTheme.typography.bodySmall,
+                color = TjiWarning,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
             )
         }
     }
@@ -131,7 +150,9 @@ fun SwitchItem(
 fun AngleSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     minValue: Float = 0f,
     maxValue: Float = 90f
 ) {
@@ -167,7 +188,9 @@ fun AngleSlider(
             TjiControlSlider(
                 value = value,
                 onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
                 valueRange = minValue..maxValue,
+                enabled = enabled,
                 modifier = Modifier
                     .weight(1f)  // 关键：让滑块占据剩余空间
                     .padding(horizontal = 20.dp)
@@ -189,21 +212,16 @@ fun SwitchItemPreview() {
     MaterialTheme {
         val switch = previewFireBucketSwitch()
         SwitchItem(
-            linkSn = "dddddddddddddddd",
             switch = switch,
-            scParms = SwitchControlParms(
+            controlParams = FireBucketSwitchControlParams(
                 sn = switch.serialNumber,
                 angle = switch.currentAngle.toInt(),
                 speed = 10,
                 mode = ControlMode.ABSOLUTE
             ),
-            onControl = { parms ->
+            onControl = { params ->
                 // 模拟控制操作
-                println("Control: ${parms.angle}, ${parms.mode}")
-            },
-            onAngleChange = { angle ->
-                // 模拟角度变化
-                println("Angle changed to: $angle")
+                println("Control: ${params.angle}, ${params.mode}")
             }
         )
     }

@@ -35,7 +35,11 @@ object RadioCoordinateTransform {
     }
 
     fun isUsable(latitude: Double, longitude: Double): Boolean =
-        abs(latitude) > 0.000001 || abs(longitude) > 0.000001
+        latitude.isFinite() &&
+            longitude.isFinite() &&
+            latitude in -90.0..90.0 &&
+            longitude in -180.0..180.0 &&
+            (abs(latitude) > 0.000001 || abs(longitude) > 0.000001)
 
     private fun outOfChina(latitude: Double, longitude: Double): Boolean =
         longitude < 72.004 || longitude > 137.8347 || latitude < 0.8293 || latitude > 55.8271

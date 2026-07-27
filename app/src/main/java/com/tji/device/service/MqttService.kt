@@ -22,6 +22,11 @@ class MqttService : Service() {
         MqttManager.disconnectAll()
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // MQTT 是账号会话级资源，不跟随 Activity 重建；进程重启后应重新建立登录会话。
+        return START_NOT_STICKY
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null // 不需要绑定服务
     }

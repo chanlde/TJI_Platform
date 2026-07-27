@@ -2,8 +2,9 @@ package com.tji.device.di
 
 import android.content.Context
 import com.tji.device.data.model.ProductType
-import com.tji.device.data.repository.AuthRepo
 import com.tji.device.data.repository.AuthRepository
+import com.tji.device.data.repository.NetworkAuthRepository
+import com.tji.device.data.session.AppSessionStore
 import com.tji.device.product.droppersixstage.repository.DropperSixStageControlRepo
 import com.tji.device.product.droppersixstage.repository.DropperSixStageControlRepository
 import com.tji.device.product.droppersixstage.repository.DropperSixStageRepo
@@ -12,7 +13,7 @@ import com.tji.device.product.droppersixstage.viewmodel.DropperSixStageViewModel
 import com.tji.device.product.firebucket.repository.FireBucketLinkRepo
 import com.tji.device.product.firebucket.repository.FireBucketLinkRepository
 import com.tji.device.product.firebucket.repository.FireBucketSwitchRepository
-import com.tji.device.product.firebucket.repository.SwitchRepo
+import com.tji.device.product.firebucket.repository.FireBucketSwitchCommandRepository
 import com.tji.device.product.firebucket.viewmodel.FireBucketSwitchViewModelFactory
 import com.tji.device.product.glassbreaker.repository.GlassBreakerControlRepo
 import com.tji.device.product.glassbreaker.repository.GlassBreakerControlRepository
@@ -33,7 +34,7 @@ import com.tji.device.product.radiodetection.replay.RadioDetectionReplayStore
 import com.tji.device.product.radiodetection.viewmodel.RadioDetectionControlViewModelFactory
 import com.tji.device.product.runtime.ProductRuntimeRegistry
 import com.tji.device.product.speaker.audio.SpeakerAudioRelay
-import com.tji.device.product.speaker.audio.SpeakerLocalKokoroTtsClient
+import com.tji.device.product.speaker.audio.SpeakerFeedbackClient
 import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
 import com.tji.device.product.speaker.repository.SpeakerControlRepo
@@ -48,7 +49,6 @@ import com.tji.device.product.solarclean.repository.SolarCleanRepository
 import com.tji.device.product.solarclean.viewmodel.SolarCleanControlViewModelFactory
 import com.tji.device.service.MqttEventHandler
 import com.tji.device.service.MqttSubscriptionManager
-import com.tji.device.util.MainViewModelFactory
 
 object AppContainer {
     private lateinit var appContext: Context
@@ -57,12 +57,16 @@ object AppContainer {
         appContext = context.applicationContext
     }
 
+    val appSessionStore: AppSessionStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        AppSessionStore()
+    }
+
     val fireBucketLinkRepository: FireBucketLinkRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         FireBucketLinkRepo()
     }
 
     val switchRepository: FireBucketSwitchRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        SwitchRepo()
+        FireBucketSwitchCommandRepository()
     }
 
     val solarCleanRepository: SolarCleanRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -117,14 +121,13 @@ object AppContainer {
         SpeakerAudioRelay()
     }
 
+    val speakerFeedbackClient: SpeakerFeedbackClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        SpeakerFeedbackClient()
+    }
+
     val speakerTtsSynthesizer: SpeakerTtsSynthesizer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         check(::appContext.isInitialized) { "语音功能还没有准备好，请重新打开页面" }
         SpeakerTtsSynthesizer(appContext)
-    }
-
-    val speakerLocalKokoroTtsClient: SpeakerLocalKokoroTtsClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        check(::appContext.isInitialized) { "语音功能还没有准备好，请重新打开页面" }
-        SpeakerLocalKokoroTtsClient(appContext)
     }
 
     val speakerRecordUploadClient: SpeakerRecordUploadClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -137,7 +140,7 @@ object AppContainer {
     }
 
     val authRepository: AuthRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        AuthRepo()
+        NetworkAuthRepository()
     }
 
     private val productModules: ProductModuleRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -166,9 +169,19 @@ object AppContainer {
         )
     }
 
-    val mqttSubscriptionManager: MqttSubscriptionManager by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+    private val mqttSubscriptionManagerDelegate = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         MqttSubscriptionManager(mqttEventHandler = mqttEventHandler)
     }
+
+    val mqttSubscriptionManager: MqttSubscriptionManager
+        get() = mqttSubscriptionManagerDelegate.value
+
+    fun initializedMqttSubscriptionManagerOrNull(): MqttSubscriptionManager? =
+        if (mqttSubscriptionManagerDelegate.isInitialized()) {
+            mqttSubscriptionManagerDelegate.value
+        } else {
+            null
+        }
 
     val fireBucketSwitchViewModelFactory: FireBucketSwitchViewModelFactory by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         FireBucketSwitchViewModelFactory(switchRepository)
@@ -209,8 +222,8 @@ object AppContainer {
             controlRepository = speakerControlRepository,
             audioRelay = speakerAudioRelay,
             ttsSynthesizer = speakerTtsSynthesizer,
-            localKokoroTtsClient = speakerLocalKokoroTtsClient,
-            recordUploadClient = speakerRecordUploadClient
+            recordUploadClient = speakerRecordUploadClient,
+            feedbackReceiver = speakerFeedbackClient
         )
     }
 
@@ -231,8 +244,11 @@ object AppContainer {
     val mainViewModelFactory: MainViewModelFactory by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         MainViewModelFactory(
             authRepository = authRepository,
-            productRuntimeRegistry = productRuntimeRegistry,
-            mqttSubscriptionManager = mqttSubscriptionManager
+            sessionStore = appSessionStore,
+            productRuntimeRegistryProvider = { productRuntimeRegistry },
+            mqttSubscriptionManagerProvider = { mqttSubscriptionManager },
+            initializedMqttSubscriptionManager = ::initializedMqttSubscriptionManagerOrNull,
+            productOtaRuntimeRepositoryProvider = { productOtaRuntimeRepository }
         )
     }
 }

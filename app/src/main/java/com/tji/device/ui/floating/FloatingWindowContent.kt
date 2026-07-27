@@ -1,8 +1,9 @@
 package com.tji.device.ui.floating
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 
@@ -14,25 +15,35 @@ fun FloatingWindowContent(
     onMinimize: () -> Unit,
     onClose: () -> Unit,
     onSwitchQuickToggle: (String, FloatingSwitchSummary, Boolean) -> Unit,
-    onMove: (Float, Float) -> Unit,
-    onResize: (Float, Float) -> Unit
+    onMove: (Float, Float) -> Unit
 ) {
     val activeLink = uiState.selectedLink
     val allSwitches = activeLink?.allSwitches.orEmpty()
-    var selectedSwitchIndex by remember { mutableStateOf(0) }
+    var selectedSwitchIndex by remember(activeLink?.productType, activeLink?.serialNumber) {
+        mutableIntStateOf(0)
+    }
+    val visibleSwitchIndex =
+        selectedSwitchIndex.takeIf { it in allSwitches.indices } ?: 0
 
-    if (selectedSwitchIndex >= allSwitches.size && allSwitches.isNotEmpty()) {
-        selectedSwitchIndex = 0
+    LaunchedEffect(
+        activeLink?.productType,
+        activeLink?.serialNumber,
+        allSwitches.size,
+        visibleSwitchIndex
+    ) {
+        if (selectedSwitchIndex != visibleSwitchIndex) {
+            selectedSwitchIndex = visibleSwitchIndex
+        }
     }
 
-    val activeSwitch = allSwitches.getOrNull(selectedSwitchIndex)
+    val activeSwitch = allSwitches.getOrNull(visibleSwitchIndex)
 
     if (isExpanded) {
         ExpandedCard(
             productType = uiState.activeProductType,
             link = activeLink,
             allSwitches = allSwitches,
-            currentSwitchIndex = selectedSwitchIndex,
+            currentSwitchIndex = visibleSwitchIndex,
             onSwitchSelected = { index -> selectedSwitchIndex = index },
             onClose = onClose,
             onMinimize = onMinimize,

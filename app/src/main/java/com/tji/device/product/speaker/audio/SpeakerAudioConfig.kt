@@ -57,7 +57,7 @@ object SpeakerAudioConfig {
         // One-pole high-pass cutoff. Removes handling rumble and low-frequency feedback energy.
         const val HIGH_PASS_CUTOFF_HZ = 120f
 
-        // Adds a small first-difference boost so speech consonants remain clear after 8 kHz encoding.
+        // Adds a small first-difference boost so speech consonants remain clear after encoding.
         const val PRESENCE_EDGE_GAIN = 0.18f
 
         // Limiter knee. Samples above this level are compressed before final ceiling.
@@ -111,8 +111,7 @@ object SpeakerAudioConfig {
         // TTS peak floor. Used with RMS to avoid boosting digital silence.
         const val TTS_MIN_ACTIVE_PEAK = 0.0008f
 
-        // TTS low-pass cutoff before 8 kHz ADPCM playback. Text speech has wideband
-        // consonants that can become "zizi" artifacts on the speaker path.
+        // TTS low-pass base setting. The processor scales the actual cutoff with 8/16/24 kHz output.
         const val TTS_LOW_PASS_CUTOFF_HZ = 3_000f
 
         // Apply the low-pass more than once for TTS because a one-pole filter is gentle.
@@ -166,7 +165,7 @@ object SpeakerAudioConfig {
         // Require several speech-like windows before sending PTT; this prevents pure room noise from being amplified.
         const val PTT_MIN_SPEECH_WINDOWS = 4
 
-        // Low-pass recorded microphone speech before ADPCM/UDP playback to reduce sharp "zizi" artifacts.
+        // Low-pass recorded microphone speech; the actual cutoff scales with the selected sample rate.
         const val PTT_LOW_PASS_CUTOFF_HZ = 3_200f
 
         // One pass is enough for recorded speech; more passes can make speech dull.
@@ -210,7 +209,7 @@ object SpeakerAudioConfig {
     }
 
     object Equalizer {
-        // User EQ range in decibels. Keep modest because 8 kHz ADPCM clips easily when over-boosted.
+        // User EQ range in decibels. Keep modest to avoid clipping after encoding.
         const val MIN_DB = -6f
 
         // User EQ range in decibels. +6 dB is enough to hear a clear change without crushing speech.
@@ -225,7 +224,7 @@ object SpeakerAudioConfig {
         // Low shelf corner frequency. This affects voice body/rumble without fighting the 120 Hz high-pass.
         const val BASS_SHELF_HZ = 180f
 
-        // High shelf corner frequency. This affects speech brightness and bite at 8 kHz sample rate.
+        // High shelf corner frequency. The filter is calculated with the recording sample rate.
         const val TREBLE_SHELF_HZ = 2_500f
 
         // Biquad shelf slope. 0.707 is a smooth, low-ringing default for speech.
@@ -272,51 +271,19 @@ object SpeakerAudioConfig {
         // Optional voice-name keywords. Empty means use the phone system's default TTS voice.
         val PREFERRED_VOICE_NAME_KEYWORDS: List<String> = emptyList()
 
-        // Default TTS engine. System TTS is the only engine wired to playback today.
-        val DEFAULT_ENGINE: SpeakerTtsEngine = SpeakerTtsEngine.System
-
-        // Customer builds do not package Kokoro/onnxruntime native libraries or model assets.
-        val AVAILABLE_ENGINES: List<SpeakerTtsEngine> = listOf(SpeakerTtsEngine.System)
-
-        // Asset directory for the offline Kokoro model. Put model.onnx, voices.bin,
-        // tokens.txt, lexicons, rule FSTs, and espeak-ng-data under this folder.
-        const val LOCAL_KOKORO_MODEL_DIR = "kokoro-multi-lang-v1_0"
-
-        // Kokoro multi-language model file name inside LOCAL_KOKORO_MODEL_DIR.
-        const val LOCAL_KOKORO_MODEL_NAME = "model.onnx"
-
-        // Kokoro speaker embedding file name inside LOCAL_KOKORO_MODEL_DIR.
-        const val LOCAL_KOKORO_VOICES = "voices.bin"
-
-        // Chinese and English lexicons used by Kokoro multi-language.
-        const val LOCAL_KOKORO_LEXICON =
-            "kokoro-multi-lang-v1_0/lexicon-us-en.txt,kokoro-multi-lang-v1_0/lexicon-zh.txt"
-
-        // Chinese text normalization rules used by Kokoro multi-language.
-        const val LOCAL_KOKORO_RULE_FSTS =
-            "kokoro-multi-lang-v1_0/phone-zh.fst,kokoro-multi-lang-v1_0/date-zh.fst,kokoro-multi-lang-v1_0/number-zh.fst"
-
         // Customer-facing default voice quality. UI labels are intentionally simple:
         // low/medium/high instead of sample-rate jargon.
         val DEFAULT_TTS_QUALITY: SpeakerAudioQuality = SpeakerAudioQuality.Medium
 
-        // Legacy default used by older local Kokoro calls; normal playback should use DEFAULT_TTS_QUALITY.
-        const val LOCAL_KOKORO_TARGET_SAMPLE_RATE = 8_000
-
-        // Default Kokoro speaker for the offline TTS prototype.
-        val DEFAULT_KOKORO_VOICE: SpeakerKokoroVoice = SpeakerKokoroVoice.ZmYunxi
-
-        // Kokoro speed lower bound. 1.0 is the model default.
-        const val KOKORO_MIN_SPEED = 0.75f
-
-        // Kokoro speed upper bound. Higher values speak faster.
-        const val KOKORO_MAX_SPEED = 1.25f
-
-        // Kokoro default speed. Used when switching to the offline prototype.
-        const val KOKORO_DEFAULT_SPEED = 1.0f
-
         // Number of synthesized TTS PCM clips kept in memory to avoid repeated cloud/system synthesis.
         const val PCM_CACHE_MAX_ITEMS = 8
+
+        // Total retained PCM budget. Long text can produce multi-megabyte byte arrays,
+        // so item count alone is not a safe memory bound.
+        const val PCM_CACHE_MAX_BYTES = 16L * 1024L * 1024L
+
+        // Oversized clips can still be played once but are not retained in memory.
+        const val PCM_CACHE_MAX_ENTRY_BYTES = 4L * 1024L * 1024L
     }
 
     object RecordStore {
@@ -579,11 +546,6 @@ enum class SpeakerTtsVoicePreset(
     )
 }
 
-enum class SpeakerTtsEngine(val label: String) {
-    System(label = "手机语音"),
-    LocalKokoro(label = "内置语音")
-}
-
 enum class SpeakerAudioQuality(
     val label: String,
     val wireName: String,
@@ -599,39 +561,4 @@ enum class SpeakerAudioQuality(
 
     val frameBytes: Int
         get() = samplesPerFrame * SpeakerAdpcmPacketizer.CHANNELS * 2
-}
-
-enum class SpeakerKokoroVoice(
-    val speakerId: Int,
-    val serverName: String,
-    val label: String,
-    val gender: String
-) {
-    ZfXiaobei(speakerId = 45, serverName = "zf_xiaobei", label = "小北", gender = "女声"),
-    ZfXiaoni(speakerId = 46, serverName = "zf_xiaoni", label = "小妮", gender = "女声"),
-    ZfXiaoxiao(speakerId = 47, serverName = "zf_xiaoxiao", label = "小小", gender = "女声"),
-    ZfXiaoyi(speakerId = 48, serverName = "zf_xiaoyi", label = "小艺", gender = "女声"),
-    ZmYunjian(speakerId = 49, serverName = "zm_yunjian", label = "云健", gender = "男声"),
-    ZmYunxi(speakerId = 50, serverName = "zm_yunxi", label = "云希", gender = "男声"),
-    ZmYunxia(speakerId = 51, serverName = "zm_yunxia", label = "云夏", gender = "男声"),
-    ZmYunyang(speakerId = 52, serverName = "zm_yunyang", label = "云扬", gender = "男声")
-}
-
-fun SpeakerKokoroVoice.customerLabel(): String {
-    val sameGenderVoices = SpeakerKokoroVoice.entries.filter { it.gender == gender }
-    val index = sameGenderVoices.indexOf(this).coerceAtLeast(0) + 1
-    return index.toString()
-}
-
-data class SpeakerKokoroTtsSettings(
-    val voice: SpeakerKokoroVoice = SpeakerAudioConfig.Tts.DEFAULT_KOKORO_VOICE,
-    val speed: Float = SpeakerAudioConfig.Tts.KOKORO_DEFAULT_SPEED
-) {
-    fun normalized(): SpeakerKokoroTtsSettings =
-        copy(
-            speed = speed.coerceIn(
-                SpeakerAudioConfig.Tts.KOKORO_MIN_SPEED,
-                SpeakerAudioConfig.Tts.KOKORO_MAX_SPEED
-            )
-        )
 }

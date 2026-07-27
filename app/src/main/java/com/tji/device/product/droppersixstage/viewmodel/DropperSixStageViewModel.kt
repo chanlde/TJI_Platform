@@ -3,11 +3,16 @@ package com.tji.device.product.droppersixstage.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.tji.device.product.common.DeviceCommandId
+import com.tji.device.product.common.publishThenWaitForDeviceAck
 import com.tji.device.product.droppersixstage.model.DropperSixStageCommand
 import com.tji.device.product.droppersixstage.model.DropperSixStageState
+import com.tji.device.product.droppersixstage.model.DropperControlLimits
+import com.tji.device.product.droppersixstage.model.DROPPER_STAGE_COUNT
 import com.tji.device.product.droppersixstage.repository.DropperSixStageControlRepository
 import com.tji.device.product.droppersixstage.repository.DropperSixStageRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +27,7 @@ class DropperSixStageViewModel(
     private val _commandFeedback = MutableStateFlow(DropperCommandFeedback())
     val commandFeedback: StateFlow<DropperCommandFeedback> = _commandFeedback.asStateFlow()
 
-    private val pendingCommands = mutableMapOf<String, String>()
+    private val pendingCommands = DropperPendingCommandTracker()
 
     init {
         viewModelScope.launch {
@@ -30,11 +35,13 @@ class DropperSixStageViewModel(
                 states.asSequence()
                     .mapNotNull { it.lastAck }
                     .forEach { ack ->
-                        val label = pendingCommands.remove(ack.msgId) ?: return@forEach
+                        val pending = pendingCommands.complete(ack.msgId) ?: return@forEach
+                        if (_commandFeedback.value.msgId != ack.msgId) return@forEach
                         val feedback = DropperCommandFeedback(
+                            serialNumber = pending.serialNumber,
                             msgId = ack.msgId,
                             status = if (ack.ok) DropperCommandFeedbackStatus.Success else DropperCommandFeedbackStatus.Failed,
-                            text = if (ack.ok) "${label}成功" else "${label}失败"
+                            text = if (ack.ok) "${pending.label}成功" else "${pending.label}失败"
                         )
                         _commandFeedback.value = feedback
                         clearFeedbackAfter(ack.msgId)
@@ -44,6 +51,10 @@ class DropperSixStageViewModel(
     }
 
     fun toggleStage(serialNumber: String, stage: Int, open: Boolean) {
+        if (!DropperControlLimits.isValidStage(stage)) {
+            rejectLocal(serialNumber, "通道编号无效")
+            return
+        }
         send(
             serialNumber = serialNumber,
             command = DropperSixStageCommand.StageSwitch(newMsgId("stage-$stage"), stage, open),
@@ -52,13 +63,18 @@ class DropperSixStageViewModel(
     }
 
     fun timedOpenStage(serialNumber: String, stage: Int, durationMs: Int) {
+        if (!DropperControlLimits.isValidStage(stage)) {
+            rejectLocal(serialNumber, "通道编号无效")
+            return
+        }
+        val normalizedDuration = DropperControlLimits.normalizeOpenDuration(durationMs)
         send(
             serialNumber = serialNumber,
             command = DropperSixStageCommand.StageSwitch(
                 msgId = newMsgId("stage-$stage-timed"),
                 stage = stage,
                 open = true,
-                durationMs = durationMs.coerceAtLeast(MIN_OPEN_DURATION_MS)
+                durationMs = normalizedDuration
             ),
             label = "${stage}段自动开钩"
         )
@@ -77,18 +93,43 @@ class DropperSixStageViewModel(
     }
 
     private fun send(serialNumber: String, command: DropperSixStageCommand, label: String) {
-        pendingCommands[command.msgId] = label
+        if (command.requiresOnlineDevice() && !isDeviceOnline(serialNumber)) {
+            rejectOffline(serialNumber, label)
+            return
+        }
+        if (!pendingCommands.start(command.msgId, serialNumber, command.resourceKeys(serialNumber), label)) {
+            return
+        }
         _commandFeedback.value = DropperCommandFeedback(
+            serialNumber = serialNumber,
             msgId = command.msgId,
             status = DropperCommandFeedbackStatus.Pending
         )
         viewModelScope.launch {
-            controlRepository.sendCommand(serialNumber, command)
-        }
-        viewModelScope.launch {
-            delay(COMMAND_ACK_TIMEOUT_MS)
-            if (pendingCommands.remove(command.msgId) != null) {
+            try {
+                publishThenWaitForDeviceAck(COMMAND_ACK_TIMEOUT_MS) {
+                    controlRepository.sendCommand(serialNumber, command)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                if (pendingCommands.complete(command.msgId) != null) {
+                    if (_commandFeedback.value.msgId != command.msgId) return@launch
+                    _commandFeedback.value = DropperCommandFeedback(
+                        serialNumber = serialNumber,
+                        msgId = command.msgId,
+                        status = DropperCommandFeedbackStatus.Failed,
+                        text = "${label}发送失败"
+                    )
+                    clearFeedbackAfter(command.msgId)
+                }
+                return@launch
+            }
+
+            if (pendingCommands.complete(command.msgId) != null) {
+                if (_commandFeedback.value.msgId != command.msgId) return@launch
                 _commandFeedback.value = DropperCommandFeedback(
+                    serialNumber = serialNumber,
                     msgId = command.msgId,
                     status = DropperCommandFeedbackStatus.Timeout,
                     text = "${label}无响应"
@@ -96,6 +137,24 @@ class DropperSixStageViewModel(
                 clearFeedbackAfter(command.msgId)
             }
         }
+    }
+
+    private fun isDeviceOnline(serialNumber: String): Boolean =
+        devices.value.firstOrNull { it.serialNumber == serialNumber }?.isOnline == true
+
+    private fun rejectOffline(serialNumber: String, label: String) {
+        rejectLocal(serialNumber, "设备离线，无法$label")
+    }
+
+    private fun rejectLocal(serialNumber: String, message: String) {
+        val msgId = newMsgId("local-rejection")
+        _commandFeedback.value = DropperCommandFeedback(
+            serialNumber = serialNumber,
+            msgId = msgId,
+            status = DropperCommandFeedbackStatus.Failed,
+            text = message
+        )
+        clearFeedbackAfter(msgId)
     }
 
     private fun clearFeedbackAfter(msgId: String?) {
@@ -107,12 +166,18 @@ class DropperSixStageViewModel(
         }
     }
 
-    private fun newMsgId(prefix: String): String = "$prefix-${System.currentTimeMillis()}"
+    private fun newMsgId(action: String): String = DeviceCommandId.next("dropper", action)
+
+    private fun DropperSixStageCommand.resourceKeys(serialNumber: String): Set<String> = when (this) {
+        is DropperSixStageCommand.StageSwitch -> setOf("$serialNumber:stage:$stage")
+        is DropperSixStageCommand.AllStages ->
+            (1..DROPPER_STAGE_COUNT).mapTo(mutableSetOf()) { stage -> "$serialNumber:stage:$stage" }
+        is DropperSixStageCommand.Ping -> setOf("$serialNumber:ping")
+    }
 
     private companion object {
         const val COMMAND_ACK_TIMEOUT_MS = 3_000L
         const val COMMAND_FEEDBACK_VISIBLE_MS = 2_000L
-        const val MIN_OPEN_DURATION_MS = 100
     }
 }
 
@@ -130,6 +195,7 @@ class DropperSixStageViewModelFactory(
 }
 
 data class DropperCommandFeedback(
+    val serialNumber: String? = null,
     val msgId: String? = null,
     val status: DropperCommandFeedbackStatus = DropperCommandFeedbackStatus.Idle,
     val text: String? = null
@@ -142,3 +208,6 @@ enum class DropperCommandFeedbackStatus {
     Failed,
     Timeout
 }
+
+internal fun DropperSixStageCommand.requiresOnlineDevice(): Boolean =
+    this !is DropperSixStageCommand.Ping

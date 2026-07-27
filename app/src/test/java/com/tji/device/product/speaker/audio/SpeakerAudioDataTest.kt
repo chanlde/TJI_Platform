@@ -66,6 +66,33 @@ class SpeakerAudioDataTest {
     }
 
     @Test
+    fun pushToTalkProcessingKeepsSelectedPcm16SampleRate() {
+        listOf(16_000, 24_000).forEach { sampleRate ->
+            val input = syntheticNoiseThenVoicePcm(
+                noiseAmplitude = 0.003f,
+                voiceAmplitude = 0.050f,
+                noiseSamples = sampleRate / 2,
+                voiceSamples = sampleRate,
+                sampleRate = sampleRate
+            )
+
+            assertTrue(SpeakerVoiceProcessor.hasPushToTalkSpeech(input, sampleRate))
+            val processed = SpeakerVoiceProcessor.processPushToTalk(input, sampleRate = sampleRate)
+            val hadp = SpeakerHadpEncoder.encode(
+                pcm = processed,
+                recordId = "REC_${sampleRate}",
+                codec = SpeakerHadpCodec.Pcm16,
+                sampleRate = sampleRate,
+                packetMs = 40
+            )
+
+            assertEquals(sampleRate, hadp.sampleRate)
+            assertEquals(sampleRate * 40 / 1_000 * 2, hadp.frameBytes)
+            assertEquals(sampleRate * 40 / 1_000, hadp.samplesPerFrame)
+        }
+    }
+
+    @Test
     fun pushToTalkReducesBackgroundNoiseBeforeBoostingSpeech() {
         val input = syntheticNoiseThenVoicePcm(
             noiseAmplitude = 0.003f,
@@ -311,54 +338,6 @@ class SpeakerAudioDataTest {
     }
 
     @Test
-    fun liveTalkPacketHeaderCarriesSessionAndTalkIds() {
-        val packetizer = SpeakerAdpcmPacketizer(
-            SpeakerUdpStreamContext(
-                deviceId = "T12345678",
-                taskId = "LIVE_T12345678_ABCD",
-                type = SpeakerUdpStreamType.LiveTalk,
-                talkId = "TALK_T12345678_ABCD"
-            )
-        )
-        val packet = packetizer.packetize(syntheticVoicePcm(amplitude = 0.08f))!!
-        val header = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN)
-        val deviceId = "T12345678"
-        val sessionId = "LIVE_T12345678_ABCD"
-        val talkId = "TALK_T12345678_ABCD"
-        val expectedHeaderLen = 28 + deviceId.length + sessionId.length + talkId.length
-
-        assertEquals(0xA55A, header.short.toInt() and 0xFFFF)
-        assertEquals(2, header.get().toInt() and 0xFF)
-        assertEquals(1, header.get().toInt() and 0xFF)
-        assertEquals(expectedHeaderLen, header.short.toInt() and 0xFFFF)
-        assertEquals(0x04, header.short.toInt() and 0xFFFF)
-        assertEquals(0, header.int)
-        assertEquals(0, header.int)
-        assertEquals(8_000, header.short.toInt() and 0xFFFF)
-        assertEquals(1, header.get().toInt() and 0xFF)
-        assertEquals(40, header.get().toInt() and 0xFF)
-        assertEquals(164, header.short.toInt() and 0xFFFF)
-        assertEquals(320, header.short.toInt() and 0xFFFF)
-        val deviceLen = header.get().toInt() and 0xFF
-        val sessionLen = header.get().toInt() and 0xFF
-        val talkLen = header.get().toInt() and 0xFF
-        assertEquals(deviceId.length, deviceLen)
-        assertEquals(sessionId.length, sessionLen)
-        assertEquals(talkId.length, talkLen)
-        assertEquals(0, header.get().toInt() and 0xFF)
-        val deviceBytes = ByteArray(deviceLen)
-        header.get(deviceBytes)
-        val sessionBytes = ByteArray(sessionLen)
-        header.get(sessionBytes)
-        val talkBytes = ByteArray(talkLen)
-        header.get(talkBytes)
-
-        assertEquals(deviceId, deviceBytes.toString(Charsets.UTF_8))
-        assertEquals(sessionId, sessionBytes.toString(Charsets.UTF_8))
-        assertEquals(talkId, talkBytes.toString(Charsets.UTF_8))
-    }
-
-    @Test
     fun hadpEncoderCreatesFullHadpFileWithHeaderAndCrc() {
         val pcm = syntheticVoicePcm(
             amplitude = 0.08f,
@@ -405,6 +384,30 @@ class SpeakerAudioDataTest {
     }
 
     @Test
+    fun hadpDecoderReturnsOriginalPcmForHighQualityPcm16Hadp() {
+        val sampleRate = 24_000
+        val pcm = syntheticVoicePcm(
+            amplitude = 0.08f,
+            sampleCount = sampleRate,
+            sampleRate = sampleRate
+        )
+        val hadp = SpeakerHadpEncoder.encode(
+            pcm = pcm,
+            recordId = "REC_PCM16_24K_TEST",
+            codec = SpeakerHadpCodec.Pcm16,
+            sampleRate = sampleRate,
+            packetMs = 40
+        )
+        val decoded = SpeakerHadpDecoder.decodePcm16le(hadp)
+
+        assertEquals(SpeakerHadpCodec.Pcm16, hadp.codec)
+        assertEquals(sampleRate, hadp.sampleRate)
+        assertEquals(1_920, hadp.frameBytes)
+        assertEquals(960, hadp.samplesPerFrame)
+        assertArrayEquals(pcm, decoded)
+    }
+
+    @Test
     fun hadpEncoderStillSupportsImaAdpcm() {
         val pcm = syntheticVoicePcm(
             amplitude = 0.08f,
@@ -446,11 +449,12 @@ class SpeakerAudioDataTest {
 
     private fun syntheticVoicePcm(
         amplitude: Float,
-        sampleCount: Int = SpeakerAdpcmPacketizer.PCM_FRAME_BYTES / 2
+        sampleCount: Int = SpeakerAdpcmPacketizer.PCM_FRAME_BYTES / 2,
+        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE
     ): ByteArray {
         val pcm = ByteArray(sampleCount * 2)
         for (i in 0 until sampleCount) {
-            val t = i.toFloat() / SpeakerAdpcmPacketizer.SAMPLE_RATE
+            val t = i.toFloat() / sampleRate
             val sample = amplitude * (
                 sin(2f * PI.toFloat() * 420f * t) * 0.65f +
                     sin(2f * PI.toFloat() * 1_250f * t) * 0.35f
@@ -466,11 +470,12 @@ class SpeakerAudioDataTest {
         noiseAmplitude: Float,
         voiceAmplitude: Float,
         noiseSamples: Int,
-        voiceSamples: Int
+        voiceSamples: Int,
+        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE
     ): ByteArray {
         val pcm = ByteArray((noiseSamples + voiceSamples) * 2)
         for (i in 0 until noiseSamples + voiceSamples) {
-            val t = i.toFloat() / SpeakerAdpcmPacketizer.SAMPLE_RATE
+            val t = i.toFloat() / sampleRate
             val noise = noiseAmplitude * sin(2f * PI.toFloat() * 170f * t)
             val voice = if (i >= noiseSamples) {
                 voiceAmplitude * (

@@ -3,21 +3,23 @@ package com.tji.device.data.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tji.device.concurrent.LatestRequestTracker
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.LoginUiState
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.repository.AuthRepository
-import com.tji.device.data.vminterface.LoginViewModelInterface
-import com.tji.device.di.AppContainer.mqttSubscriptionManager
+import com.tji.device.data.session.AppSessionStore
+import com.tji.device.service.MqttSubscriptionManager
 import com.tji.device.service.mqtt.ProductMqttRouter
-import com.tji.device.util.toUserVisibleMessage
-import com.tji.device.util.toUserVisibleServerMessage
-import com.tji.device.util.userData
+import com.tji.device.error.toUserVisibleMessage
+import com.tji.device.error.toUserVisibleServerMessage
 import com.tji.network.data.ApiResponse
-import com.tji.network.DataReportManager
 import com.tji.network.data.BoundDeviceRow
 import com.tji.network.data.LoginResponse
+import com.tji.network.MqttManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,11 +46,9 @@ import java.util.UUID
  */
 class LoginViewModel(
     private val authRepository: AuthRepository,
+    private val sessionStore: AppSessionStore = AppSessionStore(),
+    private val initializedMqttSubscriptionManager: () -> MqttSubscriptionManager? = { null },
     private val accountMqttConnector: (String, String, String) -> Unit = { account, platformClientId, radioDetectionClientId ->
-        userData.updateMqttConfig(
-            username = account,
-            clientId = platformClientId
-        )
         ProductMqttRouter.resetForAccount(
             account = account,
             platformClientId = platformClientId,
@@ -68,26 +68,21 @@ class LoginViewModel(
             }
         )
     }
-) : ViewModel(),
-    LoginViewModelInterface {
+) : ViewModel() {
 
     companion object {
          const val TAG = "LoginViewModel"
     }
 
     private val _uiState = MutableStateFlow(LoginUiState())
-    override val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+    val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
     private val _account = MutableStateFlow("")  // 初始值为空字符串
-    override val account: StateFlow<String> = _account.asStateFlow() // 公开的只读 StateFlow
-
-    private val _needAccountDeviceSelection = MutableStateFlow<List<BoundAccountDevice>?>(null)
-    override val needAccountDeviceSelection: StateFlow<List<BoundAccountDevice>?> =
-        _needAccountDeviceSelection.asStateFlow()
-
-    /** 当前选中的绑定设备 SN（用于监听变化并清理运行时列表） */
-    private val _selectedLinkSerial = MutableStateFlow<String?>(null)
-    override val selectedLinkSerial: StateFlow<String?> = _selectedLinkSerial.asStateFlow()
+    val account: StateFlow<String> = _account.asStateFlow() // 公开的只读 StateFlow
+    private val loginAttempts = LatestRequestTracker<Unit>()
+    private val accountOperations = LatestRequestTracker<Unit>()
+    private var loginJob: Job? = null
+    private var logoutJob: Job? = null
 
     /**
      * 执行用户登录
@@ -103,26 +98,47 @@ class LoginViewModel(
      * @param rememberMe 是否记住登录状态
      * @param callback 登录结果回调，参数：(是否成功, 错误信息)
      */
-    override fun login(account: String, password: String, rememberMe: Boolean, callback: (Boolean, String?) -> Unit) {
+    fun login(account: String, password: String, rememberMe: Boolean, callback: (Boolean, String?) -> Unit) {
+        val loginAttempt = loginAttempts.begin(Unit)
+        loginJob?.cancel()
+        loginJob = null
         validateLoginInput(account, password)?.let { validationError ->
             handleLoginFailure(message = validationError, callback = callback)
             return
         }
 
-        viewModelScope.launch {
+        val accountOperation = accountOperations.begin(Unit)
+        logoutJob?.cancel()
+        logoutJob = null
+        loginJob = viewModelScope.launch {
             setLoginLoading()
             try {
                 val response = authRepository.login(account, password)
+                if (!isCurrentLogin(loginAttempt, accountOperation)) return@launch
                 if (response.code == 200) {
-                    handleLoginSuccess(account = account, response = response, callback = callback)
+                    handleLoginSuccess(
+                        account = account,
+                        response = response,
+                        loginAttempt = loginAttempt,
+                        accountOperation = accountOperation,
+                        callback = callback
+                    )
                 } else {
                     handleLoginFailure(message = response.message.toUserVisibleServerMessage("登录失败，请检查账号或密码"), callback = callback)
                 }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (e: Exception) {
-                handleLoginException(e, callback)
+                if (isCurrentLogin(loginAttempt, accountOperation)) {
+                    handleLoginException(e, callback)
+                }
             }
         }
     }
+
+    private fun isCurrentLogin(loginAttempt: Long, accountOperation: Long): Boolean =
+        loginAttempts.isLatest(Unit, loginAttempt) &&
+            accountOperations.isLatest(Unit, accountOperation)
 
     private fun setLoginLoading() {
         _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
@@ -139,17 +155,22 @@ class LoginViewModel(
     private suspend fun handleLoginSuccess(
         account: String,
         response: ApiResponse<LoginResponse>,
+        loginAttempt: Long,
+        accountOperation: Long,
         callback: (Boolean, String?) -> Unit
     ) {
         val loginData = response.data
         val userId = loginData?.id
         Log.d(TAG, "登录成功,$userId")
 
-        saveAuthToken(loginData)
+        sessionStore.beginSessionTransition()
+        // 先发布账号变化，让 MainViewModel 在清理 MQTT 的挂起点取消旧账号导航/改名任务。
+        _account.value = account
         resetRuntimeForNewLogin()
+        if (!isCurrentLogin(loginAttempt, accountOperation)) return
 
         val boundDevices = parseBoundDevices(loginData)
-        userData.boundAccountDevices = boundDevices
+        sessionStore.startSession(userId = userId, devices = boundDevices)
         startMqttForAccount(account)
         Log.d(TAG, "登录成功，解析到 ${boundDevices.size} 个后台设备")
 
@@ -160,26 +181,18 @@ class LoginViewModel(
         callback(true, null)
     }
 
-    private fun saveAuthToken(loginData: LoginResponse?) {
-        loginData?.token?.let { token ->
-            DataReportManager.getInstance().authToken = token
-            Log.d(TAG, "已写入 DataReportManager token（用于绑定设备等需鉴权接口）")
-        } ?: Log.w(TAG, "登录响应缺少 token，绑定设备将失败")
-    }
-
     private suspend fun resetRuntimeForNewLogin() {
-        val oldSubscribedDevices = mqttSubscriptionManager.getSubscribedDevices()
-        if (oldSubscribedDevices.isNotEmpty()) {
-            Log.d(TAG, "清理旧订阅，设备列表: $oldSubscribedDevices")
-            mqttSubscriptionManager.clearAllSubscriptions()
+        val mqttSubscriptionManager = initializedMqttSubscriptionManager()
+        if (mqttSubscriptionManager != null) {
+            val oldSubscribedDevices = mqttSubscriptionManager.getSubscribedDevices()
+            Log.d(TAG, "清理旧 MQTT 会话，设备列表: $oldSubscribedDevices")
+            clearSubscriptionsBestEffort(mqttSubscriptionManager, "切换账号")
         }
 
-        userData.selectedLinkSerial = null
-        _selectedLinkSerial.value = null
+        sessionStore.clearSelection()
     }
 
     private fun connectMqttForAccount(account: String) {
-        _account.value = account
         val platformClientId = currentMqttClientId(account)
         val radioDetectionClientId = currentRadioDetectionMqttClientId(account)
         Log.w(
@@ -269,32 +282,48 @@ class LoginViewModel(
      * 3. 清空登录状态和账号信息
      * 4. 清空用户设备列表
      */
-    override fun logout() {
-        viewModelScope.launch {
-            // 登出前先取消所有订阅
+    fun logout() {
+        loginAttempts.begin(Unit)
+        loginJob?.cancel()
+        loginJob = null
+        sessionStore.beginSessionTransition()
+        val accountOperation = accountOperations.begin(Unit)
+        logoutJob?.cancel()
+        logoutJob = viewModelScope.launch {
             Log.d(TAG, "用户登出，清理订阅")
-            mqttSubscriptionManager.clearAllSubscriptions()
-
-            DataReportManager.getInstance().clearAuthToken()
-            
-            authRepository.logout()
-            _uiState.value = LoginUiState()
-            _account.value = ""
-            userData.boundAccountDevices = null
-            userData.selectedLinkSerial = null
-            _selectedLinkSerial.value = null
-            _needAccountDeviceSelection.value = null
-            Log.d(TAG, "用户登出完成")
+            initializedMqttSubscriptionManager()?.let { manager ->
+                clearSubscriptionsBestEffort(manager, "登出")
+            }
+            try {
+                authRepository.logout()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                Log.e(TAG, "登出接口清理失败，继续清理本地会话", throwable)
+            } finally {
+                // A newer successful login owns the process now. An old logout
+                // must never disconnect or erase that new account's session.
+                if (accountOperations.isLatest(Unit, accountOperation)) {
+                    MqttManager.disconnectAll()
+                    _uiState.value = LoginUiState()
+                    _account.value = ""
+                    sessionStore.clear()
+                    Log.d(TAG, "用户登出完成")
+                }
+            }
         }
     }
 
-    override fun selectBoundAccountDevice(device: BoundAccountDevice) {
-        viewModelScope.launch {
-            Log.d(TAG, "用户选择绑定设备: ${device.serialNumber} - ${device.name}")
-            userData.selectedLinkSerial = device.serialNumber
-            _selectedLinkSerial.value = device.serialNumber
-
-            _needAccountDeviceSelection.value = null
+    private suspend fun clearSubscriptionsBestEffort(
+        mqttSubscriptionManager: MqttSubscriptionManager,
+        reason: String
+    ) {
+        try {
+            mqttSubscriptionManager.clearAllSubscriptions()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            Log.e(TAG, "$reason 时部分 MQTT 订阅未能确认取消，继续清理会话", throwable)
         }
     }
 
@@ -303,7 +332,7 @@ class LoginViewModel(
      * 
      * 用于清除 UI 上显示的错误提示信息。
      */
-    override fun clearErrorMessage() {
+    fun clearErrorMessage() {
         _uiState.value = _uiState.value.copy(errorMessage = null)
     }
 

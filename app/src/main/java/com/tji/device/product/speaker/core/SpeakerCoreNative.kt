@@ -245,15 +245,6 @@ object SpeakerCoreNative {
             nativeDecodeWavPcm16Mono(wav, targetSampleRate)
         }
 
-    fun float32ToPcm16OrNull(
-        samples: FloatArray,
-        sourceSampleRate: Int,
-        targetSampleRate: Int
-    ): ByteArray? =
-        runNative {
-            nativeFloat32ToPcm16(samples, sourceSampleRate, targetSampleRate)
-        }
-
     fun parseMqttStateJsonOrNull(
         serialNumber: String,
         payloadJson: String,
@@ -551,12 +542,6 @@ object SpeakerCoreNative {
 
     private external fun nativeDecodeWavPcm16Mono(
         wav: ByteArray,
-        targetSampleRate: Int
-    ): ByteArray
-
-    private external fun nativeFloat32ToPcm16(
-        samples: FloatArray,
-        sourceSampleRate: Int,
         targetSampleRate: Int
     ): ByteArray
 

@@ -51,7 +51,9 @@ internal fun ProductDevicesScreen(
     onLinkSelected: (BoundAccountDevice) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scopedLive = runtimeDevices.filter { it.productType == productType }
+    val liveDeviceBySerial = runtimeDevices.asSequence()
+        .filter { it.productType == productType }
+        .associateBy { it.serialNumber }
     val accountDevices = knownLinks.filter { it.productType == productType }
     LazyColumn(
         modifier = modifier,
@@ -60,11 +62,13 @@ internal fun ProductDevicesScreen(
     ) {
         when {
             accountDevices.isNotEmpty() -> {
-                items(accountDevices, key = { it.serialNumber }) { info ->
-                    val live = scopedLive.firstOrNull { it.serialNumber == info.serialNumber }
+                items(
+                    items = accountDevices,
+                    key = { "${it.productType.name}:${it.serialNumber}" }
+                ) { info ->
                     PlatformDeviceCard(
                         device = info,
-                        live = live,
+                        live = liveDeviceBySerial[info.serialNumber],
                         onClick = { onLinkSelected(info) }
                     )
                 }

@@ -31,7 +31,8 @@ interface ProductMqttEventHandler {
     suspend fun handleRawMessage(
         serialNumber: String,
         message: String,
-        isRetained: Boolean
+        isRetained: Boolean,
+        parsedJson: JSONObject? = null
     ): Boolean = false
 
     suspend fun handleJsonEvent(
@@ -53,7 +54,8 @@ interface ProductModule : ProductMqttEventHandler {
 class ProductModuleRegistry(
     modules: List<ProductModule>
 ) {
-    private val moduleByType: Map<ProductType, ProductModule> = modules.associateBy { it.productType }
+    private val moduleByType: Map<ProductType, ProductModule> =
+        modules.associateByUniqueProductType("product module") { it.productType }
 
     val runtimeControllers: List<ProductRuntimeController> =
         moduleByType.values.map { it.runtimeController }
@@ -69,6 +71,20 @@ class ProductModuleRegistry(
     }
 }
 
+private fun <T> List<T>.associateByUniqueProductType(
+    itemName: String,
+    productTypeOf: (T) -> ProductType
+): Map<ProductType, T> {
+    val duplicates = groupingBy(productTypeOf)
+        .eachCount()
+        .filterValues { it > 1 }
+        .keys
+    require(duplicates.isEmpty()) {
+        "Duplicate $itemName registration for: ${duplicates.joinToString()}"
+    }
+    return associateBy(productTypeOf)
+}
+
 class FireBucketProductModule(
     linkRepository: FireBucketLinkRepository,
     switchRepository: FireBucketSwitchRepository
@@ -77,7 +93,7 @@ class FireBucketProductModule(
 
     override val productType: ProductType = ProductType.FireBucket
     override val runtimeController: ProductRuntimeController =
-        FireBucketRuntimeController(linkRepository)
+        FireBucketRuntimeController(linkRepository, inbound::cleanup)
     override val floatingQuickControl: ProductFloatingQuickControl =
         FireBucketFloatingQuickControl(switchRepository)
 
@@ -87,7 +103,7 @@ class FireBucketProductModule(
         json: JSONObject,
         isRetained: Boolean
     ) {
-        inbound.handleEvent(serialNumber, eventType, json)
+        inbound.handleEvent(serialNumber, eventType, json, isRetained)
     }
 
     override fun cleanup() {
@@ -102,7 +118,7 @@ class SolarCleanProductModule(
 
     override val productType: ProductType = ProductType.SolarClean
     override val runtimeController: ProductRuntimeController =
-        SolarCleanRuntimeController(repository)
+        SolarCleanRuntimeController(repository, inbound::cleanup)
 
     override suspend fun handleJsonEvent(
         serialNumber: String,
@@ -164,12 +180,14 @@ class RadioDetectionProductModule(
     override suspend fun handleRawMessage(
         serialNumber: String,
         message: String,
-        isRetained: Boolean
+        isRetained: Boolean,
+        parsedJson: JSONObject?
     ): Boolean {
         inbound.handleMessage(
             serialNumber = serialNumber,
             message = message,
-            isRetained = isRetained
+            isRetained = isRetained,
+            parsedJson = parsedJson
         )
         return true
     }

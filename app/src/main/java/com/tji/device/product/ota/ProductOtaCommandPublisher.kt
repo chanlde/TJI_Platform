@@ -88,7 +88,7 @@ class ProductOtaMqttCommandPublisher : ProductOtaCommandPublisher {
         ProductMqttRouter.managerFor(productType).publish(
             topic = mqttTopicsFor(productType).controlTopic(serialNumber),
             message = payload.toString(),
-            qos = 0,
+            qos = 1,
             queueWhenDisconnected = false,
             onSuccess = onSuccess,
             onError = onError

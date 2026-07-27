@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -25,25 +24,22 @@ import com.tji.device.data.viewmodel.MainViewModel
 import com.tji.device.service.MqttService
 import com.tji.device.ui.floating.FloatingWindowService
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.core.content.ContextCompat
-import com.tji.network.utils.NetWorkUtils.Companion.updateUrl
-import com.tji.device.util.ToastUtils
-import com.tji.device.util.ToastUtils.linkUrl
-import com.tji.device.util.ToastUtils.switchUrl
-import com.tji.device.util.OverlayPermissionHelper
+import androidx.core.net.toUri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tji.network.config.NetworkEndpoints
+import com.tji.device.ui.AppUiNotifier
+import com.tji.device.ui.floating.OverlayPermissionController
 import com.tji.device.ui.theme.BucketTheme
 import com.tji.device.webControl.WebViewScreen
 import com.tji.device.wifi.WifiData
-import kotlinx.coroutines.delay
 
 val LocalMainViewModel = compositionLocalOf<MainViewModel> { error("MainViewModel not provided") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
     private lateinit var wifiData: WifiData
-    private var isMqttServiceStarted = false  // ✅ 添加标志
     private var lastAppState: AppState = AppState.LOGIN
     private var pendingFloatingWindowStart = false
     private var overlayPermissionGranted by mutableStateOf(false)
@@ -62,16 +58,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         wifiData = WifiData(this)
-        overlayPermissionGranted = OverlayPermissionHelper.canDrawOverlays(this)
+        overlayPermissionGranted = OverlayPermissionController.isGranted(this)
         requestLocationPermission()
 
         val mainViewModel: MainViewModel by viewModels(factoryProducer = {
             AppContainer.mainViewModelFactory
         })
 
-        if (!isMqttServiceStarted) {
-            startMqttService()
-        }
+        startService(Intent(this, MqttService::class.java))
 
         setContent {
             BucketTheme {
@@ -87,8 +81,7 @@ class MainActivity : ComponentActivity() {
     private fun AppNavigation() {
         var appState by remember { mutableStateOf(AppState.LOGIN) }
         var floatingWindowEnabled by remember { mutableStateOf(true) }
-        val needUpdate by ToastUtils.needUpdate.collectAsState()
-        val mainViewModel = LocalMainViewModel.current
+        val needUpdate by AppUiNotifier.appUpdateAvailable.collectAsStateWithLifecycle()
         
         // ✅ 监听状态变化，只在进入 MAIN 时启动一次
         LaunchedEffect(appState, floatingWindowEnabled, overlayPermissionGranted) {
@@ -117,7 +110,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onOpenFloatingWindowPermission = {
-                    OverlayPermissionHelper.requestOverlayPermission(this)
+                    OverlayPermissionController.openSettingsIfNeeded(this)
                 }
             )
             AppState.LOGIN -> LoginScreen(
@@ -128,34 +121,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startMqttService() {
-        if (isMqttServiceStarted) {
-            Log.w("MainActivity", "MqttService 已启动，跳过")
-            return
-        }
-
-        Log.d("MainActivity", "启动 MqttService")
-        val serviceIntent = Intent(this, MqttService::class.java)
-        startService(serviceIntent)
-        isMqttServiceStarted = true
-    }
-
-    private fun stopMqttService() {
-        if (!isMqttServiceStarted) {
-            return
-        }
-
-        Log.d("MainActivity", "停止 MqttService")
-        val serviceIntent = Intent(this, MqttService::class.java)
-        stopService(serviceIntent)
-        isMqttServiceStarted = false
-    }
-
     private fun ensureFloatingWindowService() {
-        if (!OverlayPermissionHelper.canDrawOverlays(this)) {
+        if (!OverlayPermissionController.isGranted(this)) {
             pendingFloatingWindowStart = true
             Log.d("MainActivity", "缺少悬浮窗权限，前往设置")
-            OverlayPermissionHelper.requestOverlayPermission(this)
+            OverlayPermissionController.openSettingsIfNeeded(this)
             return
         }
         Log.d("MainActivity", "启动 FloatingWindowService")
@@ -174,22 +144,17 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun DeveloperScreen(onBack: () -> Unit) {
         val context = LocalContext.current
-
-        val url = try {
-            if (hasLocationPermission(context)) {
-                val wifiInfo = wifiData.getCurrentWifiInfo()
-
-                if ((wifiInfo.ssid)!!.contains("HydroLink", ignoreCase = true)) {
-                    linkUrl
-                } else {
-                    switchUrl
-                }
+        val url = remember(context) {
+            if (!hasLocationPermission(context)) {
+                DeveloperDeviceWebRouter.urlForSsid(null)
             } else {
-                switchUrl
+                try {
+                    DeveloperDeviceWebRouter.urlForSsid(wifiData.getCurrentSsid())
+                } catch (exception: SecurityException) {
+                    Log.w("MainActivity", "读取 Wi-Fi SSID 失败，使用默认设备页面", exception)
+                    DeveloperDeviceWebRouter.urlForSsid(null)
+                }
             }
-        } catch (e: SecurityException) {
-            Log.e("MainActivity", "权限被拒绝: ${e.message}")
-            switchUrl
         }
         WebViewScreen(url = url, onBack = onBack)
     }
@@ -202,11 +167,13 @@ class MainActivity : ComponentActivity() {
     ) {
         val context = LocalContext.current
         val activity = context as? MainActivity ?: return
+        val isLoading by LocalMainViewModel.current.isLoading.collectAsStateWithLifecycle()
 
         LoginWidget(
+            isLoading = isLoading,
             onLogin = {
                 if (needUpdate) {
-                    activity.openUrl(updateUrl)
+                    activity.openUrl(NetworkEndpoints.appUpdateUrl)
                 } else {
                     onLogin()
                 }
@@ -224,7 +191,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun openUrl(url: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) // 确保启动新的任务栈
         startActivity(intent)
     }
@@ -243,19 +210,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-
-        val serviceIntent = Intent(this, MqttService::class.java)
-        stopService(serviceIntent)
-        Log.d("MainActivity", "MqttService 在 Activity 销毁时停止")
         stopFloatingWindowService()
     }
 
     override fun onResume() {
         super.onResume()
-        overlayPermissionGranted = OverlayPermissionHelper.canDrawOverlays(this)
+        overlayPermissionGranted = OverlayPermissionController.isGranted(this)
         if (
             pendingFloatingWindowStart &&
-            OverlayPermissionHelper.canDrawOverlays(this) &&
+            OverlayPermissionController.isGranted(this) &&
             lastAppState == AppState.MAIN
         ) {
             ensureFloatingWindowService()

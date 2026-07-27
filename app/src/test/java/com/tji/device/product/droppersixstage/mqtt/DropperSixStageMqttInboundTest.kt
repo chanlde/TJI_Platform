@@ -4,6 +4,7 @@ import com.tji.device.product.droppersixstage.repository.DropperSixStageRepo
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class DropperSixStageMqttInboundTest {
@@ -90,6 +91,21 @@ class DropperSixStageMqttInboundTest {
     }
 
     @Test
+    fun retainedIdentityCannotMarkDeviceOnline() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "identity",
+            json = JSONObject("""{"deviceId":"$SERIAL","online":true}"""),
+            isRetained = true
+        )
+
+        assertEquals(false, repo.devices.value.single().isOnline)
+    }
+
+    @Test
     fun offlineLifecycleKeepsStateAndMarksDeviceOffline() = runBlocking {
         val repo = DropperSixStageRepo()
         val inbound = DropperSixStageMqttInbound(repo)
@@ -110,6 +126,30 @@ class DropperSixStageMqttInboundTest {
         assertEquals(true, state.stages.first { it.index == 4 }.isOpen)
         assertEquals(72, state.batteryPercent)
         assertEquals(1710000000001L, state.timestamp)
+    }
+
+    @Test
+    fun staleStateAfterNewerOfflineCannotReviveOrOverwriteDevice() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+        inbound.handleEvent(
+            SERIAL,
+            "state",
+            JSONObject("""{"battery":72,"stages":[{"stage":4,"open":true}],"ts":200}""")
+        )
+        inbound.handleEvent(SERIAL, "offline", JSONObject("""{"ts":300}"""))
+
+        inbound.handleEvent(
+            SERIAL,
+            "state",
+            JSONObject("""{"battery":10,"stages":[{"stage":4,"open":false}],"ts":100}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(72, state.batteryPercent)
+        assertEquals(true, state.stages.first { it.index == 4 }.isOpen)
+        assertEquals(300L, state.timestamp)
     }
 
     @Test
@@ -141,22 +181,25 @@ class DropperSixStageMqttInboundTest {
     }
 
     @Test
-    fun successfulStageAckOpensOnlyTheAckedStage() = runBlocking {
+    fun successfulStageAckDoesNotGuessStateWithoutAnExplicitOpenCloseValue() = runBlocking {
         val repo = DropperSixStageRepo()
         val inbound = DropperSixStageMqttInbound(repo)
 
         inbound.handleEvent(
             serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"stages":[{"stage":3,"open":false}]}""")
+        )
+        inbound.handleEvent(
+            serialNumber = SERIAL,
             eventType = "ack",
-            json = JSONObject("""{"msgId":"stage-3-open","ok":true,"stage":3}""")
+            json = JSONObject("""{"msgId":"stage-3-close","ok":true,"stage":3}""")
         )
 
         val state = repo.devices.value.single()
-        assertEquals("stage-3-open", state.lastAck?.msgId)
+        assertEquals("stage-3-close", state.lastAck?.msgId)
         assertEquals(true, state.lastAck?.ok)
-        assertEquals(true, state.stages.first { it.index == 3 }.isOpen)
-        assertEquals(false, state.stages.first { it.index == 2 }.isOpen)
-        assertEquals(false, state.stages.first { it.index == 4 }.isOpen)
+        assertEquals(false, state.stages.first { it.index == 3 }.isOpen)
     }
 
     @Test
@@ -204,6 +247,70 @@ class DropperSixStageMqttInboundTest {
         assertEquals(55, state.batteryPercent)
         assertEquals("1.0.9", state.firmwareVersion)
         assertEquals(true, state.stages.first { it.index == 1 }.isOpen)
+    }
+
+    @Test
+    fun partialStageUpdatePreservesUnreportedStageState() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject(
+                """{"stages":[{"stage":2,"open":true,"loaded":true},{"stage":5,"open":true,"loaded":false}],"ts":100}"""
+            )
+        )
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"stages":[{"stage":2,"loaded":false}],"battery":64,"ts":200}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(true, state.stages.first { it.index == 2 }.isOpen)
+        assertEquals(false, state.stages.first { it.index == 2 }.payloadLoaded)
+        assertEquals(true, state.stages.first { it.index == 5 }.isOpen)
+        assertEquals(false, state.stages.first { it.index == 5 }.payloadLoaded)
+        assertEquals(64, state.batteryPercent)
+    }
+
+    @Test
+    fun identityRefreshDoesNotResetStageState() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"stages":[{"stage":4,"open":true,"loaded":true}],"ts":100}""")
+        )
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "identity",
+            json = JSONObject("""{"deviceId":"$SERIAL","fw":"2.0.0","ts":200}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(true, state.stages.first { it.index == 4 }.isOpen)
+        assertEquals(true, state.stages.first { it.index == 4 }.payloadLoaded)
+        assertEquals("2.0.0", state.firmwareVersion)
+    }
+
+    @Test
+    fun malformedOptionalNumbersRemainUnknownInsteadOfBecomingZero() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"battery":"unknown","ts":"invalid"}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertNull(state.batteryPercent)
+        assertNull(state.timestamp)
     }
 
     private companion object {

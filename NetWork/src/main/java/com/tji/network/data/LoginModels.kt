@@ -1,6 +1,7 @@
 package com.tji.network.data
 
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.google.gson.annotations.SerializedName
 
 data class BoundDeviceRow(
@@ -120,7 +121,11 @@ data class LoginResponse(
         return orEmpty().mapNotNull { item ->
             when {
                 item.isJsonPrimitive -> {
-                    val serial = item.asString.trim()
+                    val primitive = item.asJsonPrimitive
+                    val serial = primitive
+                        .takeIf { it.isString || it.isNumber }
+                        ?.let { runCatching { it.asString.trim() }.getOrNull() }
+                        .orEmpty()
                     if (serial.isBlank()) null else BoundDeviceRow(
                         sn = serial,
                         productType = productType,
@@ -132,18 +137,16 @@ data class LoginResponse(
                     val obj = item.asJsonObject
                     val serial = listOf("sn1", "serialNumber", "sn")
                         .firstNotNullOfOrNull { key ->
-                            obj.get(key)?.takeIf { !it.isJsonNull }?.asString?.trim()
+                            obj.stringOrNull(key)
                         }
                         .orEmpty()
                     if (serial.isBlank()) null else BoundDeviceRow(
-                        id = obj.get("id")?.takeIf { !it.isJsonNull }?.asInt,
+                        id = obj.intOrNull("id"),
                         sn1 = serial,
-                        productName = obj.get("productName")?.takeIf { !it.isJsonNull }?.asString?.trim(),
-                        productId = obj.get("productId")?.takeIf { !it.isJsonNull }?.asInt,
-                        productType = obj.get("productType")?.takeIf { !it.isJsonNull }?.asString?.trim()
-                            ?: productType,
-                        productCode = obj.get("productCode")?.takeIf { !it.isJsonNull }?.asString?.trim()
-                            ?: productCode
+                        productName = obj.stringOrNull("productName"),
+                        productId = obj.intOrNull("productId"),
+                        productType = obj.stringOrNull("productType") ?: productType,
+                        productCode = obj.stringOrNull("productCode") ?: productCode
                     )
                 }
 
@@ -151,6 +154,25 @@ data class LoginResponse(
             }
         }
     }
+}
+
+private fun JsonObject.stringOrNull(name: String): String? {
+    val primitive = get(name)
+        ?.takeIf { !it.isJsonNull && it.isJsonPrimitive }
+        ?.asJsonPrimitive
+        ?.takeIf { it.isString || it.isNumber }
+        ?: return null
+    return runCatching { primitive.asString.trim() }
+        .getOrNull()
+        ?.takeIf { it.isNotBlank() }
+}
+
+private fun JsonObject.intOrNull(name: String): Int? {
+    val primitive = get(name)
+        ?.takeIf { !it.isJsonNull && it.isJsonPrimitive }
+        ?.asJsonPrimitive
+        ?: return null
+    return runCatching { primitive.asInt }.getOrNull()
 }
 
 fun LoginResponse.mergeWith(other: LoginResponse): LoginResponse {

@@ -23,7 +23,9 @@ class DropperSixStageMqttInbound(
                     repository.updateOnlineStatus(serialNumber, isOnline = true, timestamp = json.optNullableLong("ts"))
                 }
             }
-            "identity" -> repository.updateState(parseIdentity(serialNumber, json))
+            "identity" -> repository.updateState(
+                parseIdentity(serialNumber, json, allowOnline = !isRetained)
+            )
             "offline" -> repository.updateOnlineStatus(
                 serialNumber = serialNumber,
                 isOnline = false,
@@ -39,13 +41,18 @@ class DropperSixStageMqttInbound(
 
     private fun parseIdentity(
         serialNumber: String,
-        json: JSONObject
+        json: JSONObject,
+        allowOnline: Boolean
     ): DropperSixStageState {
         val payloadDeviceId = json.optString("deviceId").ifBlank { serialNumber }
+        val current = repository.devices.value.firstOrNull { it.serialNumber == payloadDeviceId }
         return DropperSixStageState(
             serialNumber = payloadDeviceId,
             name = json.optString("name").ifBlank { json.optString("product").ifBlank { null } },
-            isOnline = json.optBoolean("online", true),
+            isOnline = allowOnline && (
+                if (json.has("online")) json.optNullableBoolean("online") == true else true
+            ),
+            stages = current?.stages ?: DropperStageState.defaults(),
             firmwareVersion = json.optString("fw").ifBlank {
                 json.optString("firmware_version").ifBlank { null }
             },
@@ -58,30 +65,38 @@ class DropperSixStageMqttInbound(
         json: JSONObject,
         allowOnline: Boolean
     ): DropperSixStageState {
+        val current = repository.devices.value.firstOrNull { it.serialNumber == serialNumber }
         return DropperSixStageState(
             serialNumber = serialNumber,
             name = json.optString("name").ifBlank { null },
             isOnline = allowOnline,
-            stages = parseStages(json.optJSONArray("stages")),
+            stages = parseStages(
+                array = json.optJSONArray("stages"),
+                currentStages = current?.stages ?: DropperStageState.defaults()
+            ),
             batteryPercent = json.optNullableInt("battery"),
             firmwareVersion = json.optString("firmware_version").ifBlank { null },
             timestamp = json.optNullableLong("ts")
         )
     }
 
-    private fun parseStages(array: JSONArray?): List<DropperStageState> {
-        if (array == null || array.length() == 0) return DropperStageState.defaults()
-        val parsed = mutableListOf<DropperStageState>()
+    private fun parseStages(
+        array: JSONArray?,
+        currentStages: List<DropperStageState>
+    ): List<DropperStageState> {
+        if (array == null || array.length() == 0) return currentStages
+        val updates = mutableMapOf<Int, DropperStageState>()
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
-            parsed += DropperStageState(
-                index = item.optInt("stage", index + 1),
-                isOpen = item.optBoolean("open", false),
-                payloadLoaded = item.optNullableBoolean("loaded")
+            val stage = item.optNullableInt("stage") ?: (index + 1)
+            val current = currentStages.firstOrNull { it.index == stage } ?: continue
+            updates[stage] = current.copy(
+                isOpen = item.optNullableBoolean("open") ?: current.isOpen,
+                payloadLoaded = item.optNullableBoolean("loaded") ?: current.payloadLoaded
             )
         }
-        return DropperStageState.defaults().map { fallback ->
-            parsed.firstOrNull { it.index == fallback.index } ?: fallback
+        return currentStages.map { current ->
+            updates[current.index] ?: current
         }
     }
 
@@ -100,10 +115,10 @@ class DropperSixStageMqttInbound(
 }
 
 private fun JSONObject.optNullableLong(name: String): Long? =
-    if (has(name) && !isNull(name)) optLong(name) else null
+    if (has(name) && !isNull(name)) runCatching { getLong(name) }.getOrNull() else null
 
 private fun JSONObject.optNullableInt(name: String): Int? =
-    if (has(name) && !isNull(name)) optInt(name) else null
+    if (has(name) && !isNull(name)) runCatching { getInt(name) }.getOrNull() else null
 
 private fun JSONObject.optNullableBoolean(name: String): Boolean? =
-    if (has(name) && !isNull(name)) optBoolean(name) else null
+    if (has(name) && !isNull(name)) runCatching { getBoolean(name) }.getOrNull() else null

@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
+import com.tji.device.data.session.DeviceKey
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.ui.components.productSceneRes
 import com.tji.device.ui.icon.product.productIconVector
@@ -50,22 +52,27 @@ internal val PlatformBlue = PayloadColors.Primary
 @Composable
 internal fun ProductHome(
     onProductSelected: (ProductType) -> Unit,
-    onLinkSelected: (BoundAccountDevice) -> Unit,
     boundAccountDevices: List<BoundAccountDevice>,
     runtimeDevices: List<ProductDeviceRuntimeSnapshot>,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val onlineCount = boundAccountDevices.count { accountDevice ->
-        runtimeDevices.any {
-            it.serialNumber == accountDevice.serialNumber &&
-                it.productType == accountDevice.productType &&
-                it.isOnline
+    val onlineDeviceKeys = remember(runtimeDevices) {
+        runtimeDevices.asSequence()
+            .filter { it.isOnline }
+            .map { DeviceKey(it.productType, it.serialNumber) }
+            .toHashSet()
+    }
+    val onlineCount = remember(boundAccountDevices, onlineDeviceKeys) {
+        boundAccountDevices.count { accountDevice ->
+            DeviceKey(accountDevice.productType, accountDevice.serialNumber) in onlineDeviceKeys
         }
     }
-    val accountProductTypes = boundAccountDevices
-        .map { it.productType }
-        .distinct()
+    val accountProductTypes = remember(boundAccountDevices) {
+        boundAccountDevices
+            .map { it.productType }
+            .distinct()
+    }
 
     LazyColumn(
         modifier = modifier
@@ -270,14 +277,14 @@ private fun ProductEntryCard(
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            text = ProductCatalog.definitionOf(productType).platformSubtitle,
+                            text = definition.platformSubtitle,
                             style = MaterialTheme.typography.bodyMedium,
                             color = PlatformMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = ProductCatalog.definitionOf(productType).platformValueLine,
+                            text = definition.platformValueLine,
                             style = MaterialTheme.typography.bodySmall,
                             color = PayloadColors.TextMuted,
                             maxLines = 1,

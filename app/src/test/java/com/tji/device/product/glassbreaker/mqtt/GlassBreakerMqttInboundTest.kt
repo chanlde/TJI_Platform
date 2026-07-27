@@ -6,6 +6,7 @@ import com.tji.device.product.glassbreaker.repository.GlassBreakerRepo
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GlassBreakerMqttInboundTest {
@@ -69,10 +70,37 @@ class GlassBreakerMqttInboundTest {
     }
 
     @Test
-    fun retainedLifecycleOnlineMarksDeviceOnline() = runBlocking {
+    fun staleStateCannotOverwriteNewerDeviceSnapshot() = runBlocking {
+        val repo = GlassBreakerRepo()
+        val inbound = GlassBreakerMqttInbound(repo)
+        inbound.handleEvent(
+            SERIAL,
+            "state",
+            JSONObject("""{"lockState":"unlocked","selectedChannel":2,"ts":300}""")
+        )
+
+        inbound.handleEvent(
+            SERIAL,
+            "state",
+            JSONObject("""{"lockState":"locked","selectedChannel":1,"ts":100}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(GlassBreakerLockState.Unlocked, state.lockState)
+        assertEquals(2, state.selectedChannel)
+        assertEquals(300L, state.timestamp)
+    }
+
+    @Test
+    fun retainedLifecycleOnlineCannotReviveOfflineDevice() = runBlocking {
         val repo = GlassBreakerRepo()
         val inbound = GlassBreakerMqttInbound(repo)
 
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "offline",
+            json = JSONObject("""{"type":"offline","deviceId":"T0000001","ts":12000}""")
+        )
         inbound.handleEvent(
             serialNumber = SERIAL,
             eventType = "online",
@@ -81,8 +109,8 @@ class GlassBreakerMqttInboundTest {
         )
 
         val state = repo.devices.value.single()
-        assertEquals(true, state.isOnline)
-        assertEquals(12345L, state.timestamp)
+        assertEquals(false, state.isOnline)
+        assertEquals(12000L, state.timestamp)
     }
 
     @Test
@@ -162,6 +190,51 @@ class GlassBreakerMqttInboundTest {
         assertEquals(400, ack?.code)
         assertEquals("unsupported or rejected", ack?.message)
         assertEquals("设备拒绝命令", ack?.userFacingMessage())
+    }
+
+    @Test
+    fun malformedOptionalNumbersRemainUnknownInsteadOfBecomingZero() = runBlocking {
+        val repo = GlassBreakerRepo()
+        val inbound = GlassBreakerMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"battery":"unknown","armRemainingMs":"bad","ts":"invalid"}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertNull(state.batteryPercent)
+        assertNull(state.armRemainingMs)
+        assertNull(state.timestamp)
+    }
+
+    @Test
+    fun partialTelemetryDoesNotResetSafetyState() = runBlocking {
+        val repo = GlassBreakerRepo()
+        val inbound = GlassBreakerMqttInbound(repo)
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject(
+                """{"lockState":"unlocked","selectedChannel":3,"laserEnabled":true,"fireState":"armed","armRemainingMs":12000,"ts":100}"""
+            )
+        )
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"battery":86,"firmwareVersion":"1.2.3","ts":200}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(GlassBreakerLockState.Unlocked, state.lockState)
+        assertEquals(3, state.selectedChannel)
+        assertEquals(true, state.laserEnabled)
+        assertEquals("armed", state.fireState)
+        assertEquals(12000L, state.armRemainingMs)
+        assertEquals(86, state.batteryPercent)
+        assertEquals("1.2.3", state.firmwareVersion)
     }
 
     private companion object {

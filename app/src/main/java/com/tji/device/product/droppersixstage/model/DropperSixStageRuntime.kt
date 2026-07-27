@@ -3,6 +3,18 @@ package com.tji.device.product.droppersixstage.model
 import com.tji.device.product.runtime.ProductRuntimePayload
 
 const val DROPPER_STAGE_COUNT = 6
+const val DROPPER_MIN_OPEN_DURATION_MS = 100
+const val DROPPER_MAX_OPEN_DURATION_MS = 30_000
+
+object DropperControlLimits {
+    fun isValidStage(stage: Int): Boolean = stage in 1..DROPPER_STAGE_COUNT
+
+    fun normalizeOpenDuration(durationMs: Int): Int =
+        durationMs.coerceIn(DROPPER_MIN_OPEN_DURATION_MS, DROPPER_MAX_OPEN_DURATION_MS)
+
+    fun isValidOpenDuration(durationMs: Int): Boolean =
+        durationMs in DROPPER_MIN_OPEN_DURATION_MS..DROPPER_MAX_OPEN_DURATION_MS
+}
 
 data class DropperSixStageState(
     val serialNumber: String,
@@ -52,11 +64,24 @@ sealed interface DropperSixStageCommand {
         val stage: Int,
         val open: Boolean,
         val durationMs: Int? = null
-    ) : DropperSixStageCommand
+    ) : DropperSixStageCommand {
+        init {
+            require(DropperControlLimits.isValidStage(stage)) { "Dropper stage out of range: $stage" }
+            require(durationMs == null || DropperControlLimits.isValidOpenDuration(durationMs)) {
+                "Dropper open duration out of range: $durationMs"
+            }
+        }
+    }
 
     data class AllStages(
         override val msgId: String,
         val open: Boolean,
         val durationMs: Int? = null
-    ) : DropperSixStageCommand
+    ) : DropperSixStageCommand {
+        init {
+            require(durationMs == null || DropperControlLimits.isValidOpenDuration(durationMs)) {
+                "Dropper open duration out of range: $durationMs"
+            }
+        }
+    }
 }

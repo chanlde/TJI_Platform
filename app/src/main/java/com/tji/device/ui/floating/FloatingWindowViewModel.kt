@@ -6,14 +6,19 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.tji.device.BuildConfig
 import com.tji.device.data.model.ProductType
+import com.tji.device.data.session.AppSessionState
+import com.tji.device.data.session.AppSessionStore
 import com.tji.device.di.ProductFloatingQuickControl
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.product.runtime.ProductRuntimeRegistry
-import com.tji.device.util.userData
+import com.tji.device.error.toUserVisibleMessage
+import com.tji.device.ui.AppUiNotifier
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,14 +30,15 @@ import kotlinx.coroutines.launch
  * 功能：
  * - 监听设备列表变化，自动更新 UI 状态
  * - 处理开关控制操作
- * - 管理悬浮窗的展开/收起状态
  * 
  * @param productRuntimeRegistry 统一产品运行时注册表，用于读取所有产品的设备状态
  * @param floatingQuickControlFor 按选中设备 [ProductType] 解析悬浮窗快捷开关实现
  */
 class FloatingWindowViewModel(
     private val productRuntimeRegistry: ProductRuntimeRegistry,
-    private val floatingQuickControlFor: (ProductType) -> ProductFloatingQuickControl
+    private val floatingQuickControlFor: (ProductType) -> ProductFloatingQuickControl,
+    private val sessionStore: AppSessionStore,
+    private val commandErrorReporter: (String) -> Unit = AppUiNotifier::showShortMessage
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FloatingWindowUiState())
@@ -41,113 +47,70 @@ class FloatingWindowViewModel(
     companion object {
         private const val TAG = "FloatingWindowVM"
     }
-    fun debugStateHash(): Int = System.identityHashCode(_uiState)
 
     init {
-        observeLinks()
-        observePreferredProductType()
-        observeSelectedLinkSerial()
-        Log.d("FloatingWindowService", "Current mode: ${uiState.value.mode}")
-
+        observeSessionAndLinks()
     }
 
-    private fun observePreferredProductType() {
+    private fun observeSessionAndLinks() {
         viewModelScope.launch {
-            userData.preferredProductTypeFlow.collect { preferredType ->
+            val supportedProductTypes = ProductType.values()
+                .filter { it.supportsFloatingWindow() }
+                .toSet()
+            val linkSummaries = combine(
+                productRuntimeRegistry.deviceFlowsFor(supportedProductTypes)
+            ) { deviceLists ->
+                deviceLists
+                    .flatMap { it }
+                    .map { it.toFloatingSummary() }
+            }.distinctUntilChanged()
+            combine(
+                linkSummaries,
+                sessionStore.state
+            ) { summaries, session ->
+                FloatingWindowSources(summaries, session)
+            }.collect { sources ->
                 _uiState.update { current ->
-                    if (current.selectedLinkSerial != null) {
-                        current
-                    } else {
-                        current.copy(preferredProductType = preferredType.floatingFallback())
+                    val summaries = sources.linkSummaries
+                    val selectedKey = sources.session.selectedDeviceKey
+                    val selectedBoundDevice = selectedKey?.let { key ->
+                        sources.session.boundDevices.firstOrNull {
+                            it.productType == key.productType && it.serialNumber == key.serialNumber
+                        }
                     }
-                }
-            }
-        }
-    }
-
-    private fun observeLinks() {
-        viewModelScope.launch {
-            combine(productRuntimeRegistry.deviceFlows) { deviceLists ->
-                deviceLists.flatMap { it }
-            }.collect { devices ->
-                Log.d(TAG, "observeLinks -> 接收到设备列表 size=${devices.size}")
-                _uiState.update { current ->
-                    val summaries = devices
-                        .filter { it.productType.supportsFloatingWindow() }
-                        .map { it.toFloatingSummary() }
-                    val selectedSerial = current.selectedLinkSerial?.takeIf { serial ->
-                        summaries.any { it.serialNumber == serial }
+                    val explicitlySelected = selectedKey?.let { key ->
+                        summaries.firstOrNull {
+                            it.productType == key.productType && it.serialNumber == key.serialNumber
+                        }
                     }
+                    val selectedLink = explicitlySelected
                         ?: summaries.firstOrNull {
-                            it.productType == current.preferredProductType && it.isOnline
-                        }?.serialNumber
+                            it.productType == sources.session.preferredProductType && it.isOnline
+                        }
                         ?: summaries.firstOrNull {
-                            it.productType == current.preferredProductType
-                        }?.serialNumber
-
-                    val selectedLink = summaries.firstOrNull { it.serialNumber == selectedSerial }
-                    val shouldForceOfflineVisible =
-                        selectedLink?.onlineSwitches?.isEmpty() == true &&
-                                selectedLink.offlineSwitches.isNotEmpty()
-
+                            it.productType == sources.session.preferredProductType
+                        }
+                    val selectedProductType =
+                        selectedLink?.productType
+                            ?: selectedBoundDevice?.productType
+                            ?: sources.session.preferredProductType
+                    val selectedSerial = when {
+                        !selectedProductType.supportsFloatingWindow() -> null
+                        selectedKey != null -> selectedKey.serialNumber
+                        else -> selectedLink?.serialNumber
+                    }
                     if (BuildConfig.DEBUG) {
                         Log.d(
                             TAG,
-                            "更新 UI -> summaries=${summaries.size}, selectedSerial=$selectedSerial, stateHash=${debugStateHash()}"
+                            "更新 UI -> summaries=${summaries.size}, selectedSerial=$selectedSerial"
                         )
                     }
 
                     current.copy(
                         links = summaries,
                         selectedLinkSerial = selectedSerial,
-                        selectedLinkName = selectedLink?.name ?: current.selectedLinkName,
-                        preferredProductType = selectedLink?.productType
-                            ?: current.preferredProductType.floatingFallback(),
-                        isLoading = false,
-                        errorMessage = if (summaries.isEmpty()) "暂无可用设备" else null,
-                        showOfflineSwitches = current.showOfflineSwitches || shouldForceOfflineVisible
-                    )
-                }
-            }
-        }
-    }
-
-    private fun observeSelectedLinkSerial() {
-        viewModelScope.launch {
-            userData.selectedLinkSerialFlow.collect { serial ->
-                _uiState.update { current ->
-                    val link = serial?.let { selectedSerial ->
-                        current.links.firstOrNull { it.serialNumber == selectedSerial }
-                    }
-                    val boundProductType = serial?.let { selectedSerial ->
-                        userData.boundAccountDevices
-                            .orEmpty()
-                            .firstOrNull { it.serialNumber == selectedSerial }
-                            ?.productType
-                    }
-                    val boundName = serial?.let { selectedSerial ->
-                        userData.boundAccountDevices
-                            .orEmpty()
-                            .firstOrNull { it.serialNumber == selectedSerial }
-                            ?.name
-                    }
-                    val nextProductType = link?.productType ?: boundProductType ?: current.preferredProductType
-                    if (!nextProductType.supportsFloatingWindow()) {
-                        Log.d(TAG, "当前产品不启用悬浮窗快捷控制: serial=$serial product=$nextProductType")
-                        return@update current.copy(
-                            selectedLinkSerial = null,
-                            selectedLinkName = null,
-                            preferredProductType = current.preferredProductType.floatingFallback()
-                        )
-                    }
-                    Log.d(
-                        TAG,
-                        "同步当前设备到悬浮窗: serial=$serial product=$nextProductType runtimeFound=${link != null}"
-                    )
-                    current.copy(
-                        selectedLinkSerial = serial,
-                        selectedLinkName = link?.name ?: boundName ?: serial,
-                        preferredProductType = nextProductType
+                        selectedLinkName = selectedLink?.name ?: selectedBoundDevice?.name,
+                        preferredProductType = selectedProductType.floatingFallback()
                     )
                 }
             }
@@ -176,49 +139,60 @@ class FloatingWindowViewModel(
         }
     }
 
-    fun minimize() {
-        Log.d(TAG, "minimize -> 回到 ICON 模式")
-        _uiState.update { it.copy(mode = FloatingWindowMode.ICON) }
-    }
-
-    fun selectLink(serialNumber: String) {
-        _uiState.update { state ->
-            val link = state.links.firstOrNull { it.serialNumber == serialNumber }
-            if (link != null) {
-                userData.selectedLinkSerial = serialNumber
-                state.copy(
-                    selectedLinkSerial = serialNumber,
-                    selectedLinkName = link.name,
-                    preferredProductType = link.productType
-                )
-            } else {
-                state
-            }
-        }
-    }
-
-    fun toggleOfflineVisibility() {
-        _uiState.update { it.copy(showOfflineSwitches = !it.showOfflineSwitches) }
-    }
-
-    fun toggleSwitch(linkSerial: String, switchSerial: String, targetAngle: Int) {
+    private fun toggleSwitch(
+        link: FloatingLinkSummary,
+        switch: FloatingSwitchSummary,
+        targetAngle: Int
+    ) {
         viewModelScope.launch {
-            val state = _uiState.value
-            val link = state.links.firstOrNull { it.serialNumber == linkSerial }
-            val productType = link?.productType ?: state.activeProductType
-            floatingQuickControlFor(productType).toggleSwitch(linkSerial, switchSerial, targetAngle)
+            executeFloatingQuickToggle(
+                control = floatingQuickControlFor(link.productType),
+                linkSerial = link.serialNumber,
+                switchSerial = switch.serialNumber,
+                targetAngle = targetAngle,
+                onFailure = { throwable ->
+                    Log.e(
+                        TAG,
+                        "悬浮窗控制失败: link=${link.serialNumber} switch=${switch.serialNumber}",
+                        throwable
+                    )
+                    commandErrorReporter(
+                        throwable.toUserVisibleMessage("控制失败，请检查设备和网络")
+                    )
+                }
+            )
         }
     }
 
     fun toggleSwitch(linkSerial: String, switch: FloatingSwitchSummary, isOpen: Boolean) {
+        val latestLink = _uiState.value.selectedLink
+            ?.takeIf { it.serialNumber == linkSerial }
+        val latestSwitch = latestLink
+            ?.allSwitches
+            ?.firstOrNull { it.serialNumber == switch.serialNumber }
+        if (latestLink == null || latestSwitch == null ||
+            !canToggleFloatingSwitch(latestLink, latestSwitch)
+        ) {
+            Log.w(
+                TAG,
+                "忽略失效的悬浮窗控制: link=$linkSerial switch=${switch.serialNumber}"
+            )
+            return
+        }
         val targetAngle = if (isOpen) 90 else 0
         Log.d(
             TAG,
             "toggleSwitch -> link=$linkSerial switch=${switch.serialNumber} isOpen=$isOpen targetAngle=$targetAngle"
         )
-        toggleSwitch(linkSerial, switch.serialNumber, targetAngle)
+        toggleSwitch(latestLink, latestSwitch, targetAngle)
     }
 }
+
+internal fun canToggleFloatingSwitch(
+    link: FloatingLinkSummary?,
+    switch: FloatingSwitchSummary?
+): Boolean =
+    link?.isOnline == true && switch?.isOnline == true
 
 private fun ProductType.supportsFloatingWindow(): Boolean =
     this != ProductType.RadioDetection
@@ -228,16 +202,41 @@ private fun ProductType.floatingFallback(): ProductType =
 
 class FloatingWindowViewModelFactory(
     private val productRuntimeRegistry: ProductRuntimeRegistry,
-    private val floatingQuickControlFor: (ProductType) -> ProductFloatingQuickControl
+    private val floatingQuickControlFor: (ProductType) -> ProductFloatingQuickControl,
+    private val sessionStore: AppSessionStore,
+    private val commandErrorReporter: (String) -> Unit = AppUiNotifier::showShortMessage
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(FloatingWindowViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
             return FloatingWindowViewModel(
                 productRuntimeRegistry = productRuntimeRegistry,
-                floatingQuickControlFor = floatingQuickControlFor
+                floatingQuickControlFor = floatingQuickControlFor,
+                sessionStore = sessionStore,
+                commandErrorReporter = commandErrorReporter
             ) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+    }
+}
+
+private data class FloatingWindowSources(
+    val linkSummaries: List<FloatingLinkSummary>,
+    val session: AppSessionState
+)
+
+internal suspend fun executeFloatingQuickToggle(
+    control: ProductFloatingQuickControl,
+    linkSerial: String,
+    switchSerial: String,
+    targetAngle: Int,
+    onFailure: (Throwable) -> Unit
+) {
+    try {
+        control.toggleSwitch(linkSerial, switchSerial, targetAngle)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (throwable: Exception) {
+        onFailure(throwable)
     }
 }

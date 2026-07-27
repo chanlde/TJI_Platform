@@ -7,7 +7,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
-import com.tji.device.product.firebucket.model.Switch
+import com.tji.device.product.firebucket.model.FireBucketSwitchState
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 
 @Preview(
@@ -82,7 +82,7 @@ fun PreviewFireBucketProductPage() {
 }
 
 private fun previewFireBucketLinkDevice(): FireBucketLinkDevice {
-    val mockSwitch = Switch(
+    val mockSwitch = FireBucketSwitchState(
         serialNumber = "SW-001",
         deviceName = "示例水桶",
         deviceType = "Bucket",

@@ -134,15 +134,38 @@ object SpeakerCommandJson {
                 put("samplesPerFrame", samplesPerFrame)
             }
             is SpeakerCommand.SetServoAngle -> JSONObject().apply {
-                put("angle", angle.coerceIn(-90, 90))
+                put("angle", angle.coerceIn(0, 180))
+                put("speedDps", speedDps.coerceIn(1, 360))
             }
-            is SpeakerCommand.StartTalk -> JSONObject().apply {
-                put("sessionId", sessionId)
-                put("talkId", talkId)
-                put("codec", codec)
-                put("sampleRate", sampleRate)
-                put("channels", channels)
-                put("packetMs", packetMs)
+            is SpeakerCommand.ServoSweepTest -> JSONObject().apply {
+                val min = minAngle.coerceIn(0, 180)
+                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1)
+                put("minAngle", min)
+                put("maxAngle", max.coerceAtMost(180))
+                put("speedDps", speedDps.coerceIn(1, 360))
+                put("cycles", cycles.coerceIn(0, 100))
+                put("durationMs", durationMs.coerceIn(0, 5_000))
+            }
+            is SpeakerCommand.ServoStepTest -> JSONObject().apply {
+                val min = minAngle.coerceIn(0, 180)
+                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
+                put("minAngle", min)
+                put("maxAngle", max)
+                put("stepAngle", stepAngle.coerceIn(1, max - min))
+                put("speedDps", speedDps.coerceIn(1, 360))
+                put("intervalMs", intervalMs.coerceIn(20, 60_000))
+            }
+            is SpeakerCommand.SetMcuMicrophoneFeedback -> JSONObject().apply {
+                put("enabled", if (enabled) 1 else 0)
+                if (enabled) {
+                    put("sessionId", sessionId)
+                    put("talkId", talkId)
+                    put("codec", codec)
+                    put("sampleRate", sampleRate)
+                    put("channels", channels)
+                    put("packetMs", packetMs)
+                    put("ttlMs", ttlMs.coerceIn(1_000L, 300_000L))
+                }
             }
             is SpeakerCommand.StartRecordStore -> JSONObject().apply {
                 put("recordId", recordId)
@@ -171,8 +194,7 @@ object SpeakerCommandJson {
             is SpeakerCommand.GetStorageStatus,
             is SpeakerCommand.ListRecords,
             is SpeakerCommand.RecordDownload,
-            is SpeakerCommand.Stop,
-            is SpeakerCommand.StopTalk -> null
+            is SpeakerCommand.Stop -> null
         }
 
     private fun SpeakerCommand.extraFieldsJsonOrEmpty(): String =
@@ -205,14 +227,18 @@ object SpeakerCommandJson {
                 expectedDurationMs?.let { put("expectedDurationMs", it) }
                 expectedFileSize?.let { put("expectedFileSize", it) }
             }
-            is SpeakerCommand.StartTalk -> linkedMapOf(
-                "sessionId" to sessionId,
-                "talkId" to talkId,
-                "codec" to codec,
-                "sampleRate" to sampleRate,
-                "channels" to channels,
-                "packetMs" to packetMs
-            )
+            is SpeakerCommand.SetMcuMicrophoneFeedback -> buildMap {
+                put("enabled", if (enabled) 1 else 0)
+                if (enabled) {
+                    put("sessionId", sessionId)
+                    put("talkId", talkId)
+                    put("codec", codec)
+                    put("sampleRate", sampleRate)
+                    put("channels", channels)
+                    put("packetMs", packetMs)
+                    put("ttlMs", ttlMs.coerceIn(1_000L, 300_000L))
+                }
+            }
             is SpeakerCommand.PlayRecord -> linkedMapOf(
                 "recordId" to recordId,
                 "volume" to volume.coerceIn(0, 100)
@@ -224,6 +250,28 @@ object SpeakerCommandJson {
             )
             is SpeakerCommand.DeleteRecord -> linkedMapOf("recordId" to recordId)
             is SpeakerCommand.UpdateRecord -> linkedMapOf("recordId" to recordId, "name" to name)
+            is SpeakerCommand.SetServoAngle -> linkedMapOf(
+                "angle" to angle.coerceIn(0, 180),
+                "speedDps" to speedDps.coerceIn(1, 360)
+            )
+            is SpeakerCommand.ServoSweepTest -> buildMap {
+                val min = minAngle.coerceIn(0, 180)
+                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
+                put("minAngle", min)
+                put("maxAngle", max)
+                put("speedDps", speedDps.coerceIn(1, 360))
+                put("cycles", cycles.coerceIn(0, 100))
+                put("durationMs", durationMs.coerceIn(0, 5_000))
+            }
+            is SpeakerCommand.ServoStepTest -> buildMap {
+                val min = minAngle.coerceIn(0, 180)
+                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
+                put("minAngle", min)
+                put("maxAngle", max)
+                put("stepAngle", stepAngle.coerceIn(1, max - min))
+                put("speedDps", speedDps.coerceIn(1, 360))
+                put("intervalMs", intervalMs.coerceIn(20, 60_000))
+            }
             else -> emptyMap()
         }
 

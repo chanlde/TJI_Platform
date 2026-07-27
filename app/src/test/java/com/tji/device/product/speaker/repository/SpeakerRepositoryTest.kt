@@ -1,5 +1,6 @@
 package com.tji.device.product.speaker.repository
 
+import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerRecordEvent
 import com.tji.device.product.speaker.model.SpeakerStorageStatus
@@ -9,6 +10,19 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class SpeakerRepositoryTest {
+
+    @Test
+    fun stateUpdateCanMarkPreviouslyOnlineDeviceOffline() = runBlocking {
+        val repo = SpeakerRepo()
+
+        repo.updateOnlineStatus(SERIAL, isOnline = true, timestamp = 1000L)
+        repo.updateState(SpeakerDeviceState(serialNumber = SERIAL, isOnline = false, volume = 60, timestamp = 2000L))
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(60, state.volume)
+        assertEquals(2000L, state.timestamp)
+    }
 
     @Test
     fun firstPageRefreshReplacesStaleDeletedRecord() = runBlocking {
@@ -122,8 +136,98 @@ class SpeakerRepositoryTest {
 
         val status = repo.devices.value.single().storageStatus
         assertEquals(true, status?.ok)
-        assertEquals(1024, status?.totalBytes)
-        assertEquals(512, status?.freeBytes)
+        assertEquals(1024L, status?.totalBytes)
+        assertEquals(512L, status?.freeBytes)
+    }
+
+    @Test
+    fun olderStorageStatusCannotReplaceNewerCapacity() = runBlocking {
+        val repo = SpeakerRepo()
+        repo.updateStorageStatus(
+            serialNumber = SERIAL,
+            status = SpeakerStorageStatus(
+                ok = true,
+                totalBytes = 2048,
+                freeBytes = 1024,
+                recordCount = 4,
+                maxRecords = 32,
+                timestamp = 300
+            )
+        )
+        repo.updateStorageStatus(
+            serialNumber = SERIAL,
+            status = SpeakerStorageStatus(
+                ok = true,
+                totalBytes = 512,
+                freeBytes = 128,
+                recordCount = 1,
+                maxRecords = 8,
+                timestamp = 200
+            )
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(2048L, state.storageStatus?.totalBytes)
+        assertEquals(1024L, state.storageStatus?.freeBytes)
+        assertEquals(300L, state.timestamp)
+    }
+
+    @Test
+    fun olderRecordPageCannotRegressStateOrderingTimestamp() = runBlocking {
+        val repo = SpeakerRepo()
+        repo.updateOnlineStatus(SERIAL, isOnline = true, timestamp = 300)
+
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_1", 1)),
+            offset = 0,
+            limit = 20,
+            total = 1,
+            hasMore = false,
+            timestamp = 200
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(listOf("REC_1"), state.records.map { it.recordId })
+        assertEquals(300L, state.timestamp)
+    }
+
+    @Test
+    fun olderRecordPageCannotRestoreARecordRemovedByNewerEvent() = runBlocking {
+        val repo = SpeakerRepo()
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_DELETED", 1)),
+            offset = 0,
+            limit = 20,
+            total = 1,
+            hasMore = false,
+            timestamp = 100
+        )
+        repo.updateRecordEvent(
+            serialNumber = SERIAL,
+            event = SpeakerRecordEvent(
+                type = "record_deleted",
+                recordId = "REC_DELETED",
+                ok = true,
+                timestamp = 300
+            )
+        )
+
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_DELETED", 1)),
+            offset = 0,
+            limit = 20,
+            total = 1,
+            hasMore = false,
+            timestamp = 200
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(emptyList<String>(), state.records.map { it.recordId })
+        assertEquals(0, state.recordTotal)
+        assertEquals(300L, state.recordListTimestamp)
     }
 
     private fun record(recordId: String, createdMs: Long): SpeakerRecord =

@@ -274,46 +274,4 @@ std::vector<uint8_t> decode_wav_pcm16_mono(
     return resample_mono_samples_for_tts(mono, sample_rate, target_sample_rate);
 }
 
-std::vector<uint8_t> float32_to_pcm16(
-    const float *samples,
-    size_t sample_count,
-    int source_sample_rate,
-    int target_sample_rate
-) {
-    if (samples == nullptr && sample_count > 0) throw std::invalid_argument("samples is null");
-    if (source_sample_rate <= 0 || target_sample_rate <= 0) {
-        throw std::invalid_argument("sample rates must be positive");
-    }
-    if (sample_count == 0) return {};
-    const size_t target_samples = source_sample_rate == target_sample_rate
-        ? sample_count
-        : std::max<size_t>(
-            1,
-            static_cast<size_t>(
-                static_cast<uint64_t>(sample_count) * static_cast<uint64_t>(target_sample_rate) /
-                static_cast<uint64_t>(source_sample_rate)
-            )
-        );
-    std::vector<uint8_t> pcm(target_samples * kBytesPerPcm16Sample);
-    for (size_t index = 0; index < target_samples; ++index) {
-        const double source_position = source_sample_rate == target_sample_rate
-            ? static_cast<double>(index)
-            : static_cast<double>(index) * static_cast<double>(source_sample_rate) /
-                static_cast<double>(target_sample_rate);
-        const auto left = static_cast<size_t>(std::floor(source_position));
-        const size_t clamped_left = std::min(left, sample_count - 1);
-        const size_t right = std::min(clamped_left + 1, sample_count - 1);
-        const double fraction = source_position - static_cast<double>(clamped_left);
-        const double sample =
-            static_cast<double>(samples[clamped_left]) +
-            static_cast<double>(samples[right] - samples[clamped_left]) * fraction;
-        const double clamped = std::clamp(sample, -1.0, 1.0);
-        const int value = clamped < 0.0
-            ? static_cast<int>(std::lround(clamped * 32768.0))
-            : static_cast<int>(std::lround(clamped * 32767.0));
-        put_i16_le(pcm, index, value);
-    }
-    return pcm;
-}
-
 } // namespace tji::speaker

@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerStorageStatus
-import com.tji.device.util.toUserVisibleDeviceMessage
+import com.tji.device.product.speaker.error.toSpeakerDeviceMessage
 import com.tji.device.ui.theme.TjiError
 import com.tji.device.ui.theme.TjiOnline
 
@@ -64,7 +64,7 @@ internal fun StorageCapacityCard(
                 )
                 status?.takeIf { !it.ok }?.let {
                     Text(
-                        text = it.message.toUserVisibleDeviceMessage("容量查询失败"),
+                        text = it.message.toSpeakerDeviceMessage("容量查询失败"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TjiError
                     )
@@ -155,7 +155,7 @@ internal fun RecordEventText(state: SpeakerDeviceState?) {
         "record_playback" -> "播放结果"
         else -> "设备反馈"
     }
-    val message = if (deleteAlreadyGone) "" else event.message.toUserVisibleDeviceMessage("")
+    val message = if (deleteAlreadyGone) "" else event.message.toSpeakerDeviceMessage("")
     SpeakerStatusBadge(
         text = listOf(label, message).filter { it.isNotBlank() }.joinToString(" ").ifBlank { label },
         color = if (event.ok || deleteAlreadyGone) TjiOnline else TjiError

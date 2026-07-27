@@ -1,10 +1,12 @@
 package com.tji.device.product.solarclean.repository
 
 import android.util.Log
+import com.tji.device.BuildConfig
+import com.tji.device.data.model.ProductType
 import com.tji.device.product.solarclean.model.SolarCleanCommand
 import com.tji.device.product.solarclean.model.SolarCleanCommandCode
 import com.tji.device.product.solarclean.mqtt.SolarCleanMqttTopics
-import com.tji.network.MqttManager
+import com.tji.device.service.mqtt.ProductMqttRouter
 import org.json.JSONObject
 
 interface SolarCleanControlRepository {
@@ -17,36 +19,32 @@ class SolarCleanControlRepo : SolarCleanControlRepository {
         val topic = SolarCleanMqttTopics.controlTopic(serialNumber)
         val payload = command.toJson()
         val message = payload.toString()
-        val requestAt = System.currentTimeMillis()
+        val requestAt = if (BuildConfig.DEBUG) System.currentTimeMillis() else 0L
         val msgId = payload.optString("msgId")
         val cmd = payload.optInt("cmd")
         val payloadTs = payload.optLong("ts")
 
-        Log.d(
-            TAG,
-            "SolarClean 控制指令请求发送: topic=$topic, msgId=$msgId, cmd=$cmd, " +
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                TAG,
+                "SolarClean 控制指令请求发送: topic=$topic, msgId=$msgId, cmd=$cmd, " +
                     "requestAt=$requestAt, payloadTs=$payloadTs, delta=${requestAt - payloadTs}ms"
-        )
+            )
+        }
 
-        MqttManager.getInstance().publish(
+        ProductMqttRouter.managerFor(ProductType.SolarClean).publishAwait(
             topic = topic,
             message = message,
             qos = 0,
-            queueWhenDisconnected = false,
-            onSuccess = {
-                Log.d(
-                    TAG,
-                    "SolarClean 控制指令发送成功: topic=$topic, msgId=$msgId, " +
-                            "cost=${System.currentTimeMillis() - requestAt}ms, message=$message"
-                )
-            },
-            onError = { throwable ->
-                Log.e(
-                    TAG,
-                    "SolarClean 控制指令发送失败: msgId=$msgId, cost=${System.currentTimeMillis() - requestAt}ms, ${throwable.message}"
-                )
-            }
-        )
+            queueWhenDisconnected = false
+        ).getOrThrow()
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                TAG,
+                "SolarClean 控制指令发送成功: topic=$topic, msgId=$msgId, " +
+                    "cost=${System.currentTimeMillis() - requestAt}ms, message=$message"
+            )
+        }
     }
 
     private fun SolarCleanCommand.toJson(): JSONObject {
@@ -65,10 +63,10 @@ class SolarCleanControlRepo : SolarCleanControlRepository {
                     put("on", on)
                 }
                 is SolarCleanCommand.PumpPressure -> {
-                    put("percent", percent.coerceIn(0.0, 100.0))
+                    put("percent", percent)
                 }
                 is SolarCleanCommand.SprayAngle -> {
-                    put("amplitudeDeg", amplitudeDeg.coerceIn(0.0, 40.0))
+                    put("amplitudeDeg", amplitudeDeg)
                 }
                 is SolarCleanCommand.ServoSwing -> {
                     put("on", on)
@@ -76,7 +74,7 @@ class SolarCleanControlRepo : SolarCleanControlRepository {
                     amplitude?.let { put("amplitude", it) }
                 }
                 is SolarCleanCommand.SwingSpeed -> {
-                    put("speedPercent", speedPercent.coerceIn(0.0, 100.0))
+                    put("speedPercent", speedPercent)
                 }
                 is SolarCleanCommand.GetDeviceInfo -> {
                     // No extra payload.

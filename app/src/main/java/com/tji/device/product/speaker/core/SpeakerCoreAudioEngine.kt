@@ -75,14 +75,17 @@ object SpeakerCoreAudioEngine {
      */
     fun processPushToTalk(
         pcm16le: ByteArray,
-        toneSettings: SpeakerToneSettings = SpeakerToneSettings()
+        toneSettings: SpeakerToneSettings = SpeakerToneSettings(),
+        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE
     ): ByteArray {
-        SpeakerCoreNative.processPushToTalkOrNull(pcm16le, toneSettings)?.let { processed ->
-            logNative("voice-ptt", "in=${pcm16le.size} out=${processed.size}")
-            return processed
+        if (sampleRate == SpeakerAdpcmPacketizer.SAMPLE_RATE) {
+            SpeakerCoreNative.processPushToTalkOrNull(pcm16le, toneSettings)?.let { processed ->
+                logNative("voice-ptt", "sampleRate=$sampleRate in=${pcm16le.size} out=${processed.size}")
+                return processed
+            }
         }
-        logFallback("voice-ptt", "bytes=${pcm16le.size}")
-        return SpeakerVoiceProcessor.processPushToTalk(pcm16le, toneSettings)
+        logFallback("voice-ptt", "sampleRate=$sampleRate bytes=${pcm16le.size}")
+        return SpeakerVoiceProcessor.processPushToTalk(pcm16le, toneSettings, sampleRate)
     }
 
     /**
@@ -107,18 +110,6 @@ object SpeakerCoreAudioEngine {
         logFallback("voice-playback", "sampleRate=$sampleRate bytes=${pcm16le.size}")
         return SpeakerVoiceProcessor.applyPlaybackTone(pcm16le, toneSettings, sampleRate)
     }
-
-    /**
-     * 创建用于连续 40 ms 麦克风帧的有状态实时喊话处理器。
-     *
-     * 返回对象会保留高通、清晰度增强和自动增益历史，避免实时语音在 UDP 包之间
-     * 忽大忽小或产生咔嗒声。
-     */
-    fun createLiveVoiceProcessor(): LiveVoiceProcessor =
-        LiveVoiceProcessor(
-            nativeProcessor = SpeakerCoreNative.createVoiceProcessorOrNull(),
-            kotlinProcessor = SpeakerVoiceProcessor()
-        )
 
     /**
      * 重采样单声道小端 PCM16。
@@ -235,26 +226,6 @@ object SpeakerCoreAudioEngine {
         return wav.decodeWavPcm16MonoFallback(targetSampleRate)
     }
 
-    /**
-     * 将 Kokoro/sherpa 的浮点采样转成单声道 PCM16。
-     *
-     * @param samples 归一化浮点 PCM，期望范围 -1.0..1.0。
-     * @param sourceSampleRate 模型原始采样率。
-     * @param targetSampleRate 喊话器播放输出采样率。
-     */
-    fun float32ToPcm16(
-        samples: FloatArray,
-        sourceSampleRate: Int,
-        targetSampleRate: Int
-    ): ByteArray {
-        SpeakerCoreNative.float32ToPcm16OrNull(samples, sourceSampleRate, targetSampleRate)?.let { pcm ->
-            logNative("float32-pcm16", "$sourceSampleRate->$targetSampleRate samples=${samples.size} out=${pcm.size}")
-            return pcm
-        }
-        logFallback("float32-pcm16", "$sourceSampleRate->$targetSampleRate samples=${samples.size}")
-        return samples.float32ToPcm16Fallback(sourceSampleRate, targetSampleRate)
-    }
-
     private fun ByteArray.toHadpFile(defaultCodec: SpeakerHadpCodec): SpeakerHadpFile {
         require(size >= HADP_HEADER_BYTES) { "HADP 文件头不完整" }
         require(copyOfRange(0, 4).contentEquals(HADP_MAGIC)) { "HADP magic 无效" }
@@ -301,31 +272,6 @@ object SpeakerCoreAudioEngine {
 
     private fun logFallback(path: String, detail: String) {
         Log.d(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=fallback path=$path $detail")
-    }
-
-    /**
-     * 有状态实时处理器包装。
-     *
-     * 原生处理器存在时优先使用；Kotlin 处理器保留为回退实现，
-     * 确保 JNI 不可用时麦克风流仍然能工作。
-     */
-    class LiveVoiceProcessor internal constructor(
-        private val nativeProcessor: SpeakerCoreNative.VoiceProcessor?,
-        private val kotlinProcessor: SpeakerVoiceProcessor
-    ) {
-        fun processFrame(
-            pcm16le: ByteArray,
-            toneSettings: SpeakerToneSettings = SpeakerToneSettings()
-        ): ByteArray {
-            nativeProcessor?.processFrameOrNull(pcm16le, toneSettings)?.let { processed ->
-                return processed
-            }
-            return kotlinProcessor.processFrame(pcm16le, toneSettings)
-        }
-
-        fun close() {
-            nativeProcessor?.close()
-        }
     }
 
     private const val HADP_HEADER_BYTES = 128
@@ -484,43 +430,6 @@ object SpeakerCoreAudioEngine {
         return output
     }
 
-    private fun FloatArray.float32ToPcm16Fallback(sourceSampleRate: Int, targetSampleRate: Int): ByteArray {
-        require(sourceSampleRate > 0 && targetSampleRate > 0) { "采样率无效: $sourceSampleRate -> $targetSampleRate" }
-        if (isEmpty()) return ByteArray(0)
-        val outputSamples = if (sourceSampleRate == targetSampleRate) {
-            this
-        } else {
-            resampleLinear(sourceSampleRate, targetSampleRate)
-        }
-        val pcm = ByteArray(outputSamples.size * BYTES_PER_PCM16_SAMPLE)
-        for (i in outputSamples.indices) {
-            val clamped = outputSamples[i].coerceIn(-1f, 1f)
-            val value = if (clamped < 0f) {
-                (clamped * PCM_I16_NEGATIVE_SCALE).roundToInt()
-            } else {
-                (clamped * PCM_I16_POSITIVE_SCALE).roundToInt()
-            }.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
-            val offset = i * BYTES_PER_PCM16_SAMPLE
-            pcm[offset] = (value and 0xFF).toByte()
-            pcm[offset + 1] = ((value shr 8) and 0xFF).toByte()
-        }
-        return pcm
-    }
-
-    private fun FloatArray.resampleLinear(sourceRate: Int, targetRate: Int): FloatArray {
-        if (sourceRate == targetRate) return this
-        val outSize = (size.toLong() * targetRate / sourceRate).toInt().coerceAtLeast(1)
-        val output = FloatArray(outSize)
-        for (i in output.indices) {
-            val sourcePos = i.toDouble() * sourceRate.toDouble() / targetRate.toDouble()
-            val base = sourcePos.toInt().coerceIn(0, lastIndex)
-            val next = (base + 1).coerceAtMost(lastIndex)
-            val fraction = sourcePos - base
-            output[i] = (this[base] + (this[next] - this[base]) * fraction).toFloat()
-        }
-        return output
-    }
-
     private fun ByteArray.writeLeI16(offset: Int, value: Int) {
         val clamped = value.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
         this[offset] = (clamped and 0xFF).toByte()
@@ -536,6 +445,4 @@ object SpeakerCoreAudioEngine {
     private fun ByteArray.readLe32(offset: Int): Int =
         ByteBuffer.wrap(this, offset, 4).order(ByteOrder.LITTLE_ENDIAN).int
 
-    private const val PCM_I16_NEGATIVE_SCALE = 32768f
-    private const val PCM_I16_POSITIVE_SCALE = 32767f
 }

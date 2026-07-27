@@ -19,13 +19,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.tji.device.ui.icon.common.InfoCircle
-import com.tji.device.product.firebucket.model.Switch
+import com.tji.device.product.firebucket.model.FireBucketSwitchState
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
 
 @Composable
 fun DeviceInfoButton(
-    switch: Switch,
+    switch: FireBucketSwitchState,
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
@@ -53,7 +53,7 @@ fun DeviceInfoButton(
 }
 @Composable
 private fun DeviceInfoDialog(
-    switch: Switch,
+    switch: FireBucketSwitchState,
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -131,7 +131,7 @@ private fun DeviceInfoItem(
 @Preview(showBackground = true)
 @Composable
 fun DeviceInfoExample() {
-    val sampleSwitch = Switch(
+    val sampleSwitch = FireBucketSwitchState(
         serialNumber = "HD20240101002",
         deviceName = "Servo-Controller-01",
         deviceType = "HydroSwitch",
@@ -152,7 +152,7 @@ fun DeviceInfoExample() {
 @Preview(showBackground = true)
 @Composable
 fun Example() {
-    val sampleSwitch = Switch(
+    val sampleSwitch = FireBucketSwitchState(
         serialNumber = "HD20240101002",
         deviceName = "Servo-Controller-01",
         deviceType = "HydroSwitch",

@@ -334,20 +334,6 @@ int tji_sc_decode_wav_pcm16_mono(
     TjiScBuffer *out_pcm16le
 );
 
-/**
- * 将归一化浮点采样转成单声道小端 PCM16。
- *
- * 采样值会夹到 -1.0..1.0。如果源采样率和目标采样率不同，
- * 使用线性插值重采样。
- */
-int tji_sc_float32_to_pcm16(
-    const float *samples,
-    size_t sample_count,
-    int source_sample_rate,
-    int target_sample_rate,
-    TjiScBuffer *out_pcm16le
-);
-
 /** 解析 MQTT 状态负载，并返回归一化 UTF-8 JSON。 */
 int tji_sc_parse_mqtt_state_json(
     const char *serial_number,

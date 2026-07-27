@@ -18,11 +18,13 @@ class GlassBreakerMqttInbound(
         isRetained: Boolean = false
     ) {
         when (eventType) {
-            "online" -> repository.updateOnlineStatus(
-                serialNumber = serialNumber,
-                isOnline = true,
-                timestamp = json.optNullableLong("ts")
-            )
+            "online" -> if (!isRetained) {
+                repository.updateOnlineStatus(
+                    serialNumber = serialNumber,
+                    isOnline = true,
+                    timestamp = json.optNullableLong("ts")
+                )
+            }
             "offline" -> repository.updateOnlineStatus(
                 serialNumber = serialNumber,
                 isOnline = false,
@@ -43,17 +45,23 @@ class GlassBreakerMqttInbound(
     ): GlassBreakerState {
         val payload = json.payloadObject()
         val deviceId = json.optFirstString(payload, "deviceId", "device_id").ifBlank { serialNumber }
+        val current = repository.devices.value.firstOrNull { it.serialNumber == deviceId }
         val selectedChannel = json.optFirstInt(payload, "selectedChannel", "selected_channel")
             ?.takeIf { it in 1..4 }
         return GlassBreakerState(
             serialNumber = deviceId,
             name = json.optFirstString(payload, "name", "product").ifBlank { null },
             isOnline = false,
-            lockState = json.optFirstString(payload, "lockState", "lock_state").ifBlank { GlassBreakerLockState.Locked },
-            selectedChannel = selectedChannel,
-            laserEnabled = json.optFirstBoolean(payload, "laserEnabled", "laser_enabled") ?: false,
-            fireState = json.optFirstString(payload, "fireState", "fire_state").ifBlank { GlassBreakerFireState.Idle },
-            armRemainingMs = json.optFirstLong(payload, "armRemainingMs", "arm_remaining_ms"),
+            lockState = json.optFirstString(payload, "lockState", "lock_state")
+                .ifBlank { current?.lockState ?: GlassBreakerLockState.Locked },
+            selectedChannel = selectedChannel ?: current?.selectedChannel,
+            laserEnabled = json.optFirstBoolean(payload, "laserEnabled", "laser_enabled")
+                ?: current?.laserEnabled
+                ?: false,
+            fireState = json.optFirstString(payload, "fireState", "fire_state")
+                .ifBlank { current?.fireState ?: GlassBreakerFireState.Idle },
+            armRemainingMs = json.optFirstLong(payload, "armRemainingMs", "arm_remaining_ms")
+                ?: current?.armRemainingMs,
             batteryPercent = json.optFirstInt(payload, "battery", "batteryPercent", "battery_percent"),
             hardwareVersion = json.optFirstString(payload, "hardwareVersion", "hardware_version", "hardware").ifBlank { null },
             firmwareVersion = json.optFirstString(payload, "firmwareVersion", "firmware_version", "version").ifBlank { null },
@@ -95,8 +103,8 @@ private fun JSONObject.optFirstString(payload: JSONObject, vararg keys: String):
 private fun JSONObject.optFirstBoolean(payload: JSONObject, vararg keys: String): Boolean? =
     keys.firstNotNullOfOrNull { key ->
         when {
-            has(key) && !isNull(key) -> optBoolean(key)
-            payload.has(key) && !payload.isNull(key) -> payload.optBoolean(key)
+            has(key) && !isNull(key) -> opt(key).asBooleanOrNull()
+            payload.has(key) && !payload.isNull(key) -> payload.opt(key).asBooleanOrNull()
             else -> null
         }
     }
@@ -104,8 +112,8 @@ private fun JSONObject.optFirstBoolean(payload: JSONObject, vararg keys: String)
 private fun JSONObject.optFirstInt(payload: JSONObject, vararg keys: String): Int? =
     keys.firstNotNullOfOrNull { key ->
         when {
-            has(key) && !isNull(key) -> optInt(key)
-            payload.has(key) && !payload.isNull(key) -> payload.optInt(key)
+            has(key) && !isNull(key) -> opt(key).asIntOrNull()
+            payload.has(key) && !payload.isNull(key) -> payload.opt(key).asIntOrNull()
             else -> null
         }
     }
@@ -113,11 +121,33 @@ private fun JSONObject.optFirstInt(payload: JSONObject, vararg keys: String): In
 private fun JSONObject.optFirstLong(payload: JSONObject, vararg keys: String): Long? =
     keys.firstNotNullOfOrNull { key ->
         when {
-            has(key) && !isNull(key) -> optLong(key)
-            payload.has(key) && !payload.isNull(key) -> payload.optLong(key)
+            has(key) && !isNull(key) -> opt(key).asLongOrNull()
+            payload.has(key) && !payload.isNull(key) -> payload.opt(key).asLongOrNull()
             else -> null
         }
     }
 
 private fun JSONObject.optNullableLong(name: String): Long? =
-    if (has(name) && !isNull(name)) optLong(name) else null
+    if (has(name) && !isNull(name)) opt(name).asLongOrNull() else null
+
+private fun Any?.asBooleanOrNull(): Boolean? = when (this) {
+    is Boolean -> this
+    is String -> when (trim().lowercase()) {
+        "true" -> true
+        "false" -> false
+        else -> null
+    }
+    else -> null
+}
+
+private fun Any?.asIntOrNull(): Int? = when (this) {
+    is Number -> toInt()
+    is String -> runCatching { trim().toInt() }.getOrNull()
+    else -> null
+}
+
+private fun Any?.asLongOrNull(): Long? = when (this) {
+    is Number -> toLong()
+    is String -> runCatching { trim().toLong() }.getOrNull()
+    else -> null
+}

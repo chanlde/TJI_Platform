@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -79,8 +80,8 @@ internal val Amber = PayloadColors.Warning
 @Composable
 fun RadioDetectionControlScreen(
     device: BoundAccountDevice,
-    onBack: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null
 ) {
     val fallbackState = remember(device.serialNumber, device.name) {
         RadioDetectionSampleData.uiState(
@@ -104,17 +105,18 @@ fun RadioDetectionControlScreen(
     val state = remember(fallbackState, liveDevice) {
         liveDevice?.toUiState(fallbackState) ?: fallbackState
     }
+    val visibleRgbFeedback = rgbFeedback?.takeIf { it.serialNumber == device.serialNumber }
     var selectedTab by remember { mutableStateOf(RadioDetectionTab.Monitor) }
     var sheetExpanded by remember { mutableStateOf(false) }
     var sheetHidden by remember { mutableStateOf(false) }
     var monitorMode by remember { mutableStateOf(RadioMonitorMode.Map) }
     var selectedTarget by remember { mutableStateOf<RadioDetectionTarget?>(null) }
     var focusedTargetId by remember { mutableStateOf<String?>(null) }
-    var focusTargetSignal by remember { mutableStateOf(0) }
+    var focusTargetSignal by remember { mutableIntStateOf(0) }
     var showFilter by remember { mutableStateOf(false) }
     var showRgbSettings by remember { mutableStateOf(false) }
-    var statusFilter by remember { mutableStateOf<RadioListStatus?>(null) }
-    var confirmText by remember { mutableStateOf<String?>(null) }
+    var targetFilter by remember { mutableStateOf(RadioTargetFilter()) }
+    var noticeText by remember { mutableStateOf<String?>(null) }
     val focusTargetOnMap: (RadioDetectionTarget) -> Unit = { target ->
         focusedTargetId = target.id
         focusTargetSignal += 1
@@ -137,7 +139,7 @@ fun RadioDetectionControlScreen(
                     mode = monitorMode,
                     focusedTargetId = focusedTargetId,
                     focusTargetSignal = focusTargetSignal,
-                    statusFilter = statusFilter,
+                    targetFilter = targetFilter,
                     onHideSheet = {
                         sheetHidden = true
                         sheetExpanded = false
@@ -152,7 +154,7 @@ fun RadioDetectionControlScreen(
                     onOpenFilter = { showFilter = true },
                     onReplayLatestRid = {
                         val replayed = viewModel?.replayLatestRid(state.deviceSerial) == true
-                        confirmText = if (replayed) {
+                        noticeText = if (replayed) {
                             "已回放最近一条真实 RID 数据"
                         } else {
                             "暂无可回放的真实 RID 数据"
@@ -163,7 +165,9 @@ fun RadioDetectionControlScreen(
                         focusTargetOnMap(it)
                         selectedTarget = it
                     },
-                    onTargetAction = { confirmText = "确认将 ${it.name} 加入处置队列？" },
+                    onTargetAction = {
+                        noticeText = it.primaryAction().unavailableMessage(it.name)
+                    },
                     onOpenRgbSettings = { showRgbSettings = true },
                     onBack = onBack,
                     modifier = Modifier.weight(1f)
@@ -194,9 +198,12 @@ fun RadioDetectionControlScreen(
         if (showFilter) {
             Scrim { showFilter = false }
             FilterSheet(
-                selectedStatus = statusFilter,
-                onStatusSelected = { statusFilter = it },
-                onReset = { statusFilter = null },
+                appliedFilter = targetFilter,
+                availableTypes = state.targets.map { it.type }.distinct(),
+                onApply = {
+                    targetFilter = it
+                    showFilter = false
+                },
                 onDismiss = { showFilter = false },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
@@ -207,7 +214,7 @@ fun RadioDetectionControlScreen(
             RadioRgbControlSheet(
                 deviceSerial = state.deviceSerial,
                 latestAck = state.rgbAck,
-                feedback = rgbFeedback,
+                feedback = visibleRgbFeedback,
                 onPreview = { mode, color, brightness, speed ->
                     viewModel?.sendRgbCommand(
                         serialNumber = state.deviceSerial,
@@ -238,16 +245,27 @@ fun RadioDetectionControlScreen(
             TargetDetailSheet(
                 target = target,
                 onDismiss = { selectedTarget = null },
-                onConfirm = { confirmText = it },
+                onLocate = {
+                    selectedTarget = null
+                    focusTargetOnMap(target)
+                },
+                onViewTracks = {
+                    selectedTarget = null
+                    selectedTab = RadioDetectionTab.Tracks
+                    sheetExpanded = false
+                    sheetHidden = false
+                    monitorMode = RadioMonitorMode.Map
+                },
+                onUnavailableAction = { noticeText = it },
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
 
-        confirmText?.let { message ->
-            Scrim { confirmText = null }
-            ConfirmDialog(
+        noticeText?.let { message ->
+            Scrim { noticeText = null }
+            NoticeDialog(
                 message = message,
-                onDismiss = { confirmText = null },
+                onDismiss = { noticeText = null },
                 modifier = Modifier.align(Alignment.Center)
             )
         }
@@ -274,7 +292,7 @@ private fun MonitorScreen(
     mode: RadioMonitorMode,
     focusedTargetId: String?,
     focusTargetSignal: Int,
-    statusFilter: RadioListStatus?,
+    targetFilter: RadioTargetFilter,
     onHideSheet: () -> Unit,
     onShowSheet: () -> Unit,
     onModeChange: (RadioMonitorMode) -> Unit,
@@ -319,7 +337,7 @@ private fun MonitorScreen(
                 TargetSheet(
                     state = state,
                     expanded = expanded || mode == RadioMonitorMode.List,
-                    statusFilter = statusFilter,
+                    targetFilter = targetFilter,
                     onHide = onHideSheet,
                     onOpenFilter = onOpenFilter,
                     onReplayLatestRid = onReplayLatestRid,
@@ -510,9 +528,11 @@ private fun RadioRgbControlSheet(
 ) {
     var mode by remember { mutableStateOf(RadioRgbMode.Strobe) }
     var color by remember { mutableStateOf(RadioRgbColor.RedBlue) }
-    var brightness by remember { mutableStateOf(80) }
-    var speed by remember { mutableStateOf(50) }
-    val availableColors = RadioRgbColor.values().filter { it.supportedBy(mode) }
+    var brightness by remember { mutableIntStateOf(80) }
+    var speed by remember { mutableIntStateOf(50) }
+    val availableColors = remember(mode) {
+        RadioRgbColor.entries.filter { it.supportedBy(mode) }
+    }
     fun preview(
         nextMode: RadioRgbMode = mode,
         nextColor: RadioRgbColor = color,
@@ -620,22 +640,15 @@ private fun RadioRgbControlSheet(
             )
         }
 
-        val ackMatchesFeedback = latestAck != null && feedback != null && latestAck.msgId == feedback.msgId
-        val statusText = when {
-            ackMatchesFeedback -> latestAck!!.statusText
-            feedback != null -> feedback.text
-            latestAck != null -> "最近确认：${latestAck.statusText}"
-            else -> "点击模式、颜色或数值会立即预览；保存默认才会写入设备配置。"
-        }
-        val statusColor = when {
-            ackMatchesFeedback && latestAck!!.ok -> Green
-            ackMatchesFeedback && !latestAck!!.ok -> Red
-            feedback?.success == false -> Red
-            feedback?.pending == true -> Blue
-            else -> TextMuted
+        val status = resolveRadioRgbStatus(latestAck, feedback)
+        val statusColor = when (status.tone) {
+            RadioRgbStatusTone.Positive -> Green
+            RadioRgbStatusTone.Negative -> Red
+            RadioRgbStatusTone.Pending -> Blue
+            RadioRgbStatusTone.Neutral -> TextMuted
         }
         Text(
-            text = statusText,
+            text = status.text,
             color = statusColor,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier
@@ -714,12 +727,13 @@ private fun RadioRgbValueStepper(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FilterSheet(
-    selectedStatus: RadioListStatus?,
-    onStatusSelected: (RadioListStatus?) -> Unit,
-    onReset: () -> Unit,
+    appliedFilter: RadioTargetFilter,
+    availableTypes: List<String>,
+    onApply: (RadioTargetFilter) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var draftFilter by remember(appliedFilter) { mutableStateOf(appliedFilter) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -733,32 +747,42 @@ private fun FilterSheet(
             Text("筛选目标", color = TextPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             OutlineAction("关闭") { onDismiss() }
         }
-        FilterGroup("类型", listOf("全部", "无人机", "飞手", "民航", "船舶"))
-        Text("名单状态", color = TextMuted, style = MaterialTheme.typography.labelMedium)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusChip("全部", selectedStatus == null, Blue)
-            RadioListStatus.values().forEach { status ->
-                Box(modifier = Modifier.noRippleClickable { onStatusSelected(status) }) {
-                    StatusChip(status.label, selectedStatus == status, status.statusColor())
-                }
-            }
-        }
-        FilterGroup("信号状态", RadioSignalLevel.values().map { it.label })
-        FilterGroup("在线状态", listOf("在线", "离线"))
+        FilterGroup(
+            title = "类型",
+            options = availableTypes,
+            selected = draftFilter.type,
+            label = { it },
+            onSelected = { draftFilter = draftFilter.copy(type = it) }
+        )
+        FilterGroup(
+            title = "名单状态",
+            options = RadioListStatus.values().toList(),
+            selected = draftFilter.listStatus,
+            label = { it.label },
+            accent = { it.statusColor() },
+            onSelected = { draftFilter = draftFilter.copy(listStatus = it) }
+        )
+        FilterGroup(
+            title = "信号状态",
+            options = RadioSignalLevel.values().toList(),
+            selected = draftFilter.signalLevel,
+            label = { it.label },
+            onSelected = { draftFilter = draftFilter.copy(signalLevel = it) }
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PayloadActionButton(
                 text = "重置",
                 enabled = true,
                 color = Blue,
                 soft = true,
-                onClick = onReset,
+                onClick = { draftFilter = RadioTargetFilter() },
                 modifier = Modifier.weight(1f)
             )
             PayloadActionButton(
                 text = "确认筛选",
                 enabled = true,
                 color = Blue,
-                onClick = onDismiss,
+                onClick = { onApply(draftFilter) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -767,12 +791,24 @@ private fun FilterSheet(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FilterGroup(title: String, values: List<String>) {
+private fun <T> FilterGroup(
+    title: String,
+    options: List<T>,
+    selected: T?,
+    label: (T) -> String,
+    accent: (T) -> Color = { Blue },
+    onSelected: (T?) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, color = TextMuted, style = MaterialTheme.typography.labelMedium)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            values.forEachIndexed { index, value ->
-                StatusChip(value, index == 0, if (index == 0) Blue else TextMuted)
+            Box(modifier = Modifier.noRippleClickable { onSelected(null) }) {
+                StatusChip("全部", selected == null, Blue)
+            }
+            options.forEach { option ->
+                Box(modifier = Modifier.noRippleClickable { onSelected(option) }) {
+                    StatusChip(label(option), selected == option, accent(option))
+                }
             }
         }
     }
@@ -782,7 +818,9 @@ private fun FilterGroup(title: String, values: List<String>) {
 private fun TargetDetailSheet(
     target: RadioDetectionTarget,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onLocate: () -> Unit,
+    onViewTracks: () -> Unit,
+    onUnavailableAction: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -825,12 +863,16 @@ private fun TargetDetailSheet(
             DetailLine("原始数据摘要", "远程识别持续广播，最近更新时间 ${target.lastSeenText}")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlineAction("地图定位", Modifier.weight(1f)) { onConfirm("地图已定位到 ${target.name}") }
-            OutlineAction("查看轨迹", Modifier.weight(1f)) { onConfirm("已打开 ${target.name} 的轨迹记录") }
+            OutlineAction("地图定位", Modifier.weight(1f), onLocate)
+            OutlineAction("查看轨迹", Modifier.weight(1f), onViewTracks)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlineAction("加入黑名单", Modifier.weight(1f)) { onConfirm("确认将 ${target.name} 加入黑名单？") }
-            SolidAction("生成执法记录", Modifier.weight(1f)) { onConfirm("确认生成 ${target.name} 的执法记录？") }
+            OutlineAction("加入黑名单", Modifier.weight(1f)) {
+                onUnavailableAction(blacklistUnavailableMessage(target.name))
+            }
+            SolidAction("生成执法记录", Modifier.weight(1f)) {
+                onUnavailableAction(enforcementRecordUnavailableMessage(target.name))
+            }
         }
         OutlineAction("关闭详情", Modifier.fillMaxWidth(), onDismiss)
     }
@@ -845,7 +887,7 @@ private fun DetailLine(label: String, value: String) {
 }
 
 @Composable
-private fun ConfirmDialog(
+private fun NoticeDialog(
     message: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
@@ -857,12 +899,9 @@ private fun ConfirmDialog(
         border = androidx.compose.foundation.BorderStroke(1.dp, Border)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("二次确认", color = TextPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("操作提示", color = TextPrimary, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             Text(message, color = TextMuted, style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlineAction("返回", Modifier.weight(1f), onDismiss)
-                SolidAction("确认", Modifier.weight(1f), onDismiss)
-            }
+            SolidAction("知道了", Modifier.fillMaxWidth(), onDismiss)
         }
     }
 }

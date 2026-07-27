@@ -516,24 +516,6 @@ int tji_sc_decode_wav_pcm16_mono(
     }
 }
 
-int tji_sc_float32_to_pcm16(
-    const float *samples,
-    size_t sample_count,
-    int source_sample_rate,
-    int target_sample_rate,
-    TjiScBuffer *out_pcm16le
-) {
-    if (out_pcm16le == nullptr) return TJI_SC_INVALID_ARGUMENT;
-    try {
-        return copy_to_c_buffer(
-            tji::speaker::float32_to_pcm16(samples, sample_count, source_sample_rate, target_sample_rate),
-            out_pcm16le
-        );
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
 int tji_sc_parse_mqtt_state_json(
     const char *serial_number,
     const char *payload_json,

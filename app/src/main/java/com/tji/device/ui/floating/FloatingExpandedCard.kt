@@ -81,6 +81,9 @@ fun ExpandedCard(
     val solarCleanFeedback by solarCleanViewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SolarCleanCommandFeedback()) }
     }
+    val visibleSolarCleanFeedback = solarCleanFeedback.takeIf {
+        it.serialNumber == null || it.serialNumber == link?.serialNumber
+    } ?: SolarCleanCommandFeedback()
 
     Box(
         modifier = Modifier
@@ -101,7 +104,7 @@ fun ExpandedCard(
             FloatingWindowHeader(
                 productType = productType,
                 link = link,
-                commandFeedback = if (productType == ProductType.SolarClean) solarCleanFeedback else null,
+                commandFeedback = if (productType == ProductType.SolarClean) visibleSolarCleanFeedback else null,
                 onMinimize = onMinimize,
                 onClose = onClose
             )
@@ -118,7 +121,7 @@ fun ExpandedCard(
                 ProductType.SolarClean -> SolarCleanFloatingPanel(link = link)
                 ProductType.DropperSixStage -> DropperSixStageFloatingPanel(link = link)
                 ProductType.RadioDetection -> EmptyProductPanel(message = "无线电检测暂不提供悬浮窗快捷控制")
-                ProductType.Speaker -> EmptyProductPanel(message = "喊话器请在 App 内使用实时喊话")
+                ProductType.Speaker -> EmptyProductPanel(message = "喊话器请在 App 内使用录音喊话和设备监听")
                 ProductType.BreakWindowProjectile -> EmptyProductPanel(message = "破窗弹暂不提供悬浮窗快捷控制")
                 ProductType.Searchlight -> EmptyProductPanel(message = "探照灯暂不提供悬浮窗快捷控制")
             }

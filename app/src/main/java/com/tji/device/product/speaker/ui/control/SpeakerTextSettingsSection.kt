@@ -14,14 +14,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerAudioQuality
-import com.tji.device.product.speaker.audio.SpeakerKokoroTtsSettings
-import com.tji.device.product.speaker.audio.SpeakerKokoroVoice
 import com.tji.device.product.speaker.audio.SpeakerLimiterProtection
 import com.tji.device.product.speaker.audio.SpeakerToneSettings
 import com.tji.device.product.speaker.audio.SpeakerTonePreset
-import com.tji.device.product.speaker.audio.SpeakerTtsEngine
 import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
-import com.tji.device.product.speaker.audio.customerLabel
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkState
 import com.tji.device.ui.components.TjiControlSlider
@@ -33,11 +29,16 @@ internal fun SpeakerOutputQualityCard(
     enabled: Boolean,
     onSelect: (SpeakerAudioQuality) -> Unit
 ) {
-    SpeakerCard(title = "输出音质") {
+    SpeakerCard(title = "录音与语音音质") {
         AudioQualitySelector(
             selected = selected,
             enabled = enabled,
             onSelect = onSelect
+        )
+        Text(
+            text = "当前 ${selected.sampleRate / 1_000} kHz；录音采集、处理和文件输出保持一致",
+            style = MaterialTheme.typography.bodySmall,
+            color = SpeakerMuted
         )
     }
 }
@@ -177,16 +178,11 @@ internal fun SpeakerBuzzerCard(
 @Composable
 internal fun SpeakerTextSpeechCard(
     text: String,
-    ttsEngine: SpeakerTtsEngine,
-    kokoroTtsSettings: SpeakerKokoroTtsSettings,
     ttsVoicePreset: SpeakerTtsVoicePreset,
     availableTtsVoicePresets: List<SpeakerTtsVoicePreset>,
     talkState: SpeakerTalkState,
     enabled: Boolean,
     onTextChange: (String) -> Unit,
-    onTtsEngineSelect: (SpeakerTtsEngine) -> Unit,
-    onKokoroVoiceSelect: (SpeakerKokoroVoice) -> Unit,
-    onKokoroSpeedChange: (Float) -> Unit,
     onTtsVoicePresetSelect: (SpeakerTtsVoicePreset) -> Unit,
     onSpeak: () -> Unit
 ) {
@@ -198,29 +194,12 @@ internal fun SpeakerTextSpeechCard(
             minLines = 5,
             label = { Text("喊话内容") }
         )
-        TtsEngineSelector(
-            selected = ttsEngine,
+        TtsVoicePresetSelector(
+            selected = ttsVoicePreset,
+            presets = availableTtsVoicePresets,
             enabled = enabled && talkState.mode != SpeakerTalkMode.Tts,
-            onSelect = onTtsEngineSelect
+            onSelect = onTtsVoicePresetSelect
         )
-        if (ttsEngine == SpeakerTtsEngine.LocalKokoro) {
-            KokoroVoiceSelector(
-                selected = kokoroTtsSettings.voice,
-                enabled = enabled && talkState.mode != SpeakerTalkMode.Tts,
-                onSelect = onKokoroVoiceSelect
-            )
-            KokoroSpeedSlider(
-                value = kokoroTtsSettings.speed,
-                onValueChange = onKokoroSpeedChange
-            )
-        } else {
-            TtsVoicePresetSelector(
-                selected = ttsVoicePreset,
-                presets = availableTtsVoicePresets,
-                enabled = enabled && talkState.mode != SpeakerTalkMode.Tts,
-                onSelect = onTtsVoicePresetSelect
-            )
-        }
         TalkStatus(talkState)
         SpeakerActionButton(
             text = "播放",
@@ -258,31 +237,6 @@ private fun AudioQualitySelector(
 }
 
 @Composable
-private fun TtsEngineSelector(
-    selected: SpeakerTtsEngine,
-    enabled: Boolean,
-    onSelect: (SpeakerTtsEngine) -> Unit
-) {
-    Text(
-        text = "语音来源",
-        style = MaterialTheme.typography.bodyMedium,
-        color = SpeakerMuted
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        SpeakerAudioConfig.Tts.AVAILABLE_ENGINES.forEach { engine ->
-            SpeakerActionButton(
-                text = engine.label,
-                enabled = enabled,
-                color = if (engine == selected) SpeakerWarning else SpeakerAccent,
-                soft = engine != selected,
-                onClick = { onSelect(engine) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
 private fun ToneSlider(
     label: String,
     value: Float,
@@ -312,72 +266,6 @@ private fun ToneSlider(
     )
 }
 
-@Composable
-private fun KokoroVoiceSelector(
-    selected: SpeakerKokoroVoice,
-    enabled: Boolean,
-    onSelect: (SpeakerKokoroVoice) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        listOf("女声", "男声").forEach { gender ->
-            Text(
-                text = gender,
-                style = MaterialTheme.typography.bodyMedium,
-                color = SpeakerMuted
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                SpeakerKokoroVoice.entries
-                    .filter { it.gender == gender }
-                    .forEach { voice ->
-                        SpeakerActionButton(
-                            text = voice.customerLabel(),
-                            enabled = enabled,
-                            color = if (voice == selected) SpeakerWarning else SpeakerAccent,
-                            soft = voice != selected,
-                            onClick = { onSelect(voice) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-            }
-        }
-    }
-}
-
-@Composable
-private fun KokoroSpeedSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit
-) {
-    Row(
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "语速",
-            style = MaterialTheme.typography.bodyMedium,
-            color = SpeakerFg
-        )
-        Text(
-            text = "%.2f".format(value),
-            style = MaterialTheme.typography.bodyMedium,
-            color = SpeakerMuted
-        )
-    }
-    TjiControlSlider(
-        value = value,
-        onValueChange = {
-            onValueChange(
-                it.coerceIn(
-                    SpeakerAudioConfig.Tts.KOKORO_MIN_SPEED,
-                    SpeakerAudioConfig.Tts.KOKORO_MAX_SPEED
-                )
-            )
-        },
-        valueRange = SpeakerAudioConfig.Tts.KOKORO_MIN_SPEED..SpeakerAudioConfig.Tts.KOKORO_MAX_SPEED,
-        modifier = Modifier.fillMaxWidth()
-    )
-}
 
 @Composable
 private fun TtsVoicePresetSelector(

@@ -103,6 +103,9 @@ object ProductOtaMqttParser {
         )
     }
 
+    fun parseTimestamp(json: JSONObject): Long? =
+        json.optFirstLong("ts", "timestamp")
+
     private fun JSONObject.hasAny(vararg keys: String): Boolean {
         val payload = payloadObject()
         return keys.any { has(it) || payload.has(it) }
@@ -121,8 +124,8 @@ object ProductOtaMqttParser {
         val payload = payloadObject()
         return keys.firstNotNullOfOrNull { key ->
             when {
-                has(key) -> optInt(key)
-                payload.has(key) -> payload.optInt(key)
+                has(key) -> opt(key).toIntOrNull()
+                payload.has(key) -> payload.opt(key).toIntOrNull()
                 else -> null
             }
         }
@@ -132,8 +135,8 @@ object ProductOtaMqttParser {
         val payload = payloadObject()
         return keys.firstNotNullOfOrNull { key ->
             when {
-                has(key) -> optLong(key)
-                payload.has(key) -> payload.optLong(key)
+                has(key) -> opt(key).toLongOrNull()
+                payload.has(key) -> payload.opt(key).toLongOrNull()
                 else -> null
             }
         }
@@ -159,6 +162,18 @@ object ProductOtaMqttParser {
         } ?: return null
         val percent = if (number in 0.0..1.0) number * 100 else number
         return percent.roundToInt().coerceIn(0, 100)
+    }
+
+    private fun Any?.toIntOrNull(): Int? = when (this) {
+        is Number -> toInt()
+        is String -> runCatching { trim().toInt() }.getOrNull()
+        else -> null
+    }
+
+    private fun Any?.toLongOrNull(): Long? = when (this) {
+        is Number -> toLong()
+        is String -> runCatching { trim().toLong() }.getOrNull()
+        else -> null
     }
 
     private fun JSONObject.payloadObject(): JSONObject {

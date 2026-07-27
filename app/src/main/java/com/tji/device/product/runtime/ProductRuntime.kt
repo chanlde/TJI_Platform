@@ -32,10 +32,24 @@ interface ProductRuntimeController {
 class ProductRuntimeRegistry(
     controllers: List<ProductRuntimeController>
 ) {
-    private val controllerByType = controllers.associateBy { it.productType }
+    private val controllerByType = controllers
+        .groupBy { it.productType }
+        .also { grouped ->
+            val duplicates = grouped.filterValues { it.size > 1 }.keys
+            require(duplicates.isEmpty()) {
+                "Duplicate runtime controller registration for: ${duplicates.joinToString()}"
+            }
+        }
+        .mapValues { (_, registeredControllers) -> registeredControllers.single() }
 
     val deviceFlows: List<Flow<List<ProductDeviceRuntimeSnapshot>>> =
         controllerByType.values.map { it.devices }
+
+    fun deviceFlowsFor(productTypes: Set<ProductType>): List<Flow<List<ProductDeviceRuntimeSnapshot>>> =
+        controllerByType
+            .filterKeys { it in productTypes }
+            .values
+            .map { it.devices }
 
     fun clearAll() {
         controllerByType.values.forEach { it.clear() }

@@ -6,6 +6,8 @@ import com.tji.device.product.solarclean.model.SolarCleanDeviceInfo
 import com.tji.device.product.solarclean.model.SolarCleanDeviceState
 import com.tji.device.product.solarclean.model.SolarCleanEvent
 import com.tji.device.product.solarclean.model.SolarCleanOtaStatus
+import com.tji.device.product.common.isOlderDeviceTimestamp
+import com.tji.device.product.common.mergeDeviceTimestamp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,9 +17,19 @@ interface SolarCleanRepository {
     val devices: StateFlow<List<SolarCleanDeviceState>>
     val controlSettings: StateFlow<Map<String, SolarCleanControlSettings>>
 
-    suspend fun updateDeviceState(state: SolarCleanDeviceState)
+    /**
+     * 合并一帧设备状态。
+     *
+     * @return `true` 表示该帧未发生同一时钟域内的时间回退，调用方可据此刷新在线超时。
+     */
+    suspend fun updateDeviceState(state: SolarCleanDeviceState): Boolean
 
-    suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?)
+    /**
+     * 应用生命周期状态。
+     *
+     * @return `false` 表示消息已过期，调用方不应取消或刷新当前在线超时。
+     */
+    suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?): Boolean
 
     suspend fun updateDeviceInfo(serialNumber: String, info: SolarCleanDeviceInfo)
 
@@ -41,39 +53,64 @@ class SolarCleanRepo : SolarCleanRepository {
     private val _controlSettings = MutableStateFlow<Map<String, SolarCleanControlSettings>>(emptyMap())
     override val controlSettings: StateFlow<Map<String, SolarCleanControlSettings>> = _controlSettings.asStateFlow()
 
-    override suspend fun updateDeviceState(state: SolarCleanDeviceState) {
-        _devices.update { current ->
-            current.upsert(state, sameDevice = { it.serialNumber == state.serialNumber }) { old, new ->
-                new.copy(
-                    deviceInfo = new.deviceInfo ?: old.deviceInfo,
-                    otaStatus = new.otaStatus ?: old.otaStatus,
-                    download = new.download ?: old.download,
-                    lastAck = new.lastAck ?: old.lastAck,
-                    lastEvent = new.lastEvent ?: old.lastEvent,
-                    routeSlots = new.routeSlots.ifEmpty { old.routeSlots }
-                )
-            }
-        }
-    }
-
-    override suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?) {
-        _devices.update { current ->
-            current.updateOrCreate(
-                serialNumber = serialNumber,
-                create = {
-                    SolarCleanDeviceState(
-                        serialNumber = serialNumber,
-                        isOnline = isOnline,
-                        timestamp = timestamp
-                    )
-                },
-                update = { state ->
+    override suspend fun updateDeviceState(state: SolarCleanDeviceState): Boolean =
+        _devices.updateAndReport { current ->
+            val old = current.firstOrNull { it.serialNumber == state.serialNumber }
+            if (old != null && state.isOlderThan(old)) {
+                current to false
+            } else {
+                val merged = if (old == null) {
+                    state
+                } else {
                     state.copy(
-                        isOnline = isOnline,
-                        timestamp = timestamp ?: state.timestamp
+                        isOnline = state.isOnline || old.isOnline,
+                        latitude = state.latitude ?: old.latitude,
+                        longitude = state.longitude ?: old.longitude,
+                        altitudeMeters = state.altitudeMeters ?: old.altitudeMeters,
+                        speedMetersPerSecond = state.speedMetersPerSecond ?: old.speedMetersPerSecond,
+                        yawDegrees = state.yawDegrees ?: old.yawDegrees,
+                        pitchDegrees = state.pitchDegrees ?: old.pitchDegrees,
+                        rollDegrees = state.rollDegrees ?: old.rollDegrees,
+                        satelliteCount = state.satelliteCount ?: old.satelliteCount,
+                        batteryPercent = state.batteryPercent ?: old.batteryPercent,
+                        waypointIndex = state.waypointIndex ?: old.waypointIndex,
+                        waterLevel = state.waterLevel ?: old.waterLevel,
+                        mqttConnected = state.mqttConnected ?: old.mqttConnected,
+                        mqttLastError = state.mqttLastError ?: old.mqttLastError,
+                        deviceInfo = state.deviceInfo ?: old.deviceInfo,
+                        otaStatus = state.otaStatus ?: old.otaStatus,
+                        download = state.download ?: old.download,
+                        lastAck = state.lastAck ?: old.lastAck,
+                        lastEvent = state.lastEvent ?: old.lastEvent,
+                        routeSlots = state.routeSlots.ifEmpty { old.routeSlots },
+                        timestamp = state.timestamp ?: old.timestamp
                     )
                 }
+                current.upsert(merged, sameDevice = { it.serialNumber == state.serialNumber }) to true
+            }
+        }
+
+    private fun SolarCleanDeviceState.isOlderThan(current: SolarCleanDeviceState): Boolean =
+        isOlderDeviceTimestamp(timestamp, current.timestamp)
+
+    override suspend fun updateOnlineStatus(
+        serialNumber: String,
+        isOnline: Boolean,
+        timestamp: Long?
+    ): Boolean = _devices.updateAndReport { current ->
+        val state = current.firstOrNull { it.serialNumber == serialNumber }
+        if (state != null && isOlderDeviceTimestamp(timestamp, state.timestamp)) {
+            current to false
+        } else {
+            val next = state?.copy(
+                isOnline = isOnline,
+                timestamp = timestamp ?: state.timestamp
+            ) ?: SolarCleanDeviceState(
+                serialNumber = serialNumber,
+                isOnline = isOnline,
+                timestamp = timestamp
             )
+            current.upsert(next, sameDevice = { it.serialNumber == serialNumber }) to true
         }
     }
 
@@ -89,9 +126,12 @@ class SolarCleanRepo : SolarCleanRepository {
                     )
                 },
                 update = { state ->
+                    if (isOlderDeviceTimestamp(info.timestamp, state.deviceInfo?.timestamp)) {
+                        return@updateOrCreate state
+                    }
                     state.copy(
                         deviceInfo = info,
-                        timestamp = info.timestamp ?: state.timestamp
+                        timestamp = mergeDeviceTimestamp(state.timestamp, info.timestamp)
                     )
                 }
             )
@@ -110,9 +150,12 @@ class SolarCleanRepo : SolarCleanRepository {
                     )
                 },
                 update = { state ->
+                    if (isOlderDeviceTimestamp(status.timestamp, state.otaStatus?.timestamp)) {
+                        return@updateOrCreate state
+                    }
                     state.copy(
                         otaStatus = status,
-                        timestamp = status.timestamp ?: state.timestamp
+                        timestamp = mergeDeviceTimestamp(state.timestamp, status.timestamp)
                     )
                 }
             )
@@ -131,9 +174,14 @@ class SolarCleanRepo : SolarCleanRepository {
                     )
                 },
                 update = { state ->
+                    val routeSlots = when {
+                        ack.isSuccessfulRouteList() -> ack.routeSlots
+                        ack.routeSlots.isNotEmpty() -> ack.routeSlots
+                        else -> state.routeSlots
+                    }
                     state.copy(
                         lastAck = ack,
-                        routeSlots = ack.routeSlots.ifEmpty { state.routeSlots }
+                        routeSlots = routeSlots
                     )
                 }
             )
@@ -217,6 +265,16 @@ class SolarCleanRepo : SolarCleanRepository {
         return if (replaced) next else next + value
     }
 
+    private inline fun MutableStateFlow<List<SolarCleanDeviceState>>.updateAndReport(
+        transform: (List<SolarCleanDeviceState>) -> Pair<List<SolarCleanDeviceState>, Boolean>
+    ): Boolean {
+        while (true) {
+            val previous = value
+            val (next, applied) = transform(previous)
+            if (compareAndSet(previous, next)) return applied
+        }
+    }
+
     private fun SolarCleanEvent.toDownloadState() = when (this) {
         is SolarCleanEvent.DownloadProgress -> {
             com.tji.device.product.solarclean.model.SolarCleanDownloadState(
@@ -250,4 +308,9 @@ class SolarCleanRepo : SolarCleanRepository {
         is SolarCleanEvent.RouteExecuteFinished,
         is SolarCleanEvent.RouteExecuteStarted -> null
     }
+
+    private fun SolarCleanAck.isSuccessfulRouteList(): Boolean =
+        ok && ofType
+            .filter(Char::isLetterOrDigit)
+            .equals("routeList", ignoreCase = true)
 }

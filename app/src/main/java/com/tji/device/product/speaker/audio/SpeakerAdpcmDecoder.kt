@@ -27,20 +27,25 @@ object SpeakerHadpDecoder {
 
         require(version == HADP_VERSION) { "HADP 版本不支持: $version" }
         require(headerBytes == HADP_HEADER_BYTES) { "HADP 头长度不支持: $headerBytes" }
-        require(sampleRate == SpeakerAdpcmPacketizer.SAMPLE_RATE) { "采样率不支持: $sampleRate" }
+        require(sampleRate > 0) { "采样率不支持: $sampleRate" }
         require(channels == SpeakerAdpcmPacketizer.CHANNELS) { "声道数不支持: $channels" }
-        require(packetMs == SpeakerAdpcmPacketizer.PACKET_MS) { "包时长不支持: $packetMs" }
-        require(samplesPerFrame == SpeakerAdpcmPacketizer.PCM_FRAME_BYTES / BYTES_PER_PCM16_SAMPLE) {
-            "帧采样数不支持: $samplesPerFrame"
-        }
+        require(packetMs > 0) { "包时长不支持: $packetMs" }
         require(audioBytes >= 0 && HADP_HEADER_BYTES + audioBytes <= hadp.data.size) { "HADP 音频长度错误" }
 
         return when (codecId) {
             SpeakerHadpCodec.Pcm16.id -> {
-                require(frameBytes == SpeakerHadpCodec.Pcm16.frameBytes) { "PCM16 帧长度错误: $frameBytes" }
+                val expectedSamplesPerFrame = sampleRate * packetMs / MILLIS_PER_SECOND
+                val expectedFrameBytes = expectedSamplesPerFrame * BYTES_PER_PCM16_SAMPLE
+                require(samplesPerFrame == expectedSamplesPerFrame) { "PCM16 帧采样数错误: $samplesPerFrame" }
+                require(frameBytes == expectedFrameBytes) { "PCM16 帧长度错误: $frameBytes" }
                 hadp.data.copyOfRange(HADP_HEADER_BYTES, HADP_HEADER_BYTES + audioBytes)
             }
             SpeakerHadpCodec.ImaAdpcm.id -> {
+                require(sampleRate == SpeakerAdpcmPacketizer.SAMPLE_RATE) { "ADPCM 采样率不支持: $sampleRate" }
+                require(packetMs == SpeakerAdpcmPacketizer.PACKET_MS) { "ADPCM 包时长不支持: $packetMs" }
+                require(samplesPerFrame == SpeakerAdpcmPacketizer.PCM_FRAME_BYTES / BYTES_PER_PCM16_SAMPLE) {
+                    "ADPCM 帧采样数不支持: $samplesPerFrame"
+                }
                 require(frameBytes == SpeakerHadpCodec.ImaAdpcm.frameBytes) { "ADPCM 帧长度错误: $frameBytes" }
                 decodeAdpcmFrames(hadp.data, frameCount, samplesPerFrame)
             }
@@ -53,7 +58,12 @@ object SpeakerHadpDecoder {
         var offset = HADP_HEADER_BYTES
         repeat(frameCount) {
             require(offset + SpeakerHadpCodec.ImaAdpcm.frameBytes <= data.size) { "ADPCM 帧数据不完整" }
-            frames += SpeakerAdpcmDecoder.decodeBlock(data, offset, samplesPerFrame)
+            frames += SpeakerAdpcmDecoder.decodeBlock(
+                block = data,
+                offset = offset,
+                expectedSamples = samplesPerFrame,
+                blockBytes = SpeakerHadpCodec.ImaAdpcm.frameBytes
+            )
             offset += SpeakerHadpCodec.ImaAdpcm.frameBytes
         }
         return frames.flattenToByteArray()
@@ -74,6 +84,7 @@ object SpeakerHadpDecoder {
     private const val HADP_HEADER_BYTES = 128
     private const val HADP_VERSION = 1
     private const val BYTES_PER_PCM16_SAMPLE = 2
+    private const val MILLIS_PER_SECOND = 1_000
     private val HADP_MAGIC = byteArrayOf('H'.code.toByte(), 'A'.code.toByte(), 'D'.code.toByte(), 'P'.code.toByte())
 }
 
@@ -83,8 +94,14 @@ object SpeakerAdpcmDecoder {
         return SpeakerHadpDecoder.decodePcm16le(hadp)
     }
 
-    fun decodeBlock(block: ByteArray, offset: Int = 0, expectedSamples: Int): ByteArray {
+    fun decodeBlock(
+        block: ByteArray,
+        offset: Int = 0,
+        expectedSamples: Int,
+        blockBytes: Int = block.size - offset
+    ): ByteArray {
         require(offset + ADPCM_HEADER_BYTES <= block.size) { "ADPCM block 过短" }
+        require(blockBytes >= ADPCM_HEADER_BYTES && offset + blockBytes <= block.size) { "ADPCM block 长度错误" }
         var predictor = readLeI16(block, offset)
         var index = block[offset + 2].toInt() and 0xFF
         index = index.coerceIn(0, 88)
@@ -92,7 +109,7 @@ object SpeakerAdpcmDecoder {
         samples[0] = predictor
         var sampleIndex = 1
         var payloadOffset = offset + ADPCM_HEADER_BYTES
-        val payloadEnd = min(block.size, offset + ADPCM_FRAME_BYTES)
+        val payloadEnd = min(block.size, offset + blockBytes)
         while (payloadOffset < payloadEnd && sampleIndex < expectedSamples) {
             val packed = block[payloadOffset].toInt() and 0xFF
             val lowNibble = packed and 0x0F

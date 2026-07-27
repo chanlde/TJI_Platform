@@ -9,27 +9,20 @@ import org.junit.Test
 class SpeakerTalkSectionTest {
 
     @Test
-    fun hidesInternalPacketCountFromCustomerFacingStatusText() {
-        val state = SpeakerTalkState(
-            mode = SpeakerTalkMode.Live,
-            packetsSent = 42
-        )
-
-        val text = speakerTalkStatusText(state)
-
-        assertEquals("正在实时喊话", text)
-        assertFalse(text.contains("42"))
-        assertFalse(text.contains("包"))
-    }
-
-    @Test
     fun formatsSavingRecordProgressAsCustomerFacingPercent() {
         val state = SpeakerTalkState(
             mode = SpeakerTalkMode.SavingRecord,
-            progress = 0.367f,
-            packetsSent = 99
+            progress = 0.367f
         )
 
         assertEquals("正在保存录音 36%", speakerTalkStatusText(state))
+    }
+
+    @Test
+    fun formatsTtsStatusWithoutRecordingSaveWording() {
+        val text = speakerTalkStatusText(SpeakerTalkState(mode = SpeakerTalkMode.Tts, progress = 0.4f))
+
+        assertEquals("文字语音发送中", text)
+        assertFalse(text.contains("保存录音"))
     }
 }

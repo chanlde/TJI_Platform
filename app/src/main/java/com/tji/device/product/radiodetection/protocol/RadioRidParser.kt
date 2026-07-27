@@ -39,14 +39,26 @@ object RadioRidParser {
     private fun decodeHexPayload(rawPayload: String): String? {
         val compactHex = rawPayload.filterNot { it.isWhitespace() }
         if (compactHex.length < 2 || compactHex.length % 2 != 0) return null
-        if (!compactHex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return null
 
+        val bytes = ByteArray(compactHex.length / 2)
+        for (index in bytes.indices) {
+            val high = compactHex[index * 2].hexNibbleOrNegative()
+            val low = compactHex[index * 2 + 1].hexNibbleOrNegative()
+            if (high < 0 || low < 0) return null
+            bytes[index] = ((high shl 4) or low).toByte()
+        }
         return runCatching {
-            val bytes = ByteArray(compactHex.length / 2) { index ->
-                compactHex.substring(index * 2, index * 2 + 2).toInt(16).toByte()
-            }
-            bytes.toString(Charsets.UTF_8).trim().takeIf { it.startsWith("{") }
+            bytes.toString(Charsets.UTF_8)
+                .trim()
+                .takeIf { it.startsWith("{") }
         }.getOrNull()
+    }
+
+    private fun Char.hexNibbleOrNegative(): Int = when (this) {
+        in '0'..'9' -> code - '0'.code
+        in 'a'..'f' -> code - 'a'.code + 10
+        in 'A'..'F' -> code - 'A'.code + 10
+        else -> -1
     }
 
     private fun parsePsdkRid(json: JSONObject): RadioRidPacket? {

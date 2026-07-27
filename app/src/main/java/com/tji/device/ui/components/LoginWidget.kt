@@ -2,8 +2,6 @@ package com.tji.device.ui.components
 
 import android.content.Context
 import android.content.res.Configuration
-import android.util.Log
-import androidx.collection.emptyLongSet
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -11,8 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,20 +18,25 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.R
 import com.tji.device.data.model.Login
 import com.tji.device.ui.theme.LoginColors
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
-import com.tji.device.util.SecurePrefs
-import com.tji.device.util.ToastUtils
+import com.tji.device.data.local.RememberedLoginStore
+import com.tji.device.ui.AppUiNotifier
 import com.tji.device.ui.main.LocalMainViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 private fun RememberMeAndForgotPassword(
@@ -87,26 +88,37 @@ fun LoginWidget(
     onForgotPassword: () -> Unit = {},
     context: Context
 ) {
-    var account by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var rememberMe by remember { mutableStateOf(false) }
+    val isPreview = LocalInspectionMode.current
+    var rememberedLoginStore by remember(context) {
+        mutableStateOf<RememberedLoginStore?>(null)
+    }
+    var isRestoringRememberedLogin by remember(context, isPreview) {
+        mutableStateOf(!isPreview)
+    }
+    var userHasEditedLogin by remember(context) { mutableStateOf(false) }
+    var account by remember(context) { mutableStateOf("") }
+    var password by remember(context) { mutableStateOf("") }
+    var rememberMe by remember(context) { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
     var accountError by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf("") }
-    val isPreview = LocalInspectionMode.current
     val mainViewModel = if (isPreview) null else LocalMainViewModel.current
 
-    val sharedPreferences = remember(context) { SecurePrefs.userPreferences(context) }
-    val savedAccount = sharedPreferences.getString("account", "")
-    val savedPassword = sharedPreferences.getString("password", "")
-    val savedRememberMe = sharedPreferences.getBoolean("rememberMe", false)
-
-    LaunchedEffect(Unit) {
-        if (savedRememberMe) {
-            account = savedAccount ?: ""
-            password = savedPassword ?: ""
-            rememberMe = savedRememberMe
+    LaunchedEffect(context, isPreview) {
+        if (isPreview) return@LaunchedEffect
+        val (store, rememberedCredentials) = withContext(Dispatchers.IO) {
+            RememberedLoginStore.open(context).let { it to it.load() }
         }
+        rememberedLoginStore = store
+        val restored = restoreRememberedLogin(
+            current = LoginFormDraft(account, password, rememberMe),
+            remembered = rememberedCredentials,
+            userHasEdited = userHasEditedLogin
+        )
+        account = restored.account
+        password = restored.password
+        rememberMe = restored.rememberMe
+        isRestoringRememberedLogin = false
     }
 
     fun handleLogin() {
@@ -119,14 +131,9 @@ fun LoginWidget(
             if (loginSuccess) {
                 // 保存账号和密码
                 if (rememberMe) {
-                    sharedPreferences.edit().apply {
-                        putString("account", account)
-                        putString("password", password)
-                        putBoolean("rememberMe", true)
-                        apply()
-                    }
+                    rememberedLoginStore?.save(account, password)
                 } else {
-                    sharedPreferences.edit().clear().apply()
+                    rememberedLoginStore?.clear()
                 }
                 onLogin(Login(account, password, rememberMe))
             } else {
@@ -145,7 +152,7 @@ fun LoginWidget(
                     accountError = "登录失败，请重试"
                     passwordError = "登录失败，请重试"
                 }
-                ToastUtils.showToast(errorMsg ?: "登录失败，请稍后重试")
+                AppUiNotifier.showShortMessage(errorMsg ?: "登录失败，请稍后重试")
             }
         }
     }
@@ -158,17 +165,22 @@ fun LoginWidget(
             passwordError = passwordError,
             passwordVisible = passwordVisible,
             rememberMe = rememberMe,
-            isLoading = isLoading,
+            isLoading = isLoading || isRestoringRememberedLogin,
             onAccountChange = {
+                userHasEditedLogin = true
                 account = it
                 accountError = ""
             },
             onPasswordChange = {
+                userHasEditedLogin = true
                 password = it
                 passwordError = ""
             },
             onPasswordVisibilityToggle = { passwordVisible = !passwordVisible },
-            onRememberMeChange = { rememberMe = it },
+            onRememberMeChange = {
+                userHasEditedLogin = true
+                rememberMe = it
+            },
             onLogin = { handleLogin() },
             onForgotPassword = onForgotPassword,
             onDeveloperModeClick = {
@@ -223,14 +235,16 @@ private fun LoginCard(
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val screenWidth = configuration.screenWidthDp.dp
+    val windowWidth = with(LocalDensity.current) {
+        LocalWindowInfo.current.containerSize.width.toDp()
+    }
 
     Card(
         modifier = Modifier
             .then(
                 if (isLandscape) {
                     Modifier
-                        .widthIn(max = minOf(screenWidth * 0.48f, 520.dp))
+                        .widthIn(max = minOf(windowWidth * 0.48f, 520.dp))
                 } else {
                     Modifier
                         .fillMaxWidth()
@@ -401,7 +415,7 @@ fun LoginButton(
     onLogin: () -> Unit,
     isLandscape: Boolean
 ) {
-    val needUpdate by ToastUtils.needUpdate.collectAsState()
+    val needUpdate by AppUiNotifier.appUpdateAvailable.collectAsStateWithLifecycle()
 
     Button(
         onClick = onLogin,

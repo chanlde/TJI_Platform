@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
-import com.tji.device.product.firebucket.model.Switch
+import com.tji.device.product.firebucket.model.FireBucketSwitchState
 import com.tji.device.ui.theme.BucketTheme
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
@@ -65,7 +65,7 @@ internal fun previewFireBucketLink() = FireBucketLinkDevice(
     timestamp = "0"
 )
 
-internal fun previewFireBucketSwitch() = Switch(
+internal fun previewFireBucketSwitch() = FireBucketSwitchState(
     serialNumber = "Bucket-001",
     deviceName = "消防吊桶 01",
     deviceType = "HydroSwitch",

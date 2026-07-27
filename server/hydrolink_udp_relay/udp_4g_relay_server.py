@@ -13,9 +13,13 @@ import socket
 import struct
 import time
 from dataclasses import dataclass
+from threading import Event
 
 
 DEVICE_HELLO_PREFIX = b"HLDEV1 "
+APP_LISTEN_PREFIX = b"HLAPP1 "
+APP_UNLISTEN_PREFIX = b"HLAPP0 "
+APP_ACK_PREFIX = "HLAPPACK1"
 STATUS_PREFIX = b"HLSTAT1 "
 SPEAKER_AUDIO_MAGIC_LE = b"\x5a\xa5"
 SPEAKER_AUDIO_V2 = 2
@@ -26,6 +30,7 @@ SPEAKER_AUDIO_V2_TALK_ROUTING_HEADER = 25
 DEFAULT_LISTEN_HOST = "0.0.0.0"
 DEFAULT_LISTEN_PORT = 7000
 DEFAULT_TIMEOUT_S = 30.0
+AUDIO_STREAM_FLAG_FEEDBACK = 0x0008
 
 
 @dataclass
@@ -41,6 +46,41 @@ class DeviceState:
         return self.addr is not None and (now - self.last_seen) <= timeout_s
 
 
+@dataclass(frozen=True)
+class AudioRoute:
+    device_id: str
+    session_id: str
+    talk_id: str
+    flags: int
+    sample_rate: int
+    packet_ms: int
+
+    @property
+    def is_feedback(self) -> bool:
+        return (self.flags & AUDIO_STREAM_FLAG_FEEDBACK) != 0
+
+
+@dataclass
+class ListenerState:
+    addr: tuple[str, int]
+    device_id: str
+    session_id: str
+    talk_id: str
+    last_seen: float
+    forwarded_packets: int = 0
+
+    def online(self, now: float, timeout_s: float) -> bool:
+        return (now - self.last_seen) <= timeout_s
+
+
+@dataclass(frozen=True)
+class AppListenerCommand:
+    enabled: bool
+    device_id: str
+    session_id: str
+    talk_id: str
+
+
 def parse_device_hello(packet: bytes, token: str) -> str | None:
     if not packet.startswith(DEVICE_HELLO_PREFIX):
         return None
@@ -51,12 +91,47 @@ def parse_device_hello(packet: bytes, token: str) -> str | None:
     except UnicodeDecodeError:
         return None
 
-    parts = text.split(maxsplit=2)
-    if len(parts) < 2 or parts[0] != "HLDEV1":
+    parts = text.split()
+    if len(parts) != 3 or parts[0] != "HLDEV1":
         return None
     if token and parts[1] != token:
         return None
-    return parts[2] if len(parts) >= 3 else "default"
+    device_id = parts[2]
+    if not device_id or len(device_id.encode("utf-8")) > 32:
+        return None
+    return device_id
+
+
+def parse_app_listener_command(packet: bytes, token: str) -> AppListenerCommand | None:
+    enabled = packet.startswith(APP_LISTEN_PREFIX)
+    disabled = packet.startswith(APP_UNLISTEN_PREFIX)
+    if not enabled and not disabled:
+        return None
+    try:
+        text = packet.decode("utf-8", errors="strict").strip()
+    except UnicodeDecodeError:
+        return None
+    parts = text.split()
+    if len(parts) != 5 or parts[0] not in {"HLAPP1", "HLAPP0"}:
+        return None
+    if token and parts[1] != token:
+        return None
+    if any(not value or len(value.encode("utf-8")) > 32 for value in parts[2:]):
+        return None
+    return AppListenerCommand(
+        enabled=enabled,
+        device_id=parts[2],
+        session_id=parts[3],
+        talk_id=parts[4],
+    )
+
+
+def format_app_listener_ack(command: AppListenerCommand) -> bytes:
+    status = "REGISTERED" if command.enabled else "REMOVED"
+    return (
+        f"{APP_ACK_PREFIX} {status} {command.device_id} "
+        f"{command.session_id} {command.talk_id}"
+    ).encode("utf-8")
 
 
 def parse_status_request(packet: bytes, token: str) -> bool:
@@ -105,9 +180,14 @@ def parse_target_device_id(packet: bytes) -> str | None:
     if packet[0:2] != SPEAKER_AUDIO_MAGIC_LE or packet[2] != SPEAKER_AUDIO_V2:
         return None
 
-    formal = parse_formal_v2_device_id(packet)
-    if formal is not None:
-        return formal
+    formal_header_len = struct.unpack_from("<H", packet, 4)[0]
+    if (
+        formal_header_len >= SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER
+        and len(packet) >= SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER
+        and packet[27] == 0
+    ):
+        formal = parse_formal_v2_route(packet)
+        return formal.device_id if formal is not None else None
 
     if len(packet) >= SPEAKER_AUDIO_V2_TALK_ROUTING_HEADER and packet[24] == 0:
         current = parse_target_device_id_at(packet, base_offset=SPEAKER_AUDIO_V2_TALK_ROUTING_HEADER)
@@ -116,7 +196,7 @@ def parse_target_device_id(packet: bytes) -> str | None:
     return parse_target_device_id_at(packet, base_offset=SPEAKER_AUDIO_V2_LEGACY_ROUTING_HEADER)
 
 
-def parse_formal_v2_device_id(packet: bytes) -> str | None:
+def parse_formal_v2_route(packet: bytes) -> AudioRoute | None:
     if len(packet) < SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER:
         return None
 
@@ -125,7 +205,7 @@ def parse_formal_v2_device_id(packet: bytes) -> str | None:
         version,
         codec,
         header_len,
-        _flags,
+        flags,
         _seq,
         _timestamp_ms,
         sample_rate,
@@ -141,7 +221,7 @@ def parse_formal_v2_device_id(packet: bytes) -> str | None:
 
     if version != SPEAKER_AUDIO_V2 or codec != SPEAKER_AUDIO_CODEC_IMA_ADPCM:
         return None
-    if sample_rate != 8000 or channels != 1 or packet_ms != 40:
+    if sample_rate not in {8000, 16000} or channels != 1 or packet_ms != 40:
         return None
     if device_len <= 0:
         return None
@@ -150,17 +230,29 @@ def parse_formal_v2_device_id(packet: bytes) -> str | None:
     expected_header = SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER + device_len + session_len + talk_len
     if header_len != expected_header:
         return None
-    if len(packet) < header_len + payload_len:
+    if len(packet) != header_len + payload_len:
         return None
 
+    ids_end = SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER + device_len + session_len + talk_len
     try:
-        device_id = packet[
-            SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER :
-            SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER + device_len
-        ].decode("utf-8", errors="strict")
+        ids = packet[SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER:ids_end]
+        device_id = ids[:device_len].decode("utf-8", errors="strict")
+        session_start = device_len
+        talk_start = session_start + session_len
+        session_id = ids[session_start:talk_start].decode("utf-8", errors="strict")
+        talk_id = ids[talk_start:].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
         return None
-    return device_id if device_id else None
+    if not device_id:
+        return None
+    return AudioRoute(
+        device_id=device_id,
+        session_id=session_id,
+        talk_id=talk_id,
+        flags=flags,
+        sample_rate=sample_rate,
+        packet_ms=packet_ms,
+    )
 
 
 def parse_target_device_id_at(packet: bytes, base_offset: int) -> str | None:
@@ -183,6 +275,7 @@ def parse_target_device_id_at(packet: bytes, base_offset: int) -> str | None:
 
 def format_status_response(
     devices: dict[str, DeviceState],
+    listeners: dict[tuple[str, str, str], ListenerState],
     latest_device_id: str,
     now: float,
     timeout_s: float,
@@ -204,13 +297,44 @@ def format_status_response(
                 state.dropped_packets,
             )
         )
-    text = "HLSTAT1 devices=%d online=%d latest=%s %s" % (
+    online_listeners = sum(1 for listener in listeners.values() if listener.online(now, timeout_s))
+    text = "HLSTAT1 devices=%d online=%d listeners=%d latest=%s %s" % (
         len(devices),
         online_count,
+        online_listeners,
         latest_device_id or "-",
         " | ".join(rows) if rows else "no-device",
     )
     return text.encode("utf-8")
+
+
+def listener_key(device_id: str, session_id: str, talk_id: str) -> tuple[str, str, str]:
+    return device_id, session_id, talk_id
+
+
+def route_feedback_packet(
+    sock: socket.socket,
+    packet: bytes,
+    addr: tuple[str, int],
+    route: AudioRoute,
+    devices: dict[str, DeviceState],
+    listeners: dict[tuple[str, str, str], ListenerState],
+    now: float,
+    timeout_s: float,
+) -> bool:
+    device = devices.get(route.device_id)
+    if device is None or not device.online(now, timeout_s) or device.addr != addr:
+        print(f"drop feedback packet: invalid device source id={route.device_id} addr={addr[0]}:{addr[1]}")
+        return False
+    key = listener_key(route.device_id, route.session_id, route.talk_id)
+    listener = listeners.get(key)
+    if listener is None or not listener.online(now, timeout_s):
+        if listener is not None:
+            listeners.pop(key, None)
+        return False
+    sock.sendto(packet, listener.addr)
+    listener.forwarded_packets += 1
+    return True
 
 
 def forward_packet(
@@ -240,23 +364,61 @@ def forward_packet(
         )
 
 
-def serve(listen_host: str, listen_port: int, token: str, timeout_s: float) -> None:
+def serve(
+    listen_host: str,
+    listen_port: int,
+    token: str,
+    timeout_s: float,
+    *,
+    stop_event: Event | None = None,
+    ready_event: Event | None = None,
+) -> None:
     devices: dict[str, DeviceState] = {}
+    listeners: dict[tuple[str, str, str], ListenerState] = {}
     latest_device_id = ""
     started = time.time()
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.bind((listen_host, listen_port))
+        if stop_event is not None:
+            sock.settimeout(0.1)
+        if ready_event is not None:
+            ready_event.set()
         print(f"UDP relay listening on {listen_host}:{listen_port}")
         print('Device heartbeat format: "HLDEV1 <token> <device_id>"')
 
-        while True:
-            packet, addr = sock.recvfrom(4096)
+        while stop_event is None or not stop_event.is_set():
+            try:
+                packet, addr = sock.recvfrom(4096)
+            except socket.timeout:
+                continue
             now = time.time()
             device_id = parse_device_hello(packet, token)
+            listener_command = parse_app_listener_command(packet, token)
 
             if parse_status_request(packet, token):
-                sock.sendto(format_status_response(devices, latest_device_id, now, timeout_s), addr)
+                sock.sendto(format_status_response(devices, listeners, latest_device_id, now, timeout_s), addr)
+                continue
+
+            if listener_command is not None:
+                key = listener_key(
+                    listener_command.device_id,
+                    listener_command.session_id,
+                    listener_command.talk_id,
+                )
+                if listener_command.enabled:
+                    listeners[key] = ListenerState(
+                        addr=addr,
+                        device_id=listener_command.device_id,
+                        session_id=listener_command.session_id,
+                        talk_id=listener_command.talk_id,
+                        last_seen=now,
+                    )
+                else:
+                    current = listeners.get(key)
+                    if current is not None and current.addr == addr:
+                        listeners.pop(key, None)
+                sock.sendto(format_app_listener_ack(listener_command), addr)
                 continue
 
             if device_id is not None:
@@ -271,6 +433,20 @@ def serve(listen_host: str, listen_port: int, token: str, timeout_s: float) -> N
                 latest_device_id = device_id
                 if (state.rx_heartbeats % 10) == 1:
                     print(f"device online id={device_id} addr={addr[0]}:{addr[1]}")
+                continue
+
+            formal_route = parse_formal_v2_route(packet)
+            if formal_route is not None and formal_route.is_feedback:
+                route_feedback_packet(
+                    sock=sock,
+                    packet=packet,
+                    addr=addr,
+                    route=formal_route,
+                    devices=devices,
+                    listeners=listeners,
+                    now=now,
+                    timeout_s=timeout_s,
+                )
                 continue
 
             target_device_id = parse_target_device_id(packet)

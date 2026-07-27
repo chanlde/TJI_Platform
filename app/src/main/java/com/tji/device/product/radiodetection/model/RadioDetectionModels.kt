@@ -56,14 +56,35 @@ data class RadioDetectionTarget(
     val headingDegrees: Int,
     val frequencyLabel: String,
     val signalLevel: RadioSignalLevel,
-    val lastSeenText: String,
+    /** 本机墙钟接收时间，仅用于向用户展示“几秒前”。 */
+    val lastSeenAtMillis: Long,
     val pilotName: String,
     val pilotLatitude: Double,
     val pilotLongitude: Double,
     val pilotDistanceText: String,
     val mapXPercent: Float,
-    val mapYPercent: Float
-)
+    val mapYPercent: Float,
+    /**
+     * 设备在 RID 包中提供的采样时间，仅用于拒绝乱序包。
+     * 与 [lastSeenAtMillis] 的本机接收时间分开，避免网络延迟让旧坐标覆盖新坐标。
+     */
+    val sourceTimestampMillis: Long? = null,
+    /**
+     * 本机单调时钟接收时间，仅用于 TTL。手机墙钟校时不能让目标提前过期或长期存活。
+     * 默认值兼容预览和旧测试构造；生产数据由仓库显式写入。
+     */
+    val lastSeenElapsedMillis: Long = lastSeenAtMillis
+) {
+    val lastSeenText: String
+        get() {
+            val elapsedSeconds = ((System.currentTimeMillis() - lastSeenAtMillis).coerceAtLeast(0L) / 1_000L)
+            return when {
+                elapsedSeconds < 5 -> "刚刚"
+                elapsedSeconds < 60 -> "${elapsedSeconds}秒前"
+                else -> "${elapsedSeconds / 60}分钟前"
+            }
+        }
+}
 
 enum class RadioListStatus(val label: String) {
     Blacklist("黑名单"),

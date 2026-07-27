@@ -81,7 +81,15 @@ sealed interface GlassBreakerCommand {
     data class GetDeviceInfo(override val msgId: String) : GlassBreakerCommand
     data class Unlock(override val msgId: String) : GlassBreakerCommand
     data class Lock(override val msgId: String) : GlassBreakerCommand
-    data class SelectChannel(override val msgId: String, val channel: Int) : GlassBreakerCommand
-    data class FireChannel(override val msgId: String, val channel: Int) : GlassBreakerCommand
+    data class SelectChannel(override val msgId: String, val channel: Int) : GlassBreakerCommand {
+        init {
+            require(channel in 1..GLASS_BREAKER_CHANNEL_COUNT) { "Glass breaker channel out of range: $channel" }
+        }
+    }
+    data class FireChannel(override val msgId: String, val channel: Int) : GlassBreakerCommand {
+        init {
+            require(channel in 1..GLASS_BREAKER_CHANNEL_COUNT) { "Glass breaker channel out of range: $channel" }
+        }
+    }
     data class LaserSwitch(override val msgId: String, val on: Boolean) : GlassBreakerCommand
 }

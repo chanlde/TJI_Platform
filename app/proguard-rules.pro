@@ -78,3 +78,10 @@
     public static int i(...);
     public static int println(int, java.lang.String, java.lang.String);
 }
+# androidx.security.crypto bundles Tink classes whose Error Prone annotations are
+# compile-time metadata only. They are not required at runtime, but R8 8.x reports
+# the optional annotation types as missing unless these warnings are suppressed.
+-dontwarn com.google.errorprone.annotations.CanIgnoreReturnValue
+-dontwarn com.google.errorprone.annotations.CheckReturnValue
+-dontwarn com.google.errorprone.annotations.Immutable
+-dontwarn com.google.errorprone.annotations.RestrictedApi

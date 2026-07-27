@@ -1,8 +1,19 @@
 # TJI Platform
 
-版本：`V2.0.10`
+版本：`V2.0.11`
 
 TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 App。当前项目由原来的消防吊桶控制 App 演进而来，目标是把消防吊桶、光伏清洗、六段抛投、喊话器、无线电侦测等产品统一放到同一个平台 App 中管理；大疆 MSDK 这类复杂产品暂不放入本 App。
+
+## V2.0.11 更新内容
+
+- 重构网络与会话边界：统一 HTTP 入口、端点配置、登录会话和 MQTT 连接状态，旧账号或旧请求返回后不再覆盖当前界面状态。
+- 整理多产品运行时和 MQTT 生命周期，补齐命令等待、ACK 匹配、重连订阅及退出清理逻辑，降低跨设备、跨账号状态串扰。
+- 拆分喊话器大 ViewModel，将设备命令、录音保存、TTS、MCU 麦克风回传和 UI 状态分到职责明确的协调类。
+- 收口喊话器音频链路：移除无业务用途的 WAV/本地 Kokoro 路径；手机录音按低/中/高音质从源头采集 8/16/24 kHz，分别使用 8 kHz ADPCM 或 16/24 kHz PCM16。
+- 增加 MCU 麦克风 ADPCM 回传接收、抖动缓冲及生命周期控制，并补充 App、UDP relay、native speaker-core 和 MCU 协议测试。
+- 将地图能力拆成 `map` / `noMap` 两个正式构建变体，非地图包不再携带地图 SDK、资源和权限。
+- 清理含糊工具类、过时仓库和重复组件，改用按职责命名的 session、error、concurrent、repository、controller 与 coordinator。
+- 发布前验证覆盖双变体单测、Lint、R8 Release 打包及模拟器冷启动。
 
 ## V2.0.10 更新内容
 
@@ -29,7 +40,7 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 
 ## V2.0.4 更新内容
 
-- 收口喊话器音频链路：移除 App 云端 TTS 分支，文字转语音统一由 App 本地/系统生成音频，再通过 `.hadp` 临时文件上传下载链路给 MCU 播放或保存。
+- 收口喊话器音频链路：移除 App 云端 TTS 分支，文字转语音统一由 Android 系统 TTS 生成音频，再通过 `.hadp` 临时文件上传下载链路给 MCU 播放或保存。
 - 精简服务器服务：`server/kokoro_tts_service` 已改为喊话器临时音频文件传输服务，仅保留 `.hadp` 上传和短期下载 URL，不再加载 Kokoro 模型或提供 `/api/tts/*` 接口。
 - 清理客户界面测试入口：设置页只保留正式“播放蜂鸣”，移除静音文件、数据校验、本机旧格式、音质测试等调试按钮和对应 ViewModel 死代码。
 - 完善喊话器输出音质：支持低/中/高三档输出配置，TTS 与录音文件上传按当前音质写入对应 `.hadp` 元数据。
@@ -54,7 +65,7 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 - 消防吊桶 `FireBucket`：保留 Link / 桶控制逻辑，一个账号可有多个 Link，一个 Link 下可挂多个桶。
 - 光伏清洗 `SolarClean`：已接入 MQTT 状态、控制、悬浮窗快捷控制、设备设置与 OTA 入口。
 - 六段抛投 `SixStageDropper`：支持 6 路通道状态展示、单通道控制、全部开/关、定时开钩和测试循环。
-- 喊话器 `Speaker`：支持实时喊话、录音保存/播放/删除/改名、文字转语音、音色调节和存储状态展示。
+- 喊话器 `Speaker`：支持按住录音后上传播放、录音保存/播放/删除/改名、文字转语音、音色调节和存储状态展示。
 - 无线电侦测 `RadioDetection`：支持侦测监控界面、目标列表、回放/轨迹/告警等业务页面骨架。
 - MQTT 实时通信：按产品订阅 `status` / `lifecycle`，按设备发布 `control`。
 - 悬浮窗控制：按产品类型显示不同控制面板。
@@ -166,17 +177,9 @@ App 当前负责：
 当前版本配置在 `gradle.properties`：
 
 ```properties
-APP_VERSION_CODE=210
-APP_VERSION_NAME=V2.0.10
+APP_VERSION_CODE=211
+APP_VERSION_NAME=V2.0.11
 ```
-
-本地 Kokoro TTS 当前不进入客户包。如需重新启用离线 TTS 开发包，需要额外恢复 sherpa-onnx/onnxruntime native runtime，并准备模型资源：
-
-```text
-app/src/main/assets/kokoro-multi-lang-v1_0/
-```
-
-其中 `model.onnx` 超过 GitHub 普通 Git 单文件限制，当前不提交到仓库；正式分发前应走 Git LFS、制品下载或安装包内置资源流程。
 
 ## 当前重点
 

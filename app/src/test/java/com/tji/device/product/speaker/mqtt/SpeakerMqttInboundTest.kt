@@ -4,6 +4,7 @@ import com.tji.device.product.speaker.repository.SpeakerRepo
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SpeakerMqttInboundTest {
@@ -24,6 +25,20 @@ class SpeakerMqttInboundTest {
                   "currentFile": "welcome.hadp",
                   "volume": 124,
                   "servoAngle": -15,
+                  "servo": {
+                    "currentAngle": 45,
+                    "targetAngle": 120,
+                    "speedDps": 60,
+                    "moving": true,
+                    "sweepActive": true,
+                    "stepMode": true,
+                    "stepAngle": 10,
+                    "minAngle": 30,
+                    "maxAngle": 120,
+                    "cyclesLeft": 5,
+                    "cyclesDone": 1,
+                    "infinite": false
+                  },
                   "network": "wifi",
                   "lastError": "低电量",
                   "ts": 1710000000000
@@ -40,10 +55,53 @@ class SpeakerMqttInboundTest {
         assertEquals("welcome.hadp", state.currentFile)
         assertEquals(100, state.volume)
         assertEquals(-15, state.servoAngle)
+        assertEquals(45, state.servo?.currentAngle)
+        assertEquals(120, state.servo?.targetAngle)
+        assertEquals(60, state.servo?.speedDps)
+        assertEquals(true, state.servo?.moving)
+        assertEquals(true, state.servo?.sweepActive)
+        assertEquals(true, state.servo?.stepMode)
+        assertEquals(10, state.servo?.stepAngle)
+        assertEquals(30, state.servo?.minAngle)
+        assertEquals(120, state.servo?.maxAngle)
+        assertEquals(5, state.servo?.cyclesLeft)
+        assertEquals(1, state.servo?.cyclesDone)
+        assertEquals(false, state.servo?.infinite)
         assertEquals("wifi", state.network)
         assertEquals("低电量", state.lastError)
         assertEquals(1710000000000L, state.timestamp)
 
+        inbound.cleanup()
+    }
+
+    @Test
+    fun partialTelemetryDoesNotResetPlaybackOrControlState() = runBlocking {
+        val repo = SpeakerRepo()
+        val inbound = SpeakerMqttInbound(repo)
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject(
+                """{"playing":true,"talking":true,"currentTalkId":"talk-1","currentFile":"alarm.hadp","volume":72,"servoAngle":45,"network":"wifi","ts":100}"""
+            )
+        )
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"lastError":"温度偏高","ts":200}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(true, state.playing)
+        assertEquals(true, state.talking)
+        assertEquals("talk-1", state.currentTalkId)
+        assertEquals("alarm.hadp", state.currentFile)
+        assertEquals(72, state.volume)
+        assertEquals(45, state.servoAngle)
+        assertEquals("wifi", state.network)
+        assertEquals("温度偏高", state.lastError)
+        assertEquals(200L, state.timestamp)
         inbound.cleanup()
     }
 
@@ -64,6 +122,97 @@ class SpeakerMqttInboundTest {
         assertEquals(66, state.volume)
         assertEquals(false, state.playing)
         assertEquals(1710000000000L, state.timestamp)
+
+        inbound.cleanup()
+    }
+
+    @Test
+    fun retainedLifecycleOnlineCannotReviveOfflineDevice() = runBlocking {
+        val repo = SpeakerRepo()
+        val inbound = SpeakerMqttInbound(repo)
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "offline",
+            json = JSONObject("""{"ts":1710000000000}""")
+        )
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "online",
+            json = JSONObject("""{"ts":1710000000001}"""),
+            isRetained = true
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(1710000000000L, state.timestamp)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun malformedOptionalNumbersRemainUnknownInsteadOfBecomingZero() = runBlocking {
+        val repo = SpeakerRepo()
+        val inbound = SpeakerMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"online":"unknown","servoAngle":"unknown","ts":"invalid"}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertNull(state.servoAngle)
+        assertNull(state.timestamp)
+        assertEquals(false, state.isOnline)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun retainedStateRefreshesFieldsButPreservesCurrentOnlineState() = runBlocking {
+        val repo = SpeakerRepo()
+        val inbound = SpeakerMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "online",
+            json = JSONObject("""{"ts":1710000000000}""")
+        )
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"volume":66,"playing":false,"ts":1710000000001}"""),
+            isRetained = true
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(true, state.isOnline)
+        assertEquals(66, state.volume)
+        assertEquals(false, state.playing)
+        assertEquals(1710000000001L, state.timestamp)
+
+        inbound.cleanup()
+    }
+
+    @Test
+    fun explicitOfflineStateOverridesPreviousOnlineState() = runBlocking {
+        val repo = SpeakerRepo()
+        val inbound = SpeakerMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "online",
+            json = JSONObject("""{"ts":1710000000000}""")
+        )
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"online":false,"volume":44,"ts":1710000000002}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(44, state.volume)
+        assertEquals(1710000000002L, state.timestamp)
 
         inbound.cleanup()
     }
@@ -91,6 +240,22 @@ class SpeakerMqttInboundTest {
         assertEquals(true, state.playing)
         assertEquals(1710000000001L, state.timestamp)
 
+        inbound.cleanup()
+    }
+
+    @Test
+    fun staleStateAfterNewerOfflineCannotReviveOrOverwriteDevice() = runBlocking {
+        val repo = SpeakerRepo()
+        val inbound = SpeakerMqttInbound(repo)
+        inbound.handleEvent(SERIAL, "state", JSONObject("""{"volume":72,"ts":200}"""))
+        inbound.handleEvent(SERIAL, "offline", JSONObject("""{"ts":300}"""))
+
+        inbound.handleEvent(SERIAL, "state", JSONObject("""{"volume":10,"ts":100}"""))
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(72, state.volume)
+        assertEquals(300L, state.timestamp)
         inbound.cleanup()
     }
 

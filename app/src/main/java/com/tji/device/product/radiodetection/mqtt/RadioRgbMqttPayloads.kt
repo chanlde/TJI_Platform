@@ -11,23 +11,26 @@ object RadioRgbAckParser {
         if (!trimmed.startsWith("{")) return null
 
         return runCatching {
-            val json = JSONObject(trimmed)
-            if (
-                json.optString("type") != "ack" ||
-                json.optString("module") != "rgb" ||
-                json.optString("action") != "set"
-            ) {
-                return null
-            }
-
-            RadioRgbAck(
-                msgId = json.optString("msgId"),
-                ok = json.optBoolean("ok", false),
-                code = json.optInt("code", -1),
-                message = json.optString("msg"),
-                timestamp = if (json.has("ts")) json.optLong("ts") else null
-            )
+            parse(JSONObject(trimmed))
         }.getOrNull()
+    }
+
+    fun parse(json: JSONObject): RadioRgbAck? {
+        if (
+            json.optString("type") != "ack" ||
+            json.optString("module") != "rgb" ||
+            json.optString("action") != "set"
+        ) {
+            return null
+        }
+
+        return RadioRgbAck(
+            msgId = json.optString("msgId"),
+            ok = json.optBoolean("ok", false),
+            code = json.optInt("code", -1),
+            message = json.optString("msg"),
+            timestamp = if (json.has("ts")) json.optLong("ts") else null
+        )
     }
 }
 

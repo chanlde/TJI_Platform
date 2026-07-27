@@ -21,19 +21,6 @@ std::vector<uint8_t> to_vector(JNIEnv *env, jbyteArray array)
     return data;
 }
 
-std::vector<float> to_float_vector(JNIEnv *env, jfloatArray array)
-{
-    if (array == nullptr) {
-        return {};
-    }
-    const jsize size = env->GetArrayLength(array);
-    std::vector<float> data(static_cast<size_t>(size));
-    if (size > 0) {
-        env->GetFloatArrayRegion(array, 0, size, reinterpret_cast<jfloat *>(data.data()));
-    }
-    return data;
-}
-
 std::string to_string(JNIEnv *env, jstring value)
 {
     if (value == nullptr) {
@@ -606,33 +593,6 @@ jbyteArray decode_wav_pcm16_mono(
     return result;
 }
 
-jbyteArray float32_to_pcm16(
-    JNIEnv *env,
-    jclass,
-    jfloatArray samples,
-    jint source_sample_rate,
-    jint target_sample_rate
-)
-{
-    const auto data = to_float_vector(env, samples);
-    TjiScBuffer out{};
-    const int status = tji_sc_float32_to_pcm16(
-        data.data(),
-        data.size(),
-        source_sample_rate,
-        target_sample_rate,
-        &out
-    );
-    if (status != TJI_SC_OK) {
-        tji_sc_free(&out);
-        throw_illegal_state(env, "tji_sc_float32_to_pcm16 failed");
-        return nullptr;
-    }
-    jbyteArray result = to_jbyte_array(env, out);
-    tji_sc_free(&out);
-    return result;
-}
-
 jbyteArray parse_mqtt_state_json(
     JNIEnv *env,
     jclass,
@@ -826,11 +786,6 @@ const JNINativeMethod kMethods[] = {
         "nativeDecodeWavPcm16Mono",
         "([BI)[B",
         reinterpret_cast<void *>(decode_wav_pcm16_mono)
-    },
-    {
-        "nativeFloat32ToPcm16",
-        "([FII)[B",
-        reinterpret_cast<void *>(float32_to_pcm16)
     },
     {
         "nativeParseMqttStateJson",

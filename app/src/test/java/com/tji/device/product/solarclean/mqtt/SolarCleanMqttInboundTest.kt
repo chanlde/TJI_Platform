@@ -2,6 +2,7 @@ package com.tji.device.product.solarclean.mqtt
 
 import com.tji.device.product.solarclean.repository.SolarCleanRepo
 import com.tji.device.product.solarclean.model.SolarCleanEvent
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -9,6 +10,120 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SolarCleanMqttInboundTest {
+
+    @Test
+    fun cleanupCancelsOldTimeoutAndAllowsTrackingAfterServiceRestart() = runBlocking {
+        val repo = SolarCleanRepo()
+        val inbound = SolarCleanMqttInbound(
+            repository = repo,
+            onlineTtlMillis = 20L
+        )
+
+        inbound.handleEvent(SERIAL, "online", JSONObject())
+        inbound.cleanup()
+        delay(60L)
+        assertEquals(true, repo.devices.value.single().isOnline)
+
+        inbound.handleEvent(SERIAL, "online", JSONObject())
+        delay(60L)
+
+        assertEquals(false, repo.devices.value.single().isOnline)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun staleStateAfterNewerOfflineCannotReviveOrOverwriteDevice() = runBlocking {
+        val repo = SolarCleanRepo()
+        val inbound = SolarCleanMqttInbound(repo)
+        inbound.handleEvent(
+            SERIAL,
+            "state",
+            JSONObject("""{"battery":72,"ts":200}""")
+        )
+        inbound.handleEvent(SERIAL, "offline", JSONObject("""{"ts":300}"""))
+
+        inbound.handleEvent(
+            SERIAL,
+            "state",
+            JSONObject("""{"battery":10,"ts":100}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(72.0, state.batteryPercent)
+        assertEquals(300L, state.timestamp)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun staleOfflineDoesNotCancelTheActiveOnlineTimeout() = runBlocking {
+        val repo = SolarCleanRepo()
+        val inbound = SolarCleanMqttInbound(
+            repository = repo,
+            onlineTtlMillis = 20L
+        )
+
+        inbound.handleEvent(SERIAL, "online", JSONObject("""{"ts":200}"""))
+        inbound.handleEvent(SERIAL, "offline", JSONObject("""{"ts":100}"""))
+        delay(60L)
+
+        assertEquals(false, repo.devices.value.single().isOnline)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun localTimeoutMarksFutureTimestampDeviceOfflineUsingMonotonicClock() = runBlocking {
+        var elapsedMillis = 1_000L
+        val repo = SolarCleanRepo()
+        val inbound = SolarCleanMqttInbound(
+            repository = repo,
+            onlineTtlMillis = 20L,
+            monotonicMillis = { elapsedMillis }
+        )
+        val futureDeviceTimestamp = System.currentTimeMillis() + 60_000L
+
+        inbound.handleEvent(
+            SERIAL,
+            "online",
+            JSONObject().put("ts", futureDeviceTimestamp)
+        )
+        elapsedMillis += 20L
+        delay(60L)
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(futureDeviceTimestamp, state.timestamp)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun partialTelemetryPreservesPreviouslyReportedNavigationState() = runBlocking {
+        val repo = SolarCleanRepo()
+        val inbound = SolarCleanMqttInbound(repo)
+        inbound.handleEvent(
+            SERIAL,
+            "state",
+            JSONObject(
+                """{"lat":31.2,"lon":121.5,"yaw":83.0,"sat":18,"battery":72,"water":64,"ts":100}"""
+            )
+        )
+
+        inbound.handleEvent(
+            SERIAL,
+            "state",
+            JSONObject("""{"battery":68,"ts":200}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(31.2, state.latitude)
+        assertEquals(121.5, state.longitude)
+        assertEquals(83.0, state.yawDegrees)
+        assertEquals(18, state.satelliteCount)
+        assertEquals(68.0, state.batteryPercent)
+        assertEquals(64, state.waterLevel)
+        assertEquals(200L, state.timestamp)
+        inbound.cleanup()
+    }
 
     @Test
     fun parsesDeviceInfoPayloadWrappedInData() = runBlocking {
@@ -141,6 +256,50 @@ class SolarCleanMqttInboundTest {
     }
 
     @Test
+    fun successfulEmptyRouteListClearsPreviouslyKnownSlots() = runBlocking {
+        val repo = SolarCleanRepo()
+        val inbound = SolarCleanMqttInbound(repo)
+        inbound.handleEvent(
+            linkSn = SERIAL,
+            eventType = "ack",
+            json = JSONObject(
+                """
+                {
+                  "msgId": "route-list-1",
+                  "ofType": "routeList",
+                  "ok": true,
+                  "code": 0,
+                  "data": {
+                    "slots": [
+                      { "index": 1, "bytes": 2048, "valid": true }
+                    ]
+                  }
+                }
+                """.trimIndent()
+            )
+        )
+
+        inbound.handleEvent(
+            linkSn = SERIAL,
+            eventType = "ack",
+            json = JSONObject(
+                """
+                {
+                  "msgId": "route-list-2",
+                  "ofType": "ROUTE_LIST",
+                  "ok": true,
+                  "code": 0,
+                  "data": { "slots": [] }
+                }
+                """.trimIndent()
+            )
+        )
+
+        assertEquals(emptyList<Any>(), repo.devices.value.single().routeSlots)
+        inbound.cleanup()
+    }
+
+    @Test
     fun downloadErrorMarksDownloadInactiveAndKeepsUserFacingMessage() = runBlocking {
         val repo = SolarCleanRepo()
         val inbound = SolarCleanMqttInbound(repo)
@@ -263,6 +422,31 @@ class SolarCleanMqttInboundTest {
         assertEquals(66.0, state.batteryPercent)
         assertEquals(40, state.waterLevel)
         assertEquals(1710000000000L, state.timestamp)
+
+        inbound.cleanup()
+    }
+
+    @Test
+    fun retainedStateRefreshesTelemetryWithoutOverridingExistingOnlineState() = runBlocking {
+        val repo = SolarCleanRepo()
+        val inbound = SolarCleanMqttInbound(repo)
+
+        inbound.handleEvent(
+            linkSn = SERIAL,
+            eventType = "online",
+            json = JSONObject("""{"type":"online","ts":1710000000000}""")
+        )
+        inbound.handleEvent(
+            linkSn = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"battery":66.0,"water":40,"ts":1710000000001}"""),
+            isRetained = true
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(true, state.isOnline)
+        assertEquals(66.0, state.batteryPercent)
+        assertEquals(40, state.waterLevel)
 
         inbound.cleanup()
     }

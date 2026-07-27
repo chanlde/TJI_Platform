@@ -17,8 +17,8 @@ import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedback
 @Composable
 fun SolarCleanControlScreen(
     device: BoundAccountDevice,
-    onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> }
 ) {
     val isPreview = LocalInspectionMode.current
     val viewModel: SolarCleanControlViewModel? = if (isPreview) {
@@ -34,6 +34,9 @@ fun SolarCleanControlScreen(
     val commandFeedback by viewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
         it ?: remember { androidx.compose.runtime.mutableStateOf(SolarCleanCommandFeedback()) }
     }
+    val visibleCommandFeedback = commandFeedback.takeIf {
+        it.serialNumber == null || it.serialNumber == device.serialNumber
+    } ?: SolarCleanCommandFeedback()
     val controlSettingsByDevice by viewModel?.controlSettings?.collectAsStateWithLifecycle().let {
         it ?: remember { androidx.compose.runtime.mutableStateOf(emptyMap()) }
     }
@@ -49,7 +52,7 @@ fun SolarCleanControlScreen(
         state = displayState,
         controlSettings = controlSettings,
         enabled = controlsEnabled,
-        commandFeedback = commandFeedback,
+        commandFeedback = visibleCommandFeedback,
         onPumpOn = { viewModel?.setPump(device.serialNumber, true) },
         onPumpOff = { viewModel?.setPump(device.serialNumber, false) },
         onPressureChanged = { viewModel?.setPumpPressure(device.serialNumber, it.toDouble()) },

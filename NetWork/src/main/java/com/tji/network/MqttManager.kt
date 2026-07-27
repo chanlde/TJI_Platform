@@ -7,61 +7,95 @@ import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.also
-import kotlin.run
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.text.decodeToString
 import kotlin.text.toByteArray
+import kotlin.coroutines.resume
 
-class MqttManager private constructor(private val config: MQTTConfig) {
+interface MqttClientGateway {
+    /**
+     * 每次底层 MQTT 会话连接成功时递增。订阅层用它识别 clean-session 重连并恢复订阅。
+     * 不管理连接生命周期的测试/替代实现可以保持为 null。
+     */
+    val connectionEpoch: StateFlow<Long>?
+        get() = null
+
+    fun getConfig(): MqttConnectionConfig
+
+    suspend fun subscribeAwait(
+        topic: String,
+        qos: Int,
+        onMessage: (message: String, isRetained: Boolean) -> Unit
+    ): Result<Unit>
+
+    suspend fun unsubscribeAwait(topic: String): Result<Unit>
+
+    suspend fun publishAwait(
+        topic: String,
+        message: String,
+        qos: Int = 1,
+        retain: Boolean = false,
+        queueWhenDisconnected: Boolean
+    ): Result<Unit>
+}
+
+class MqttManager private constructor(
+    private val config: MqttConnectionConfig
+) : MqttClientGateway {
     private val _isConnected = MutableStateFlow(false) // 追踪连接状态
     val isConnected: StateFlow<Boolean> = _isConnected
     private val isConnecting = AtomicBoolean(false)
-    private val pendingConnectedCallbacks = ConcurrentLinkedQueue<() -> Unit>()
-    private val pendingFailedCallbacks = ConcurrentLinkedQueue<(Throwable) -> Unit>()
+    private val connectionCallbacks =
+        MqttConnectionCallbackQueue(MAX_PENDING_CONNECTION_CALLBACKS)
     private val messageSequence = java.util.concurrent.atomic.AtomicLong(0L)
+    private val connectionEpochCounter = AtomicLong(0L)
+    private val _connectionEpoch = MutableStateFlow(0L)
+    override val connectionEpoch: StateFlow<Long> = _connectionEpoch
+
     @Volatile
     private var connectStartedAt: Long = 0L
+
     companion object {
+        private const val MAX_PENDING_CONNECTION_CALLBACKS = 1_024
         private val INSTANCES = ConcurrentHashMap<String, MqttManager>()
 
         /**
          * 返回进程内单例。**仅在首次创建时**会使用 [config]（若传入非 null）；后续调用一律忽略 [config]，避免误以为可热切换 Broker。
-         * 若需在登录后使用用户侧 [MQTTConfig]，请在应用冷启动或明确「首次」调用时传入。
+         * 若需切换 Broker，请显式调用 [reset]。
          */
-        fun getInstance(config: MQTTConfig? = null): MqttManager {
+        fun getInstance(config: MqttConnectionConfig? = null): MqttManager {
             return getInstance(MqttProfiles.PLATFORM, config)
         }
 
-        fun getInstance(profileKey: String, config: MQTTConfig? = null): MqttManager {
+        fun getInstance(profileKey: String, config: MqttConnectionConfig? = null): MqttManager {
             return INSTANCES[profileKey] ?: synchronized(this) {
                 INSTANCES[profileKey] ?: run {
-                    val finalConfig = config ?: MQTTConfig.default()
+                    val finalConfig = config ?: MqttConnectionConfig.default()
                     MqttManager(finalConfig).also { INSTANCES[profileKey] = it }
                 }
             }
         }
 
-        fun getInstance(): MqttManager {
-            return getInstance(null)
-        }
-
-        fun reset(config: MQTTConfig = MQTTConfig.default()): MqttManager {
+        fun reset(config: MqttConnectionConfig = MqttConnectionConfig.default()): MqttManager {
             return reset(MqttProfiles.PLATFORM, config)
         }
 
-        fun reset(profileKey: String, config: MQTTConfig = MQTTConfig.default()): MqttManager {
+        fun reset(profileKey: String, config: MqttConnectionConfig = MqttConnectionConfig.default()): MqttManager {
             return synchronized(this) {
-                INSTANCES[profileKey]?.client?.disconnect()
+                INSTANCES.remove(profileKey)?.disconnect()
                 MqttManager(config).also { INSTANCES[profileKey] = it }
             }
         }
 
         fun disconnectAll() {
-            INSTANCES.values.forEach { manager ->
+            val managers = synchronized(this) {
+                INSTANCES.values.toList().also { INSTANCES.clear() }
+            }
+            managers.forEach { manager ->
                 runCatching { manager.disconnect() }
             }
         }
@@ -82,71 +116,79 @@ class MqttManager private constructor(private val config: MQTTConfig) {
 
         // 连接状态监听器设置
         .addConnectedListener {
-            _isConnected.value = true  // ✅ 添加这行
+            _isConnected.value = true
+            _connectionEpoch.value = connectionEpochCounter.incrementAndGet()
             isConnecting.set(false)
             val costMs = if (connectStartedAt > 0L) {
                 System.currentTimeMillis() - connectStartedAt
             } else {
                 -1L
             }
-            Log.w(
-                TAG,
-                "TJI_MQTT_DIAG connected listener: host=${it.clientConfig.serverHost}:${it.clientConfig.serverPort}, " +
-                        "state=${it.clientConfig.state.name}, cost=${costMs}ms"
-            )
+            debugLog {
+                "connected: host=${it.clientConfig.serverHost}:${it.clientConfig.serverPort}, " +
+                    "state=${it.clientConfig.state.name}, cost=${costMs}ms"
+            }
             drainConnectedCallbacks()
         }
         .addDisconnectedListener {
-            _isConnected.value = false    // ✅ 添加这行
+            _isConnected.value = false
             if (it.clientConfig.state != MqttClientState.CONNECTING_RECONNECT) {
                 isConnecting.set(false)
             }
 
             // 客户端断开连接，或者连接失败都会回调这里
-            Log.w(
-                TAG,
-                "TJI_MQTT_DIAG disconnected listener: host=${it.clientConfig.serverHost}:${it.clientConfig.serverPort}, " +
-                        "state=${it.clientConfig.state.name}, cause=${it.cause::class.java.simpleName}, message=${it.cause.message}"
-            )
-            when (it.clientConfig.state) {
-                MqttClientState.CONNECTING ->  Log.d(TAG,"手动连接失败")             // 即主动调用connect时没连接成功
-                MqttClientState.CONNECTING_RECONNECT ->  Log.d(TAG,"自动重连失败")   // 即连接成功后异常断开自动重连时连接失败
-                MqttClientState.CONNECTED ->  Log.d(TAG,"连接正常断开或异常断开")
-                else ->  Log.d(TAG,"连接断开：${it.clientConfig.state.name}")
+            debugLog {
+                "disconnected: host=${it.clientConfig.serverHost}:${it.clientConfig.serverPort}, " +
+                    "state=${it.clientConfig.state.name}, cause=${it.cause::class.java.simpleName}, message=${it.cause.message}"
+            }
+            if (BuildConfig.DEBUG) {
+                when (it.clientConfig.state) {
+                    MqttClientState.CONNECTING -> Log.d(TAG, "手动连接失败")
+                    MqttClientState.CONNECTING_RECONNECT -> Log.d(TAG, "自动重连失败")
+                    MqttClientState.CONNECTED -> Log.d(TAG, "连接正常断开或异常断开")
+                    else -> Log.d(TAG, "连接断开：${it.clientConfig.state.name}")
+                }
             }
         }
         .buildAsync()
 
     fun connect(
         onConnected: (() -> Unit)? = null,
-        onFailed: ((Throwable) -> Unit)? = null
+        onFailed: ((Throwable) -> Unit)? = null,
+        requestIsActive: () -> Boolean = { true }
     ) {
+        if (!requestIsActive()) return
         val state = client.config.state
         if (isMqttConnected()) {
-            Log.w(TAG, "TJI_MQTT_DIAG already connected, skip connect")
+            debugLog { "already connected, skip connect" }
             _isConnected.value = true
-            onConnected?.invoke()
+            if (requestIsActive()) onConnected?.invoke()
             return
         }
-        onConnected?.let { pendingConnectedCallbacks.add(it) }
-        onFailed?.let { pendingFailedCallbacks.add(it) }
+        if (!connectionCallbacks.offer(onConnected, onFailed, requestIsActive)) {
+            val throwable = IllegalStateException(
+                "MQTT 连接等待队列已满，拒绝新的离线请求"
+            )
+            Log.w(TAG, throwable.message.orEmpty())
+            onFailed?.invoke(throwable)
+            return
+        }
 
         if (!isConnecting.compareAndSet(false, true)) {
-            Log.w(TAG, "TJI_MQTT_DIAG is connecting, queued connect callback: $state")
+            debugLog { "is connecting, queued connect callback: $state" }
             return
         }
         if (state == MqttClientState.CONNECTING || state == MqttClientState.CONNECTING_RECONNECT) {
-            Log.w(TAG, "TJI_MQTT_DIAG client already connecting, queued connect callback: $state")
+            debugLog { "client already connecting, queued connect callback: $state" }
             return
         }
 
         connectStartedAt = System.currentTimeMillis()
-        Log.w(
-            TAG,
-            "TJI_MQTT_DIAG connect called: host=${config.serverHost}:${config.serverPort}, " +
-                    "clientId=${config.clientId}, username=${config.username}, cleanSession=${config.cleanSession}, " +
-                    "keepAlive=${config.keepAliveInterval}, qos=${config.qos}, state=${client.config.state.name}"
-        )
+        debugLog {
+            "connect called: host=${config.serverHost}:${config.serverPort}, " +
+                "clientId=${config.clientId}, cleanSession=${config.cleanSession}, " +
+                "keepAlive=${config.keepAliveInterval}, qos=${config.qos}, state=${client.config.state.name}"
+        }
 
         client.connectWith()
             .cleanSession(config.cleanSession)
@@ -160,11 +202,11 @@ class MqttManager private constructor(private val config: MQTTConfig) {
                 val costMs = System.currentTimeMillis() - connectStartedAt
                 if (throwable != null) {
                     isConnecting.set(false)
-                    Log.e(TAG,"TJI_MQTT_DIAG connect failed after ${costMs}ms: ${throwable::class.java.simpleName}, ${throwable.message}", throwable)
+                    Log.e(TAG, "MQTT connect failed after ${costMs}ms", throwable)
                     drainFailedCallbacks(throwable)
                 } else {
                     isConnecting.set(false)
-                    Log.w(TAG,"TJI_MQTT_DIAG connect future success after ${costMs}ms")
+                    debugLog { "connect future success after ${costMs}ms" }
                     _isConnected.value = true
                     drainConnectedCallbacks()
 
@@ -172,11 +214,11 @@ class MqttManager private constructor(private val config: MQTTConfig) {
             }
             .exceptionally { ex ->
                 isConnecting.set(false)
-                 Log.e(TAG,"TJI_MQTT_DIAG connection exceptionally failed: ${ex.message}", ex)
+                Log.e(TAG, "MQTT connection failed exceptionally", ex)
                 null
             }
 
-         Log.w(TAG,"TJI_MQTT_DIAG connect call sent at $connectStartedAt")
+        debugLog { "connect call sent at $connectStartedAt" }
     }
 
     fun subscribe(
@@ -185,10 +227,12 @@ class MqttManager private constructor(private val config: MQTTConfig) {
         onMessageWithMeta: ((String, Boolean) -> Unit)? = null,
         onError: ((Throwable) -> Unit)? = null,
         onSubscribed: (() -> Unit)? = null,
-        qos: Int = config.qos
+        qos: Int = config.qos,
+        requestIsActive: () -> Boolean = { true }
     ) {
+        if (!requestIsActive()) return
         if (!isMqttConnected()) {
-            Log.w(TAG, "TJI_MQTT_DIAG not connected, connect before subscribe: $topic")
+            debugLog { "not connected, connect before subscribe: $topic" }
             connect(
                 onConnected = {
                     subscribe(
@@ -197,42 +241,83 @@ class MqttManager private constructor(private val config: MQTTConfig) {
                         onMessageWithMeta = onMessageWithMeta,
                         onError = onError,
                         onSubscribed = onSubscribed,
-                        qos = qos
+                        qos = qos,
+                        requestIsActive = requestIsActive
                     )
                 },
-                onFailed = onError
+                onFailed = onError,
+                requestIsActive = requestIsActive
             )
             return
         }
 
         val startAt = System.currentTimeMillis()
-        Log.w(TAG, "TJI_MQTT_DIAG subscribe start: topic=$topic qos=$qos state=${client.config.state.name}")
+        debugLog { "subscribe start: topic=$topic qos=$qos state=${client.config.state.name}" }
 
         client.toAsync().subscribeWith()
             .topicFilter(topic)
             .qos(qos.toMqttQos())
             .callback { publish ->
-                val receiveAt = System.currentTimeMillis()
-                val seq = messageSequence.incrementAndGet()
                 val message = publish.payloadAsBytes.decodeToString()
-                Log.w(
-                    TAG,
-                    "TJI_MQTT_DIAG message received #$seq: topic=$topic qos=${publish.qos.code}, " +
-                            "retain=${publish.isRetain}, bytes=${publish.payloadAsBytes.size}, receiveAt=$receiveAt"
-                )
+                if (BuildConfig.DEBUG) {
+                    val receiveAt = System.currentTimeMillis()
+                    val sequence = messageSequence.incrementAndGet()
+                    Log.d(
+                        TAG,
+                        "message received #$sequence: topic=$topic qos=${publish.qos.code}, " +
+                            "retain=${publish.isRetain}, bytes=${publish.payloadAsBytes.size}, " +
+                            "receiveAt=$receiveAt"
+                    )
+                }
                 onMessageWithMeta?.invoke(message, publish.isRetain) ?: onMessage(message)
             }
             .send()
             .whenComplete { _, throwable ->
                 val costMs = System.currentTimeMillis() - startAt
                 if (throwable != null) {
-                     Log.e(TAG,"TJI_MQTT_DIAG subscribe failed after ${costMs}ms: topic=$topic, ${throwable.message}", throwable)
+                    Log.e(
+                        TAG,
+                        "MQTT subscribe failed after ${costMs}ms: " +
+                            "topic=$topic, ${throwable.message}",
+                        throwable
+                    )
                     onError?.invoke(throwable)
+                } else if (!requestIsActive()) {
+                    client.toAsync().unsubscribeWith()
+                        .topicFilter(topic)
+                        .send()
                 } else {
-	                     Log.w(TAG,"TJI_MQTT_DIAG subscribed after ${costMs}ms: topic=$topic qos=$qos")
+                    debugLog { "subscribed after ${costMs}ms: topic=$topic qos=$qos" }
                     onSubscribed?.invoke()
                 }
             }
+    }
+
+    override suspend fun subscribeAwait(
+        topic: String,
+        qos: Int,
+        onMessage: (message: String, isRetained: Boolean) -> Unit
+    ): Result<Unit> = suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation {
+            connectionCallbacks.pruneInactive()
+        }
+        subscribe(
+            topic = topic,
+            qos = qos,
+            onMessage = {},
+            onMessageWithMeta = onMessage,
+            onError = { throwable ->
+                if (continuation.isActive) {
+                    continuation.resume(Result.failure(throwable))
+                }
+            },
+            onSubscribed = {
+                if (continuation.isActive) {
+                    continuation.resume(Result.success(Unit))
+                }
+            },
+            requestIsActive = { continuation.isActive }
+        )
     }
 
     fun publish(
@@ -242,16 +327,18 @@ class MqttManager private constructor(private val config: MQTTConfig) {
         retain: Boolean = false,
         queueWhenDisconnected: Boolean = true,
         onSuccess: (() -> Unit)? = null,
-        onError: ((Throwable) -> Unit)? = null
+        onError: ((Throwable) -> Unit)? = null,
+        requestIsActive: () -> Boolean = { true }
     ) {
+        if (!requestIsActive()) return
         if (!isMqttConnected()) {
-            Log.d(
-                TAG,
-                "MQTT not connected before publish: topic=$topic, queueWhenDisconnected=$queueWhenDisconnected, state=${client.config.state.name}"
-            )
+            debugLog {
+                "MQTT not connected before publish: topic=$topic, " +
+                    "queueWhenDisconnected=$queueWhenDisconnected, state=${client.config.state.name}"
+            }
             if (!queueWhenDisconnected) {
                 val throwable = IllegalStateException("MQTT 未连接，实时指令已取消发送")
-                Log.d(TAG, "MQTT realtime publish dropped: topic=$topic")
+                debugLog { "MQTT realtime publish dropped: topic=$topic" }
                 onError?.invoke(throwable)
                 connect()
                 return
@@ -265,16 +352,18 @@ class MqttManager private constructor(private val config: MQTTConfig) {
                         retain = retain,
                         queueWhenDisconnected = queueWhenDisconnected,
                         onSuccess = onSuccess,
-                        onError = onError
+                        onError = onError,
+                        requestIsActive = requestIsActive
                     )
                 },
-                onFailed = onError
+                onFailed = onError,
+                requestIsActive = requestIsActive
             )
             return
         }
 
         val startAt = System.currentTimeMillis()
-        Log.d(TAG, "MQTT publish start: topic=$topic qos=$qos retain=$retain state=${client.config.state.name}")
+        debugLog { "publish start: topic=$topic qos=$qos retain=$retain state=${client.config.state.name}" }
 
         client.publishWith()
             .topic(topic)
@@ -285,17 +374,54 @@ class MqttManager private constructor(private val config: MQTTConfig) {
             .whenComplete { _, throwable ->
                 val costMs = System.currentTimeMillis() - startAt
                 if (throwable != null) {
-                     Log.d(TAG,"MQTT publish failed after ${costMs}ms: ${throwable.message}")
+                    Log.e(TAG, "MQTT publish failed after ${costMs}ms: topic=$topic", throwable)
                     onError?.invoke(throwable)
                 } else {
-                     Log.d(TAG,"MQTT publish succeeded after ${costMs}ms: topic=$topic")
+                    debugLog { "publish succeeded after ${costMs}ms: topic=$topic" }
                     onSuccess?.invoke()
                 }
             }
     }
-    fun unsubscribe(topic: String) {
+
+    override suspend fun publishAwait(
+        topic: String,
+        message: String,
+        qos: Int,
+        retain: Boolean,
+        queueWhenDisconnected: Boolean
+    ): Result<Unit> = suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation {
+            connectionCallbacks.pruneInactive()
+        }
+        publish(
+            topic = topic,
+            message = message,
+            qos = qos,
+            retain = retain,
+            queueWhenDisconnected = queueWhenDisconnected,
+            onSuccess = {
+                if (continuation.isActive) {
+                    continuation.resume(Result.success(Unit))
+                }
+            },
+            onError = { throwable ->
+                if (continuation.isActive) {
+                    continuation.resume(Result.failure(throwable))
+                }
+            },
+            requestIsActive = { continuation.isActive }
+        )
+    }
+
+    fun unsubscribe(
+        topic: String,
+        onSuccess: (() -> Unit)? = null,
+        onError: ((Throwable) -> Unit)? = null
+    ) {
         if (!isMqttConnected()) {
-            Log.d(TAG, "MQTT not connected, cannot unsubscribe.")
+            val throwable = IllegalStateException("MQTT 未连接，无法确认取消订阅")
+            Log.d(TAG, throwable.message.orEmpty())
+            onError?.invoke(throwable)
             return
         }
 
@@ -304,30 +430,53 @@ class MqttManager private constructor(private val config: MQTTConfig) {
             .send()
             .whenComplete { _, throwable ->
                 if (throwable != null) {
-                    Log.d(TAG, "MQTT unsubscribe failed: ${throwable.message}")
+                    Log.e(TAG, "MQTT unsubscribe failed: topic=$topic", throwable)
+                    onError?.invoke(throwable)
                 } else {
-                    Log.d(TAG, "MQTT unsubscribed from $topic")
+                    debugLog { "MQTT unsubscribed from $topic" }
+                    onSuccess?.invoke()
                 }
             }
     }
+
+    override suspend fun unsubscribeAwait(topic: String): Result<Unit> =
+        suspendCancellableCoroutine { continuation ->
+            unsubscribe(
+                topic = topic,
+                onSuccess = {
+                    if (continuation.isActive) {
+                        continuation.resume(Result.success(Unit))
+                    }
+                },
+                onError = { throwable ->
+                    if (continuation.isActive) {
+                        continuation.resume(Result.failure(throwable))
+                    }
+                }
+            )
+        }
 
     fun disconnect(
         onSuccess: (() -> Unit)? = null,
         onError: ((Throwable) -> Unit)? = null
     ) {
-        if (!isMqttConnected()) {
-             Log.d(TAG,"MQTT not connected, skip disconnect.")
-             onSuccess?.invoke()
+        failPendingConnectionRequests()
+        if (client.config.state == MqttClientState.DISCONNECTED) {
+            debugLog { "MQTT already disconnected" }
+            _isConnected.value = false
+            isConnecting.set(false)
+            onSuccess?.invoke()
             return
         }
 
+        isConnecting.set(false)
         client.disconnect()
             .whenComplete { _, throwable ->
                 if (throwable != null) {
-                     Log.d(TAG,"MQTT disconnect failed: ${throwable.message}")
+                    Log.e(TAG, "MQTT disconnect failed", throwable)
                     onError?.invoke(throwable)
                 } else {
-                     Log.d(TAG,"MQTT disconnected")
+                    debugLog { "MQTT disconnected" }
                     _isConnected.value = false
                     onSuccess?.invoke()
                 }
@@ -335,27 +484,27 @@ class MqttManager private constructor(private val config: MQTTConfig) {
     }
 
     // 获取当前配置
-    fun getConfig(): MQTTConfig = config
+    override fun getConfig(): MqttConnectionConfig = config
 
     private fun isMqttConnected(): Boolean =
         _isConnected.value || client.config.state == MqttClientState.CONNECTED
 
     private fun drainConnectedCallbacks() {
-        while (true) {
-            val callback = pendingConnectedCallbacks.poll() ?: break
-            runCatching { callback() }
-                .onFailure { Log.d(TAG, "MQTT connected callback failed: ${it.message}") }
+        connectionCallbacks.drainConnected { throwable ->
+            Log.d(TAG, "MQTT connected callback failed: ${throwable.message}")
         }
-        pendingFailedCallbacks.clear()
     }
 
     private fun drainFailedCallbacks(throwable: Throwable) {
-        while (true) {
-            val callback = pendingFailedCallbacks.poll() ?: break
-            runCatching { callback(throwable) }
-                .onFailure { Log.d(TAG, "MQTT failed callback failed: ${it.message}") }
+        connectionCallbacks.drainFailed(throwable) { callbackFailure ->
+            Log.d(TAG, "MQTT failed callback failed: ${callbackFailure.message}")
         }
-        pendingConnectedCallbacks.clear()
+    }
+
+    private fun failPendingConnectionRequests() {
+        drainFailedCallbacks(
+            IllegalStateException("MQTT 连接已主动断开，等待中的请求已取消")
+        )
     }
 
     private fun Int.toMqttQos(): MqttQos {
@@ -365,4 +514,11 @@ class MqttManager private constructor(private val config: MQTTConfig) {
             else -> MqttQos.AT_LEAST_ONCE
         }
     }
-	}
+
+    private inline fun debugLog(message: () -> String) {
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, message())
+        }
+    }
+
+}

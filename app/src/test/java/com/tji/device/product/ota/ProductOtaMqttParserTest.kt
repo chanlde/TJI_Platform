@@ -113,4 +113,25 @@ class ProductOtaMqttParserTest {
 
         assertEquals(36, status?.progress)
     }
+
+    @Test
+    fun malformedNumericFieldsAreNotSilentlyConvertedToZero() {
+        val json = JSONObject(
+            """
+            {
+              "type": "otaStatus",
+              "otaStatus": "OTA_DOWNLOADING",
+              "seq": "invalid",
+              "targetInnerVersion": "unknown",
+              "downloadedBytes": null
+            }
+            """.trimIndent()
+        )
+
+        val status = ProductOtaMqttParser.parseOtaStatus(json)
+
+        assertEquals(null, status?.seq)
+        assertEquals(null, status?.targetInnerVersion)
+        assertEquals(null, status?.downloaded)
+    }
 }

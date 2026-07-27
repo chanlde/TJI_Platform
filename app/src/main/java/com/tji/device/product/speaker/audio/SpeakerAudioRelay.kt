@@ -4,10 +4,10 @@ import android.Manifest
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import com.tji.device.BuildConfig
 import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import com.tji.device.product.speaker.core.SpeakerCoreShadowVerifier
 import kotlinx.coroutines.currentCoroutineContext
@@ -27,65 +27,8 @@ data class SpeakerRelayConfig(
 class SpeakerAudioRelay(
     private val config: SpeakerRelayConfig = SpeakerRelayConfig()
 ) {
-    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    suspend fun streamMicrophone(
-        outputGain: Float,
-        toneSettings: SpeakerToneSettings = SpeakerToneSettings(),
-        streamContext: SpeakerUdpStreamContext? = null,
-        onPacketSent: (Int) -> Unit
-    ) {
-        val packetizer = SpeakerAdpcmPacketizer(streamContext)
-        val kotlinShadowPacketizer = SpeakerAdpcmPacketizer(streamContext, useNative = false)
-        val shadowSession = SpeakerCoreShadowVerifier.createUdpPacketSessionOrNull()
-        val voiceProcessor = SpeakerCoreAudioEngine.createLiveVoiceProcessor()
-        var frameCount = 0
-        var debugFrameCount = 0
-        val shadowPath = if (streamContext == null) "live-legacy-udp" else "live-v2-udp"
-        logUdpShadowAvailability(shadowSession, shadowPath)
-        try {
-            DatagramSocket().use { socket ->
-                val address = InetAddress.getByName(config.host)
-                captureMicrophone(
-                    onFrame = { frame ->
-                        val sequence = frameCount
-                        val processedFrame = if (sequence < SpeakerAudioConfig.Timing.LIVE_STARTUP_MUTE_FRAMES) {
-                            ByteArray(frame.size)
-                        } else {
-                            voiceProcessor.processFrame(frame, toneSettings)
-                        }
-                        frameCount += 1
-                        if (debugFrameCount < SpeakerAudioConfig.Debug.AUDIO_DEBUG_FRAME_LIMIT) {
-                            logAudioStats("live frame#$debugFrameCount", frame, processedFrame)
-                            debugFrameCount += 1
-                        }
-                        packetizer.packetize(processedFrame)?.let { packet ->
-                            val kotlinPacket = kotlinShadowPacketizer.packetize(processedFrame)
-                            logUdpPacketShadowResult(
-                                session = shadowSession,
-                                path = shadowPath,
-                                kotlinPacket = kotlinPacket,
-                                pcm16le = processedFrame,
-                                sequence = sequence,
-                                context = streamContext,
-                                isLastPacket = false
-                            )
-                            sendPacket(socket, address, packet)
-                            onPacketSent(1)
-                        }
-                    }
-                )
-            }
-        } finally {
-            packetizer.close()
-            kotlinShadowPacketizer.close()
-            voiceProcessor.close()
-            shadowSession?.close()
-        }
-    }
-
     suspend fun sendRecordedPcm(
         pcm: ByteArray,
-        outputGain: Float,
         prebufferPackets: Int = 0,
         leadingSilenceMs: Int = 0,
         streamContext: SpeakerUdpStreamContext? = null,
@@ -94,8 +37,10 @@ class SpeakerAudioRelay(
     ) {
         val frameBytes = SpeakerAdpcmPacketizer.PCM_FRAME_BYTES
         val packetizer = SpeakerAdpcmPacketizer(streamContext, useNative = useNativePacketizer)
-        val kotlinShadowPacketizer = SpeakerAdpcmPacketizer(streamContext, useNative = false)
-        val shadowSession = SpeakerCoreShadowVerifier.createUdpPacketSessionOrNull()
+        val kotlinShadowPacketizer =
+            if (BuildConfig.DEBUG) SpeakerAdpcmPacketizer(streamContext, useNative = false) else null
+        val shadowSession =
+            if (BuildConfig.DEBUG) SpeakerCoreShadowVerifier.createUdpPacketSessionOrNull() else null
         val shadowPath = if (streamContext == null) "recorded-legacy-udp" else "recorded-v2-udp"
         val streamPcm = SpeakerCoreAudioEngine
             .prependSilencePcm16(
@@ -116,16 +61,17 @@ class SpeakerAudioRelay(
                     val frame = streamPcm.copyOfRange(offset, end)
                     val isLastPacket = end >= streamPcm.size
                     packetizer.packetize(frame, isLastPacket = isLastPacket)?.let { packet ->
-                        val kotlinPacket = kotlinShadowPacketizer.packetize(frame, isLastPacket = isLastPacket)
-                        logUdpPacketShadowResult(
-                            session = shadowSession,
-                            path = shadowPath,
-                            kotlinPacket = kotlinPacket,
-                            pcm16le = frame,
-                            sequence = sentFrames,
-                            context = streamContext,
-                            isLastPacket = isLastPacket
-                        )
+                        kotlinShadowPacketizer?.packetize(frame, isLastPacket = isLastPacket)?.let { kotlinPacket ->
+                            logUdpPacketShadowResult(
+                                session = shadowSession,
+                                path = shadowPath,
+                                kotlinPacket = kotlinPacket,
+                                pcm16le = frame,
+                                sequence = sentFrames,
+                                context = streamContext,
+                                isLastPacket = isLastPacket
+                            )
+                        }
                         sendPacket(socket, address, packet)
                         onPacketSent(1)
                     }
@@ -144,39 +90,54 @@ class SpeakerAudioRelay(
             }
         } finally {
             packetizer.close()
-            kotlinShadowPacketizer.close()
+            kotlinShadowPacketizer?.close()
             shadowSession?.close()
         }
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    suspend fun captureMicrophoneFrames(onFrame: suspend (ByteArray) -> Unit) {
-        captureMicrophone(onFrame)
+    suspend fun captureMicrophoneFrames(
+        sampleRate: Int,
+        onFrame: suspend (ByteArray) -> Unit
+    ) {
+        captureMicrophone(sampleRate, onFrame)
     }
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    private suspend fun captureMicrophone(onFrame: suspend (ByteArray) -> Unit) {
-        val frameBytes = SpeakerAdpcmPacketizer.PCM_FRAME_BYTES
+    private suspend fun captureMicrophone(
+        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE,
+        onFrame: suspend (ByteArray) -> Unit
+    ) {
+        require(sampleRate in SpeakerMicrophoneFormat.supportedSampleRates) {
+            "不支持的麦克风采样率: $sampleRate"
+        }
+        val frameBytes = SpeakerMicrophoneFormat.frameBytes(sampleRate)
         val minBuffer = AudioRecord.getMinBufferSize(
-            SpeakerAdpcmPacketizer.SAMPLE_RATE,
+            sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT
         )
+        check(minBuffer > 0) { "手机不支持 ${sampleRate / 1_000}kHz 单声道 PCM16 录音" }
         val bufferSize = max(minBuffer, frameBytes * 4)
         val recorder = AudioRecord(
             microphoneAudioSource(),
-            SpeakerAdpcmPacketizer.SAMPLE_RATE,
+            sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
             bufferSize
         )
+        check(recorder.state == AudioRecord.STATE_INITIALIZED) {
+            recorder.release()
+            "初始化 ${sampleRate / 1_000}kHz 麦克风失败"
+        }
         val frame = ByteArray(frameBytes)
         var filled = 0
         try {
             recorder.startRecording()
             while (currentCoroutineContext().isActive) {
                 val read = recorder.read(frame, filled, frameBytes - filled)
-                if (read <= 0) continue
+                check(read >= 0) { "麦克风读取失败: $read" }
+                if (read == 0) continue
                 filled += read - (read % 2)
                 if (filled >= frameBytes) {
                     onFrame(frame.copyOf())
@@ -190,28 +151,12 @@ class SpeakerAudioRelay(
     }
 
     private fun microphoneAudioSource(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            MediaRecorder.AudioSource.VOICE_RECOGNITION
-        } else {
-            MediaRecorder.AudioSource.MIC
-        }
+        MediaRecorder.AudioSource.VOICE_RECOGNITION
 
     private fun sendPacket(socket: DatagramSocket, address: InetAddress, packet: ByteArray) {
         repeat(config.redundancy.coerceAtLeast(1)) {
             socket.send(DatagramPacket(packet, packet.size, address, config.port))
         }
-    }
-
-    private fun logAudioStats(label: String, raw: ByteArray, processed: ByteArray) {
-        val rawStats = SpeakerVoiceProcessor.measurePcm(raw)
-        val processedStats = SpeakerVoiceProcessor.measurePcm(processed)
-        val ratio = if (rawStats.rms > 0f) processedStats.rms / rawStats.rms else 0f
-        Log.d(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "$label rawRms=${rawStats.rms} rawPeak=${rawStats.peak} " +
-                "processedRms=${processedStats.rms} processedPeak=${processedStats.peak} " +
-                "rmsRatio=$ratio samples=${processedStats.samples}"
-        )
     }
 
     private fun logUdpShadowAvailability(

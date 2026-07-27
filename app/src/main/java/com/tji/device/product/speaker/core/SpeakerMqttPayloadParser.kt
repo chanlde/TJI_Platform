@@ -5,15 +5,21 @@ import com.tji.device.product.speaker.model.SpeakerAudioDiagnostics
 import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerRecordEvent
+import com.tji.device.product.speaker.model.SpeakerServoState
 import com.tji.device.product.speaker.model.SpeakerStorageStatus
 import org.json.JSONArray
 import org.json.JSONObject
 
 object SpeakerMqttPayloadParser {
-    fun parseState(serialNumber: String, json: JSONObject, allowOnline: Boolean): SpeakerDeviceState {
-        val native = SpeakerCoreNative.parseMqttStateJsonOrNull(serialNumber, json.toString(), allowOnline)
-        val parsed = native?.let { JSONObject(it).toState() } ?: parseStateFallback(serialNumber, json, allowOnline)
-        return parsed.copy(audio = json.parseAudioDiagnostics() ?: native?.let { JSONObject(it).parseAudioDiagnostics() })
+    fun parseState(
+        serialNumber: String,
+        json: JSONObject,
+        allowOnline: Boolean,
+        current: SpeakerDeviceState? = null
+    ): SpeakerDeviceState {
+        // 调用方已经完成 JSONObject 解析。直接读取原始 payload 可以避免 JNI 再序列化/再解析，
+        // 同时保留 talking、currentTalkId 和完整 servo 等 native 摘要尚未覆盖的状态字段。
+        return parseStateFallback(serialNumber, json, allowOnline, current)
     }
 
     fun parseAck(json: JSONObject): SpeakerAck {
@@ -47,6 +53,7 @@ object SpeakerMqttPayloadParser {
             currentFile = optString("currentFile").ifBlank { null },
             volume = optInt("volume", 35).coerceIn(0, 100),
             servoAngle = optNullableInt("servoAngle"),
+            servo = optJSONObject("servo")?.toServoState(),
             lastError = optString("lastError").ifBlank { null },
             network = optString("network").ifBlank { null },
             outputQuality = optString("outputQuality").ifBlank { null },
@@ -121,26 +128,47 @@ object SpeakerMqttPayloadParser {
             timestamp = optNullableLong("timestamp")
         )
 
-    private fun parseStateFallback(serialNumber: String, json: JSONObject, allowOnline: Boolean): SpeakerDeviceState =
+    private fun parseStateFallback(
+        serialNumber: String,
+        json: JSONObject,
+        allowOnline: Boolean,
+        current: SpeakerDeviceState?
+    ): SpeakerDeviceState =
         SpeakerDeviceState(
             serialNumber = serialNumber,
-            name = json.optString("name").ifBlank { null },
-            isOnline = allowOnline,
-            playing = json.optBoolean("playing", false),
-            talking = json.optBoolean("talking", false),
-            currentTalkId = json.optString("currentTalkId").ifBlank { null },
-            currentFile = json.optString("currentFile").ifBlank { null },
-            volume = json.optNullableInt("volume")?.coerceIn(0, 100) ?: 35,
-            servoAngle = json.optNullableInt("servoAngle"),
-            lastError = json.optString("lastError").ifBlank { null },
-            network = json.optString("network").ifBlank { null },
-            outputQuality = json.optString("outputQuality")
-                .ifBlank { json.optString("audioQuality") }
-                .ifBlank { json.optString("quality") }
-                .ifBlank { null },
-            audio = json.parseAudioDiagnostics(),
+            name = json.optionalString("name", current?.name),
+            isOnline = when {
+                json.has("isOnline") -> json.optNullableBoolean("isOnline") == true
+                json.has("online") -> json.optNullableBoolean("online") == true
+                else -> allowOnline
+            },
+            playing = json.optionalBoolean("playing", current?.playing ?: false),
+            talking = json.optionalBoolean("talking", current?.talking ?: false),
+            currentTalkId = json.optionalString("currentTalkId", current?.currentTalkId),
+            currentFile = json.optionalString("currentFile", current?.currentFile),
+            volume = json.optNullableInt("volume")?.coerceIn(0, 100) ?: current?.volume ?: 35,
+            servoAngle = if (json.has("servoAngle")) json.optNullableInt("servoAngle") else current?.servoAngle,
+            servo = if (json.has("servo")) json.optJSONObject("servo")?.toServoState() else current?.servo,
+            lastError = json.optionalString("lastError", current?.lastError),
+            network = json.optionalString("network", current?.network),
+            outputQuality = json.firstPresentString(
+                keys = arrayOf("outputQuality", "audioQuality", "quality"),
+                fallback = current?.outputQuality
+            ),
+            audio = if (json.has("audio")) json.parseAudioDiagnostics() else current?.audio,
             timestamp = json.optNullableLong("ts")
         )
+
+    private fun JSONObject.optionalString(name: String, fallback: String?): String? =
+        if (has(name)) optString(name).ifBlank { null } else fallback
+
+    private fun JSONObject.optionalBoolean(name: String, fallback: Boolean): Boolean =
+        if (has(name)) optNullableBoolean(name) ?: fallback else fallback
+
+    private fun JSONObject.firstPresentString(keys: Array<String>, fallback: String?): String? {
+        val key = keys.firstOrNull(::has) ?: return fallback
+        return optString(key).ifBlank { null }
+    }
 
     private fun JSONObject.parseAudioDiagnostics(): SpeakerAudioDiagnostics? {
         val audio = optJSONObject("audio") ?: return null
@@ -164,6 +192,22 @@ object SpeakerMqttPayloadParser {
             limiterCount = audio.optLong("limiterCount", 0L)
         )
     }
+
+    private fun JSONObject.toServoState(): SpeakerServoState =
+        SpeakerServoState(
+            currentAngle = optNullableInt("currentAngle"),
+            targetAngle = optNullableInt("targetAngle"),
+            speedDps = optNullableInt("speedDps"),
+            moving = optBoolean("moving", false),
+            sweepActive = optBoolean("sweepActive", false),
+            stepMode = optBoolean("stepMode", false),
+            stepAngle = optNullableInt("stepAngle"),
+            minAngle = optNullableInt("minAngle"),
+            maxAngle = optNullableInt("maxAngle"),
+            cyclesLeft = optNullableInt("cyclesLeft"),
+            cyclesDone = optNullableInt("cyclesDone"),
+            infinite = optBoolean("infinite", false)
+        )
 
     private fun parseAckFallback(json: JSONObject): SpeakerAck =
         SpeakerAck(
@@ -272,10 +316,13 @@ data class ParsedRecordList(
 )
 
 private fun JSONObject.optNullableLong(name: String): Long? =
-    if (has(name) && !isNull(name)) optLong(name) else null
+    if (has(name) && !isNull(name)) runCatching { getLong(name) }.getOrNull() else null
 
 private fun JSONObject.optNullableInt(name: String): Int? =
-    if (has(name) && !isNull(name)) optInt(name) else null
+    if (has(name) && !isNull(name)) runCatching { getInt(name) }.getOrNull() else null
+
+private fun JSONObject.optNullableBoolean(name: String): Boolean? =
+    if (has(name) && !isNull(name)) runCatching { getBoolean(name) }.getOrNull() else null
 
 private fun JSONArray?.toIntList(): List<Int> {
     if (this == null) return emptyList()

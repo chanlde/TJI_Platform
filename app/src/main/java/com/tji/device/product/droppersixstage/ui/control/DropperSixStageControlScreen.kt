@@ -40,6 +40,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalInspectionMode
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.di.AppContainer
+import com.tji.device.product.droppersixstage.model.DROPPER_MAX_OPEN_DURATION_MS
+import com.tji.device.product.droppersixstage.model.DROPPER_MIN_OPEN_DURATION_MS
 import com.tji.device.product.droppersixstage.model.DropperSixStageState
 import com.tji.device.product.droppersixstage.model.DropperStageState
 import com.tji.device.product.droppersixstage.viewmodel.DropperCommandFeedback
@@ -71,13 +73,15 @@ fun DropperSixStageControlScreen(
     val feedback by viewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(DropperCommandFeedback()) }
     }
+    val visibleFeedback = feedback.takeIf { it.serialNumber == null || it.serialNumber == device.serialNumber }
+        ?: DropperCommandFeedback()
     val state = devices.firstOrNull { it.serialNumber == device.serialNumber }
     val displayState = if (isPreview) previewDropperState(device.serialNumber, device.name) else state
     val enabled = viewModel != null && displayState?.isOnline == true
     val stages = displayState?.stages?.takeIf { it.isNotEmpty() } ?: DropperStageState.defaults()
-    var openDurationMs by remember { mutableIntStateOf(DEFAULT_OPEN_DURATION_MS) }
+    var openDurationMs by remember(device.serialNumber) { mutableIntStateOf(DEFAULT_OPEN_DURATION_MS) }
     var selectedStageIndex by remember(device.serialNumber) { mutableIntStateOf(1) }
-    var testingStage by remember { mutableStateOf<Int?>(null) }
+    var testingStage by remember(device.serialNumber) { mutableStateOf<Int?>(null) }
     val selectedStage = stages.firstOrNull { it.index == selectedStageIndex } ?: stages.first()
 
     LaunchedEffect(stages) {
@@ -88,7 +92,11 @@ fun DropperSixStageControlScreen(
 
     LaunchedEffect(testingStage, openDurationMs, enabled, device.serialNumber) {
         val stage = testingStage ?: return@LaunchedEffect
-        if (!enabled) return@LaunchedEffect
+        if (!enabled) {
+            // 断线后不自动恢复物理动作；需要用户重新明确开启测试。
+            testingStage = null
+            return@LaunchedEffect
+        }
         while (true) {
             viewModel?.timedOpenStage(device.serialNumber, stage, openDurationMs)
             delay(openDurationMs + TEST_LOOP_GAP_MS)
@@ -106,7 +114,7 @@ fun DropperSixStageControlScreen(
             DropperHeaderCard(
                 device = device,
                 state = displayState,
-                feedback = feedback
+                feedback = visibleFeedback
             )
         }
         item {
@@ -116,15 +124,17 @@ fun DropperSixStageControlScreen(
                     DurationControl(
                         durationMs = openDurationMs,
                         onDecrease = {
-                            openDurationMs = (openDurationMs - DURATION_STEP_MS).coerceAtLeast(MIN_OPEN_DURATION_MS)
+                            openDurationMs = (openDurationMs - DURATION_STEP_MS)
+                                .coerceAtLeast(DROPPER_MIN_OPEN_DURATION_MS)
                         },
                         onIncrease = {
-                            openDurationMs = (openDurationMs + DURATION_STEP_MS).coerceAtMost(MAX_OPEN_DURATION_MS)
+                            openDurationMs = (openDurationMs + DURATION_STEP_MS)
+                                .coerceAtMost(DROPPER_MAX_OPEN_DURATION_MS)
                         }
                     )
                 }
             ) {
-                FeedbackBadge(feedback)
+                FeedbackBadge(visibleFeedback)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -409,7 +419,5 @@ private fun FeedbackBadge(feedback: DropperCommandFeedback) {
 }
 
 private const val DEFAULT_OPEN_DURATION_MS = 1_000
-private const val MIN_OPEN_DURATION_MS = 100
-private const val MAX_OPEN_DURATION_MS = 30_000
 private const val DURATION_STEP_MS = 500
 private const val TEST_LOOP_GAP_MS = 1_000L

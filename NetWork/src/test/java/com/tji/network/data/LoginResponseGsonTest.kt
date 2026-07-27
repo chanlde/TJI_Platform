@@ -41,4 +41,36 @@ class LoginResponseGsonTest {
         assertEquals("SN001", response.data?.boundDevices?.single()?.sn1)
         assertEquals("光伏清洗 01", response.data?.boundDevices?.single()?.productName)
     }
+
+    @Test
+    fun malformedTypedDeviceRowsDoNotDiscardValidRows() {
+        val response = Gson().fromJson(
+            """
+            {
+              "id": "user-1",
+              "token": "token-value",
+              "cleansns": [
+                { "sn1": { "unexpected": true }, "id": "bad" },
+                true,
+                {
+                  "sn1": "SOLAR-001",
+                  "id": "not-an-int",
+                  "productId": "3",
+                  "productName": ["wrong-shape"]
+                }
+              ]
+            }
+            """.trimIndent(),
+            LoginResponse::class.java
+        )
+
+        val devices = response.cleanDevicesResolved()
+
+        assertEquals(1, devices.size)
+        assertEquals("SOLAR-001", devices.single().sn1)
+        assertEquals(null, devices.single().id)
+        assertEquals(3, devices.single().productId)
+        assertEquals(null, devices.single().productName)
+        assertEquals("SolarClean", devices.single().productType)
+    }
 }

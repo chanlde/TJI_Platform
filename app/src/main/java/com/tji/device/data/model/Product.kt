@@ -71,7 +71,7 @@ object ProductCatalog {
             shortLabel = "Speaker",
             description = "无人机喊话器产品线",
             platformSubtitle = "无人机喊话广播系统",
-            platformValueLine = "实时喊话 · 低延迟广播"
+            platformValueLine = "录音喊话 · 现场监听"
         ),
         ProductDefinition(
             type = ProductType.BreakWindowProjectile,

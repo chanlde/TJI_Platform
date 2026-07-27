@@ -54,11 +54,12 @@ internal fun TacticalMap(
     var zoomDelta by remember { mutableFloatStateOf(0f) }
     var recenterSignal by remember { mutableIntStateOf(0) }
     val useGaodeMap = remember { RadioDetectionMapRuntime.shouldUseGaodeMap() }
+    val mapConfig = remember { RadioDetectionMapConfig() }
 
     Box(modifier = modifier.background(MapBg)) {
         if (useGaodeMap) {
             RadioDetectionAmapView(
-                config = RadioDetectionMapConfig(),
+                config = mapConfig,
                 state = state,
                 focusedTargetId = focusedTargetId,
                 focusTargetSignal = focusTargetSignal,
@@ -167,6 +168,9 @@ private fun PrototypeRadioDetectionMap(
     focusedTargetId: String?,
     modifier: Modifier = Modifier
 ) {
+    val usableTargets = remember(state.targets) {
+        state.targets.filter { it.latitude != 0.0 || it.longitude != 0.0 }
+    }
     Canvas(modifier = modifier.background(MapBg)) {
         val gridColor = Color.White.copy(alpha = 0.08f)
         val stripeColor = Color.White.copy(alpha = 0.08f)
@@ -197,7 +201,6 @@ private fun PrototypeRadioDetectionMap(
             style = Stroke(width = 1.2.dp.toPx())
         )
 
-        val usableTargets = state.targets.filter { it.latitude != 0.0 || it.longitude != 0.0 }
         usableTargets.forEachIndexed { index, target ->
             val focused = target.id == focusedTargetId
             val angle = (index * 58f + 24f) * kotlin.math.PI.toFloat() / 180f

@@ -2,12 +2,13 @@ package com.tji.device.product.glassbreaker.repository
 
 import android.util.Log
 import com.tji.device.data.model.ProductType
-import com.tji.device.product.glassbreaker.model.GLASS_BREAKER_CHANNEL_COUNT
 import com.tji.device.product.glassbreaker.model.GlassBreakerAck
 import com.tji.device.product.glassbreaker.model.GlassBreakerCommand
 import com.tji.device.product.glassbreaker.model.GlassBreakerCommandCode
 import com.tji.device.product.glassbreaker.model.GlassBreakerState
 import com.tji.device.product.glassbreaker.mqtt.GlassBreakerMqttTopics
+import com.tji.device.product.common.isOlderDeviceTimestamp
+import com.tji.device.product.common.mergeDeviceTimestamp
 import com.tji.device.service.mqtt.ProductMqttRouter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +35,7 @@ class GlassBreakerRepo : GlassBreakerRepository {
                 serialNumber = state.serialNumber,
                 create = { state },
                 update = { old ->
+                    if (state.isOlderThan(old)) return@updateOrCreate old
                     state.copy(
                         name = state.name ?: old.name,
                         isOnline = state.isOnline || old.isOnline,
@@ -50,12 +52,18 @@ class GlassBreakerRepo : GlassBreakerRepository {
         }
     }
 
+    private fun GlassBreakerState.isOlderThan(current: GlassBreakerState): Boolean =
+        isOlderDeviceTimestamp(timestamp, current.timestamp)
+
     override suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?) {
         _devices.update { current ->
             current.updateOrCreate(
                 serialNumber = serialNumber,
                 create = { GlassBreakerState(serialNumber = serialNumber, isOnline = isOnline, timestamp = timestamp) },
                 update = { state ->
+                    if (isOlderDeviceTimestamp(timestamp, state.timestamp)) {
+                        return@updateOrCreate state
+                    }
                     state.copy(
                         isOnline = isOnline,
                         timestamp = timestamp ?: state.timestamp
@@ -70,7 +78,14 @@ class GlassBreakerRepo : GlassBreakerRepository {
             current.updateOrCreate(
                 serialNumber = serialNumber,
                 create = { GlassBreakerState(serialNumber = serialNumber, lastAck = ack).withAckState(ack) },
-                update = { state -> state.withAckState(ack).copy(lastAck = ack) }
+                update = { state ->
+                    val stateWithAckFields = if (isOlderDeviceTimestamp(ack.timestamp, state.timestamp)) {
+                        state
+                    } else {
+                        state.withAckState(ack)
+                    }
+                    stateWithAckFields.copy(lastAck = ack)
+                }
             )
         }
     }
@@ -80,7 +95,12 @@ class GlassBreakerRepo : GlassBreakerRepository {
             current.updateOrCreate(
                 serialNumber = serialNumber,
                 create = { GlassBreakerState(serialNumber = serialNumber, lastOtaAck = ack) },
-                update = { state -> state.copy(lastOtaAck = ack, timestamp = ack.timestamp ?: state.timestamp) }
+                update = { state ->
+                    state.copy(
+                        lastOtaAck = ack,
+                        timestamp = mergeDeviceTimestamp(state.timestamp, ack.timestamp)
+                    )
+                }
             )
         }
     }
@@ -126,17 +146,16 @@ class GlassBreakerControlRepo : GlassBreakerControlRepository {
         val message = payload.toString()
         val requestAt = System.currentTimeMillis()
 
-        ProductMqttRouter.managerFor(ProductType.BreakWindowProjectile).publish(
+        ProductMqttRouter.managerFor(ProductType.BreakWindowProjectile).publishAwait(
             topic = topic,
             message = message,
             qos = 0,
-            queueWhenDisconnected = false,
-            onSuccess = {
-                Log.d(TAG, "GlassBreaker command sent: topic=$topic msgId=${command.msgId} message=$message")
-            },
-            onError = { throwable ->
-                Log.e(TAG, "GlassBreaker command failed: cost=${System.currentTimeMillis() - requestAt}ms", throwable)
-            }
+            queueWhenDisconnected = false
+        ).getOrThrow()
+        Log.d(
+            TAG,
+            "GlassBreaker command sent: topic=$topic msgId=${command.msgId} " +
+                "cost=${System.currentTimeMillis() - requestAt}ms message=$message"
         )
     }
 
@@ -159,8 +178,8 @@ internal fun GlassBreakerCommand.toGlassBreakerJson(deviceId: String): JSONObjec
                 is GlassBreakerCommand.GetDeviceInfo,
                 is GlassBreakerCommand.Unlock,
                 is GlassBreakerCommand.Lock -> Unit
-                is GlassBreakerCommand.SelectChannel -> put("channel", channel.coerceIn(1, GLASS_BREAKER_CHANNEL_COUNT))
-                is GlassBreakerCommand.FireChannel -> put("channel", channel.coerceIn(1, GLASS_BREAKER_CHANNEL_COUNT))
+                is GlassBreakerCommand.SelectChannel -> put("channel", channel)
+                is GlassBreakerCommand.FireChannel -> put("channel", channel)
                 is GlassBreakerCommand.LaserSwitch -> put("on", on)
             }
         })

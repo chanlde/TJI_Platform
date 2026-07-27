@@ -18,11 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductType
+import com.tji.device.data.session.DeviceKey
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
-import com.tji.device.product.firebucket.model.Switch
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
-import com.tji.device.util.ToastUtils
-import com.tji.device.util.userData
+import com.tji.device.ui.AppUiNotifier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,25 +36,22 @@ fun MainScreen(
     val runtimeDevices by mainViewModel.runtimeDevices.collectAsStateWithLifecycle()
     val isLoading by mainViewModel.isLoading.collectAsStateWithLifecycle()
     val account by mainViewModel.loginViewModel.account.collectAsStateWithLifecycle()
+    val session by mainViewModel.sessionStore.state.collectAsStateWithLifecycle()
+    val boundAccountDevices = session.boundDevices
+    val selectedDeviceKey = session.selectedDeviceKey
     var activeProductPage by remember { mutableStateOf<ProductType?>(null) }
-    var selectedLinkSerial by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var showDeviceSettings by remember { mutableStateOf(false) }
-    var boundDeviceVersion by remember { mutableStateOf(0) }
-    userData.preferredProductTypeFlow.collectAsStateWithLifecycle()
-    val boundAccountDevices = remember(boundDeviceVersion, userData.boundAccountDevices) {
-        userData.boundAccountDevices.orEmpty()
-    }
-    val selectedBoundDevice = remember(selectedLinkSerial, boundAccountDevices) {
-        val sn = selectedLinkSerial ?: return@remember null
-        boundAccountDevices.firstOrNull { it.serialNumber == sn }
-    }
-    val selectedRuntimeDevice = remember(runtimeDevices, selectedBoundDevice) {
-        val info = selectedBoundDevice ?: return@remember null
-        runtimeDevices.firstOrNull {
-            it.serialNumber == info.serialNumber && it.productType == info.productType
+    val selectedBoundDevice = remember(selectedDeviceKey, boundAccountDevices) {
+        val key = selectedDeviceKey ?: return@remember null
+        boundAccountDevices.firstOrNull {
+            it.serialNumber == key.serialNumber && it.productType == key.productType
         }
     }
+    val runtimeByKey = remember(runtimeDevices) {
+        runtimeDevices.associateBy { DeviceKey(it.productType, it.serialNumber) }
+    }
+    val selectedRuntimeDevice = selectedDeviceKey?.let(runtimeByKey::get)
     val selectedFireBucketLink = remember(selectedRuntimeDevice, selectedBoundDevice) {
         val info = selectedBoundDevice ?: return@remember null
         (selectedRuntimeDevice?.payload as? FireBucketLinkDevice)
@@ -78,8 +74,7 @@ fun MainScreen(
                         if (showDeviceSettings) {
                             showDeviceSettings = false
                         } else {
-                            selectedLinkSerial = null
-                            userData.selectedLinkSerial = null
+                            mainViewModel.sessionStore.clearSelection()
                         }
                     },
                     onSettings = { showDeviceSettings = true }
@@ -101,22 +96,25 @@ fun MainScreen(
             selectedFireBucketLink = selectedFireBucketLink,
             selectedRuntimeDevice = selectedRuntimeDevice,
             onProductSelected = {
-                selectedLinkSerial = null
-                userData.selectedLinkSerial = null
                 showDeviceSettings = false
-                activeProductPage = it
-                mainViewModel.openProduct(it)
+                mainViewModel.openProduct(it) { success, message ->
+                    if (success) {
+                        activeProductPage = it
+                    } else {
+                        AppUiNotifier.showShortMessage(message ?: "打开产品失败")
+                    }
+                }
             },
             onLinkSelected = {
-                selectedLinkSerial = it.serialNumber
-                userData.selectedLinkSerial = it.serialNumber
                 showDeviceSettings = false
-                userData.preferredProductType = it.productType
-                mainViewModel.openDevice(it)
+                mainViewModel.openDevice(it) { success, message ->
+                    if (!success) {
+                        AppUiNotifier.showShortMessage(message ?: "打开设备失败")
+                    }
+                }
             },
             onSelectedDeviceBack = {
-                selectedLinkSerial = null
-                userData.selectedLinkSerial = null
+                mainViewModel.sessionStore.clearSelection()
                 showDeviceSettings = false
             },
             onSettingsClick = { showSettings = true },
@@ -124,10 +122,9 @@ fun MainScreen(
             onRenameDevice = { device, newName ->
                 mainViewModel.updateDeviceName(device, newName) { success, message ->
                     if (success) {
-                        ToastUtils.showToast("设备名修改成功")
-                        boundDeviceVersion += 1
+                        AppUiNotifier.showShortMessage("设备名修改成功")
                     } else {
-                        ToastUtils.showToast(message ?: "设备名修改失败")
+                        AppUiNotifier.showShortMessage(message ?: "设备名修改失败")
                     }
                 }
             },
@@ -151,8 +148,7 @@ fun MainScreen(
             if (showDeviceSettings) {
                 showDeviceSettings = false
             } else if (selectedBoundDevice != null) {
-                selectedLinkSerial = null
-                userData.selectedLinkSerial = null
+                mainViewModel.sessionStore.clearSelection()
             } else if (activeProductPage != null) {
                 activeProductPage = null
             } else {
@@ -170,14 +166,14 @@ internal fun MainScreenContent(
     activeProductPage: ProductType?,
     selectedBoundDevice: BoundAccountDevice?,
     selectedFireBucketLink: FireBucketLinkDevice?,
-    selectedRuntimeDevice: ProductDeviceRuntimeSnapshot? = null,
     onProductSelected: (ProductType) -> Unit,
     onLinkSelected: (BoundAccountDevice) -> Unit,
-    onSelectedDeviceBack: () -> Unit = {},
     onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    selectedRuntimeDevice: ProductDeviceRuntimeSnapshot? = null,
+    onSelectedDeviceBack: () -> Unit = {},
     showDeviceSettings: Boolean = false,
-    onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> },
-    modifier: Modifier = Modifier
+    onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> }
 ) {
     when {
         isLoading -> CircularProgressIndicator(
@@ -197,8 +193,8 @@ internal fun MainScreenContent(
         activeProductPage != null -> {
             ProductDevicesScreen(
                 productType = activeProductPage,
-                runtimeDevices = runtimeDevices.filter { it.productType == activeProductPage },
-                knownLinks = boundAccountDevices.filter { it.productType == activeProductPage },
+                runtimeDevices = runtimeDevices,
+                knownLinks = boundAccountDevices,
                 onLinkSelected = onLinkSelected,
                 modifier = modifier
             )
@@ -206,7 +202,6 @@ internal fun MainScreenContent(
         else -> {
             ProductHome(
                 onProductSelected = onProductSelected,
-                onLinkSelected = onLinkSelected,
                 boundAccountDevices = boundAccountDevices,
                 runtimeDevices = runtimeDevices,
                 onSettingsClick = onSettingsClick,

@@ -1,6 +1,7 @@
 package com.tji.device.product.radiodetection.repository
 
 import android.util.Log
+import com.tji.device.BuildConfig
 import com.tji.device.product.radiodetection.map.RadioCoordinateTransform
 import com.tji.device.product.radiodetection.map.RadioMapCoordinate
 import com.tji.device.product.radiodetection.model.RadioCoordinate
@@ -42,30 +43,63 @@ interface RadioDetectionRepository {
 
     suspend fun updateRgbAck(serialNumber: String, ack: RadioRgbAck)
 
+    suspend fun pruneExpiredTargets()
+
     fun clearDevices()
 }
 
-class RadioDetectionRepo : RadioDetectionRepository {
+class RadioDetectionRepo(
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val monotonicMillis: () -> Long = {
+        System.nanoTime() / NANOS_PER_MILLISECOND
+    },
+    private val targetTtlMillis: Long = DEFAULT_TARGET_TTL_MILLIS,
+    private val maxTargetsPerDevice: Int = DEFAULT_MAX_TARGETS
+) : RadioDetectionRepository {
     private val _devices = MutableStateFlow<List<RadioDetectionDeviceState>>(emptyList())
     override val devices: StateFlow<List<RadioDetectionDeviceState>> = _devices.asStateFlow()
 
     override suspend fun upsertRidPacket(serialNumber: String, packet: RadioRidPacket) {
-        val now = System.currentTimeMillis()
+        val now = nowMillis()
+        val nowElapsed = monotonicMillis()
         _devices.update { current ->
             val existingDevice = current.firstOrNull { it.serialNumber == serialNumber }
-            val target = packet.toTarget(existingDevice?.targets?.firstOrNull { it.id == packet.targetId })
+            val freshTargets = existingDevice
+                ?.targets
+                .orEmpty()
+                .filter { it.isFreshAt(nowElapsed) }
+            // TTL 过期意味着旧目标已离开当前会话。设备重启后 RID 时间戳可能从零开始，
+            // 不能再用过期目标的时间戳拒绝新会话首包。
+            val previousTarget = freshTargets.firstOrNull { it.id == packet.targetId }
+            val isOutOfOrder = packet.timestampMillis != null &&
+                previousTarget?.sourceTimestampMillis != null &&
+                packet.timestampMillis < previousTarget.sourceTimestampMillis
+            val targets = if (isOutOfOrder) {
+                freshTargets
+            } else {
+                val target = packet.toTarget(
+                    previous = previousTarget,
+                    nowMillis = now,
+                    nowElapsedMillis = nowElapsed
+                )
+                // 最近目标放在首位，单次更新保持 O(n)，避免高频 RID 下每包都执行 O(n log n) 排序。
+                (listOf(target) + freshTargets.filterNot { it.id == target.id })
+                    .take(maxTargetsPerDevice)
+            }
             val nextDevice = RadioDetectionDeviceState(
                 serialNumber = serialNumber,
                 displayName = existingDevice?.displayName ?: "频谱检测仪",
                 isOnline = true,
-                payloadStatus = "已收到 RID",
-                currentCoordinate = packet.operatorCoordinateOrNull() ?: existingDevice?.currentCoordinate,
-                targets = existingDevice
-                    ?.targets
-                    .orEmpty()
-                    .upsert(target) { it.id == target.id },
+                payloadStatus = if (isOutOfOrder) "已忽略过期 RID" else "已收到 RID",
+                currentCoordinate = if (isOutOfOrder) {
+                    existingDevice?.currentCoordinate
+                } else {
+                    packet.operatorCoordinateOrNull() ?: existingDevice?.currentCoordinate
+                },
+                targets = targets,
                 lastUpdateMillis = now,
-                filteredMessageCount = existingDevice?.filteredMessageCount ?: 0,
+                filteredMessageCount = (existingDevice?.filteredMessageCount ?: 0) +
+                    if (isOutOfOrder) 1 else 0,
                 rgbAck = existingDevice?.rgbAck
             )
             current.upsert(nextDevice) { it.serialNumber == serialNumber }
@@ -111,7 +145,7 @@ class RadioDetectionRepo : RadioDetectionRepository {
     }
 
     override suspend fun updateRgbAck(serialNumber: String, ack: RadioRgbAck) {
-        val now = System.currentTimeMillis()
+        val now = nowMillis()
         _devices.update { current ->
             val existing = current.firstOrNull { it.serialNumber == serialNumber }
             val next = existing?.copy(
@@ -133,12 +167,46 @@ class RadioDetectionRepo : RadioDetectionRepository {
         }
     }
 
+    override suspend fun pruneExpiredTargets() {
+        val nowElapsed = monotonicMillis()
+        _devices.update { current ->
+            var changed = false
+            val next = current.map { device ->
+                val freshTargets = device.targets.filter {
+                    it.isFreshAt(nowElapsed)
+                }
+                if (freshTargets.size != device.targets.size) {
+                    changed = true
+                    device.copy(targets = freshTargets)
+                } else {
+                    device
+                }
+            }
+            if (changed) next else current
+        }
+    }
+
     override fun clearDevices() {
         _devices.value = emptyList()
     }
+
+    private fun RadioDetectionTarget.isFreshAt(nowElapsedMillis: Long): Boolean {
+        val ageMillis = nowElapsedMillis - lastSeenElapsedMillis
+        return ageMillis in 0..targetTtlMillis
+    }
+
+    private companion object {
+        const val DEFAULT_TARGET_TTL_MILLIS = 30_000L
+        const val DEFAULT_MAX_TARGETS = 200
+        const val NANOS_PER_MILLISECOND = 1_000_000L
+    }
 }
 
-private fun RadioRidPacket.toTarget(previous: RadioDetectionTarget?): RadioDetectionTarget {
+private fun RadioRidPacket.toTarget(
+    previous: RadioDetectionTarget?,
+    nowMillis: Long,
+    nowElapsedMillis: Long
+): RadioDetectionTarget {
     val altitude = (heightMeters ?: altitudeGeoMeters ?: altitudeBaroMeters ?: 0.0).roundToInt()
     val hasDroneCoordinate = RadioCoordinateTransform.isUsable(droneLatitude, droneLongitude)
     val hasPilotCoordinate = RadioCoordinateTransform.isUsable(operatorLatitude, operatorLongitude)
@@ -165,9 +233,11 @@ private fun RadioRidPacket.toTarget(previous: RadioDetectionTarget?): RadioDetec
         RadioCoordinateTransform.isUsable(it.pilotLatitude, it.pilotLongitude)
     }
     if (
-        previous == null ||
-        previousHasDroneCoordinate != hasDroneCoordinate ||
-        previousHasPilotCoordinate != hasPilotCoordinate
+        BuildConfig.DEBUG && (
+            previous == null ||
+                previousHasDroneCoordinate != hasDroneCoordinate ||
+                previousHasPilotCoordinate != hasPilotCoordinate
+            )
     ) {
         Log.d(
             "RadioDetectionRepo",
@@ -199,7 +269,8 @@ private fun RadioRidPacket.toTarget(previous: RadioDetectionTarget?): RadioDetec
         headingDegrees = headingDegrees?.floorMod360() ?: 0,
         frequencyLabel = frequencyLabel,
         signalLevel = signalLevelFromRssi(rssi),
-        lastSeenText = "刚刚",
+        lastSeenAtMillis = nowMillis,
+        lastSeenElapsedMillis = nowElapsedMillis,
         pilotName = "飞手",
         pilotLatitude = pilotCoordinate.latitude,
         pilotLongitude = pilotCoordinate.longitude,
@@ -214,12 +285,13 @@ private fun RadioRidPacket.toTarget(previous: RadioDetectionTarget?): RadioDetec
             previous?.pilotDistanceText ?: "-"
         },
         mapXPercent = previous?.mapXPercent ?: 0.5f,
-        mapYPercent = previous?.mapYPercent ?: 0.5f
+        mapYPercent = previous?.mapYPercent ?: 0.5f,
+        sourceTimestampMillis = timestampMillis ?: previous?.sourceTimestampMillis
     )
 }
 
 private fun RadioRidPacket.operatorCoordinateOrNull(): RadioCoordinate? =
-    if (operatorLatitude == 0.0 && operatorLongitude == 0.0) {
+    if (!RadioCoordinateTransform.isUsable(operatorLatitude, operatorLongitude)) {
         null
     } else {
         val coordinate = RadioCoordinateTransform.wgs84ToGcj02(operatorLatitude, operatorLongitude)
@@ -265,22 +337,6 @@ private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Doub
 }
 
 private fun Int.floorMod360(): Int = ((this % 360) + 360) % 360
-
-private fun List<RadioDetectionTarget>.upsert(
-    value: RadioDetectionTarget,
-    sameItem: (RadioDetectionTarget) -> Boolean
-): List<RadioDetectionTarget> {
-    var replaced = false
-    val next = map {
-        if (sameItem(it)) {
-            replaced = true
-            value
-        } else {
-            it
-        }
-    }
-    return if (replaced) next else next + value
-}
 
 private fun List<RadioDetectionDeviceState>.upsert(
     value: RadioDetectionDeviceState,
