@@ -23,14 +23,13 @@
 
 ## 端到端职责
 
-- App：采集或合成 PCM16，通过官方 libopus 编码，上传完整 `.opus`。
-- Server：验证基础格式并原样暂存，返回短期下载 URL，不转码。
-- MCU：按 URL 边下载边校验 Ogg CRC、边解码 Opus、边把 PCM16 送入播放环形缓冲；持久化模式同时保存压缩文件。
+- App：采集或合成 PCM16，通过官方 libopus 编码，再通过可靠 UDP 媒体协议发送完整 Ogg/Opus 字节流。
+- UDP Relay：只路由媒体数据包和确认包，不保存、不转码音频。
+- MCU：按序接收并校验传输块，同时校验 Ogg CRC、解码 Opus 并把 PCM16 送入播放环形缓冲；持久化模式同时保存压缩文件。
 
-`RECORD_DOWNLOAD` 必须携带 `container=ogg`、`codec=opus`、
-`sampleRate`、`channels=1`、`packetMs=20`、`bitrate`、`fileSize`、
-`durationMs` 和完整文件 `crc32`。MCU 还校验 Ogg 页序号、流序列号、
-OpusHead/OpusTags、EOS granule、包数和解码时长。
+媒体传输起始块携带用途、采样率、`channels=1`、`packetMs=20`、
+`fileSize`、`durationMs` 和完整文件 CRC32。MCU 还校验 Ogg 页序号、
+流序列号、OpusHead/OpusTags、EOS granule、包数和解码时长。
 
 PCM16 只是编码前和解码后的内部音频表示，不是第二套文件格式。设备麦克风
 实时回传走独立 UDP 协议，不使用本文件链路。

@@ -34,5 +34,5 @@
 - [protocol.md](protocol.md)：MQTT、Ogg/Opus、录音和 ACK 规则。
 - [ogg-opus-profile.md](ogg-opus-profile.md)：App / Server / MCU 共同遵守的 Ogg/Opus 受控参数。
 - [mcu.md](mcu.md)：播放、保存、录音列表和存储状态职责。
-- [server.md](server.md)：临时音频文件传输服务职责。
+- [server.md](server.md)：UDP relay 路由与设备绑定职责。
 - [app.md](app.md)：App 音频链路、UI、测试和本地模型资源。

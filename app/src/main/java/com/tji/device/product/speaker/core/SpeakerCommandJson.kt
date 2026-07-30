@@ -1,7 +1,6 @@
 package com.tji.device.product.speaker.core
 
 import com.tji.device.product.speaker.model.SpeakerCommand
-import org.json.JSONArray
 import org.json.JSONObject
 
 object SpeakerCommandJson {
@@ -9,15 +8,7 @@ object SpeakerCommandJson {
         command: SpeakerCommand,
         deviceId: String,
         timestampMs: Long = System.currentTimeMillis()
-    ): JSONObject =
-        when (command) {
-            is SpeakerCommand.RecordDownload -> encodeRecordDownload(command, deviceId)
-            else -> encodeStandard(command, deviceId, timestampMs)
-        }
-
-    private fun encodeRecordDownload(command: SpeakerCommand.RecordDownload, deviceId: String): JSONObject {
-        return command.toRecordDownloadJson(deviceId)
-    }
+    ): JSONObject = encodeStandard(command, deviceId, timestampMs)
 
     private fun encodeStandard(command: SpeakerCommand, deviceId: String, timestampMs: Long): JSONObject {
         val native = SpeakerCoreNative.buildStandardCommandJsonOrNull(
@@ -31,41 +22,6 @@ object SpeakerCommandJson {
         )
         return native?.let(::JSONObject) ?: command.toStandardJson(deviceId, timestampMs)
     }
-
-    private fun SpeakerCommand.RecordDownload.toRecordDownloadJson(deviceId: String): JSONObject =
-        JSONObject().apply {
-            put("v", 1)
-            put("deviceId", deviceId)
-            put("cmdId", msgId)
-            put("cmdName", commandName)
-            put("recordId", recordId)
-            put("storeTaskId", storeTaskId)
-            put("createdAt", createdAt)
-            put("name", name)
-            put("recordType", recordType)
-            put("downloadUrl", downloadUrl)
-            put("fileSize", fileSize)
-            put("crc32", crc32)
-            put("durationMs", durationMs)
-            put("container", container)
-            put("codec", codec)
-            put("sampleRate", sampleRate)
-            put("channels", channels)
-            put("packetMs", packetMs)
-            put("bitrate", bitrate)
-            if (temporary) {
-                put("temporary", true)
-                put("visible", visible)
-                put("autoPlay", autoPlay)
-                playbackVolume?.let { put("playbackVolume", it.coerceIn(0, 100)) }
-            }
-            if (verifyOnly) {
-                put("verifyOnly", true)
-                verifyKind?.let { put("verifyKind", it) }
-                expectedAudioCrc32?.let { put("expectedAudioCrc32", it) }
-                put("expectedFirstSamples", JSONArray(expectedFirstSamples))
-            }
-        }
 
     private fun SpeakerCommand.toStandardJson(deviceId: String, timestampMs: Long): JSONObject =
         JSONObject().apply {
@@ -141,18 +97,6 @@ object SpeakerCommandJson {
                     put("ttlMs", ttlMs.coerceIn(1_000L, 300_000L))
                 }
             }
-            is SpeakerCommand.StartRecordStore -> JSONObject().apply {
-                put("recordId", recordId)
-                put("storeTaskId", storeTaskId)
-                put("createdAt", createdAt)
-                put("name", name)
-                put("codec", "opus")
-                put("sampleRate", 16_000)
-                put("channels", 1)
-                put("packetMs", 20)
-                expectedDurationMs?.let { put("expectedDurationMs", it) }
-                expectedFileSize?.let { put("expectedFileSize", it) }
-            }
             is SpeakerCommand.PlayRecord -> JSONObject().apply {
                 put("recordId", recordId)
                 put("volume", volume.coerceIn(0, 100))
@@ -167,7 +111,6 @@ object SpeakerCommandJson {
             is SpeakerCommand.GetStatus,
             is SpeakerCommand.GetStorageStatus,
             is SpeakerCommand.ListRecords,
-            is SpeakerCommand.RecordDownload,
             is SpeakerCommand.Stop -> null
         }
 
@@ -189,18 +132,6 @@ object SpeakerCommandJson {
                 "frameBytes" to frameBytes,
                 "samplesPerFrame" to samplesPerFrame
             )
-            is SpeakerCommand.StartRecordStore -> buildMap {
-                put("recordId", recordId)
-                put("storeTaskId", storeTaskId)
-                put("createdAt", createdAt)
-                put("name", name)
-                put("codec", "opus")
-                put("sampleRate", 16_000)
-                put("channels", 1)
-                put("packetMs", 20)
-                expectedDurationMs?.let { put("expectedDurationMs", it) }
-                expectedFileSize?.let { put("expectedFileSize", it) }
-            }
             is SpeakerCommand.SetMcuMicrophoneFeedback -> buildMap {
                 put("enabled", if (enabled) 1 else 0)
                 if (enabled) {

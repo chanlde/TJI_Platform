@@ -6,25 +6,6 @@
 - 产品代码：`speaker`
 - productId：`6`
 
-## 临时音频文件传输服务
-
-服务目录：
-
-```text
-server/kokoro_tts_service/
-```
-
-当前服务职责：
-
-- 接收 App 上传的完整 `.opus`（Ogg/Opus）文件。
-- 生成短期下载 URL。
-- 供 MCU 下载后播放或保存。
-- 临时文件默认短期保留，不写数据库。
-- 不重新编码、不修改 Ogg 页面或 Opus 包；受控格式见
-  [ogg-opus-profile.md](ogg-opus-profile.md)。
-
-该服务不再负责 TTS 合成。
-
 ## UDP Relay
 
 服务目录：
@@ -42,4 +23,4 @@ socket 注册完全相同的 `deviceId/sessionId/talkId`；中继拒绝未注册
 
 - 登录返回字段当前模型已有 `megaphonesns`。
 - productId 为 `6` 时，App 识别为喊话器。
-- 设备 `deviceId` 需与 MQTT topic 和临时文件上传参数一致。
+- 设备 `deviceId` 需与 MQTT topic 和 UDP 媒体传输路由参数一致。

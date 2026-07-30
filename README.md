@@ -1,8 +1,20 @@
 # TJI Platform
 
-版本：`V2.0.11`
+版本：`V2.0.12`
 
 TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 App。当前项目由原来的消防吊桶控制 App 演进而来，目标是把消防吊桶、光伏清洗、六段抛投、喊话器、无线电侦测等产品统一放到同一个平台 App 中管理；大疆 MSDK 这类复杂产品暂不放入本 App。
+
+## V2.0.12 更新内容
+
+- 按住松手喊话、系统 TTS 和录音保存统一使用可靠 Ogg/Opus UDP 媒体传输，
+  共用 ACK、重传、背压、分块 CRC 和整文件校验。
+- 删除 App 旧 `RECORD_DOWNLOAD`/`START_RECORD_STORE` 模型、特殊 JSON 编码器
+  和音频 HTTP 上传服务；HTTP 下载仅由 MCU OTA 使用。
+- 保留独立的 MCU 麦克风 raw Opus 回传，并继续支持与扬声器播放同时运行。
+- 喊话器日志通过轻量 `SpeakerLogger` 统一 Debug/Release 控制，UDP relay
+  改用标准分级日志，不引入额外日志框架。
+- 同步 MCU `2.2.0` 的命令、媒体传输和录音事件协议，并通过双变体单测、
+  native core、UDP relay 及 Release 构建验证。
 
 ## V2.0.11 更新内容
 
@@ -41,8 +53,8 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 
 ## V2.0.4 更新内容
 
-- 收口喊话器音频链路：移除 App 云端 TTS 分支，文字转语音统一由 Android 系统 TTS 生成音频，再通过 `.hadp` 临时文件上传下载链路给 MCU 播放或保存。
-- 精简服务器服务：`server/kokoro_tts_service` 已改为喊话器临时音频文件传输服务，仅保留 `.hadp` 上传和短期下载 URL，不再加载 Kokoro 模型或提供 `/api/tts/*` 接口。
+- 收口喊话器音频链路：移除 App 云端 TTS 分支，文字转语音统一由 Android 系统 TTS 生成 Ogg/Opus，再通过可靠 UDP 媒体传输给 MCU 播放或保存。
+- 删除旧音频文件上传/HTTP 下载服务，TTS、按住松手喊话和录音保存共用同一套可靠 UDP 媒体传输。
 - 清理客户界面测试入口：设置页只保留正式“播放蜂鸣”，移除静音文件、数据校验、本机旧格式、音质测试等调试按钮和对应 ViewModel 死代码。
 - 完善喊话器输出音质：支持低/中/高三档输出配置，TTS 与录音文件上传按当前音质写入对应 `.hadp` 元数据。
 - 优化录音库链路：保存、删除、改名后刷新录音库和容量状态，分页加载按每页 4 条处理，减少一次性拉取压力。
@@ -57,7 +69,7 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 - 拆分大 Compose 页面：主界面、喊话器、太阳能清洗、六段抛投等页面拆出 section、preview、widget 文件，提升代码定位和维护体验。
 - 补齐组件级 Preview：为喊话器、六段抛投、太阳能清洗等关键 UI 增加组件级 Preview，避免只点到整页 Preview。
 - 扩展产品能力：补充六段抛投、无线电侦测、喊话器相关模型、MQTT 入站解析、仓库、ViewModel、悬浮窗与测试覆盖。
-- 增加辅助服务目录：加入 UDP relay 与喊话器临时音频文件传输服务脚本/说明，用于后续真实设备和语音链路联调。
+- 增加 UDP relay 服务目录和联调说明，用于真实设备语音链路联调。
 
 ## 当前能力
 
@@ -179,8 +191,8 @@ App 当前负责：
 当前版本配置在 `gradle.properties`：
 
 ```properties
-APP_VERSION_CODE=211
-APP_VERSION_NAME=V2.0.11
+APP_VERSION_CODE=212
+APP_VERSION_NAME=V2.0.12
 ```
 
 ## 当前重点

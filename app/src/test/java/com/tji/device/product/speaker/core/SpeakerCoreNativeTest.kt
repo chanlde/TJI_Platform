@@ -133,49 +133,6 @@ class SpeakerCoreNativeTest {
     }
 
     @Test
-    fun commandJsonFallbackBuildsRecordDownloadCommand() {
-        val json = SpeakerCommandJson.encode(
-            command = SpeakerCommand.RecordDownload(
-                msgId = "speaker-record-download-1",
-                recordId = "REC_1",
-                storeTaskId = "STORE_1",
-                createdAt = "2026-06-21T09:00:00+08:00",
-                name = "录音 09:00",
-                downloadUrl = "http://example.com/REC_1.opus",
-                fileSize = 4228,
-                crc32 = "0x1234ABCD",
-                durationMs = 1000,
-                codec = "opus",
-                sampleRate = 24_000,
-                channels = 1,
-                packetMs = 20,
-                bitrate = 24_000,
-                temporary = true,
-                visible = false,
-                autoPlay = true,
-                playbackVolume = 150
-            ),
-            deviceId = "T12345678",
-            timestampMs = 123456789L
-        )
-
-        assertEquals(1, json.getInt("v"))
-        assertEquals("T12345678", json.getString("deviceId"))
-        assertEquals("speaker-record-download-1", json.getString("cmdId"))
-        assertEquals("RECORD_DOWNLOAD", json.getString("cmdName"))
-        assertEquals("REC_1", json.getString("recordId"))
-        assertEquals("STORE_1", json.getString("storeTaskId"))
-        assertEquals("录音 09:00", json.getString("name"))
-        assertEquals("record", json.getString("recordType"))
-        assertEquals(4228L, json.getLong("fileSize"))
-        assertEquals("opus", json.getString("codec"))
-        assertEquals(true, json.getBoolean("temporary"))
-        assertEquals(false, json.getBoolean("visible"))
-        assertEquals(true, json.getBoolean("autoPlay"))
-        assertEquals(100, json.getInt("playbackVolume"))
-    }
-
-    @Test
     fun audioToolFallbackResamplesPcm16() {
         val input = syntheticVoicePcm(sampleRate = 8_000, sampleCount = 800)
 

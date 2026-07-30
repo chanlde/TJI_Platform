@@ -5,7 +5,7 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
-import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -253,14 +253,14 @@ private fun Voice.toSystemVoice(): SpeakerTtsSystemVoice =
     )
 
 private fun logVoiceInventory(inventory: SpeakerTtsVoiceInventory, allVoices: List<Voice>) {
-    Log.d(
+    SpeakerLogger.debug(
         TTS_VOICE_DEBUG_TAG,
         "engine=${inventory.engineName}, languageResult=${inventory.languageResult}, " +
             "allVoiceCount=${inventory.allVoiceCount}, chineseVoiceCount=${inventory.chineseVoices.size}, " +
             "availablePresets=${inventory.availablePresets.joinToString { it.label }}"
     )
     allVoices.sortedBy { it.name }.forEach { voice ->
-        Log.d(
+        SpeakerLogger.debug(
             TTS_VOICE_DEBUG_TAG,
             "voice name=${voice.name}, locale=${voice.locale.toLanguageTag()}, " +
                 "quality=${voice.quality}, latency=${voice.latency}, features=${voice.features.orEmpty()}"
@@ -273,7 +273,7 @@ private fun logVoiceInventory(inventory: SpeakerTtsVoiceInventory, allVoices: Li
                 .filter { it.isUsableChineseVoice() && it.matchesPreset(preset) }
                 .joinToString { it.name }
                 .ifBlank { "none" }
-            Log.d(TTS_VOICE_DEBUG_TAG, "preset ${preset.label} matches: $matches")
+            SpeakerLogger.debug(TTS_VOICE_DEBUG_TAG, "preset ${preset.label} matches: $matches")
         }
 }
 

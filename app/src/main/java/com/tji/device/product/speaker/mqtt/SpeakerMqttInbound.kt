@@ -1,7 +1,6 @@
 package com.tji.device.product.speaker.mqtt
 
-import android.util.Log
-import com.tji.device.BuildConfig
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.speaker.core.SpeakerMqttPayloadParser
 import com.tji.device.product.speaker.repository.SpeakerRepository
 import org.json.JSONObject
@@ -52,7 +51,7 @@ class SpeakerMqttInbound(
                         "last=${records.lastOrNull()?.recordId.orEmpty()}"
                 }
                 if (records.isEmpty() && parsed.total > 0) {
-                    Log.w(TAG, "Speaker record list has total but parsed empty: ${json.toString().take(600)}")
+                    SpeakerLogger.warn(TAG, "Speaker record list has total but parsed empty: ${json.toString().take(600)}")
                 }
                 repository.updateRecords(
                     serialNumber = serialNumber,
@@ -76,7 +75,6 @@ class SpeakerMqttInbound(
             "record_saved",
             "record_failed",
             "record_progress",
-            "record_verify",
             "record_updated",
             "record_deleted",
             "record_playback" -> {
@@ -94,7 +92,7 @@ class SpeakerMqttInbound(
     fun cleanup() = Unit
 
     private inline fun debugLog(message: () -> String) {
-        if (BuildConfig.DEBUG) Log.d(TAG, message())
+        SpeakerLogger.debug(TAG, message())
     }
 
     private companion object {

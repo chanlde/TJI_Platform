@@ -174,43 +174,6 @@ sealed class SpeakerCommand(
         val ttlMs: Long = 30_000L
     ) : SpeakerCommand(msgId, 116, "SET_PLAYBACK_FEEDBACK")
 
-    class StartRecordStore(
-        msgId: String,
-        val recordId: String,
-        val storeTaskId: String,
-        val createdAt: String,
-        val name: String,
-        val expectedDurationMs: Int? = null,
-        val expectedFileSize: Int? = null
-    ) : SpeakerCommand(msgId, 114, "START_RECORD_STORE")
-
-    class RecordDownload(
-        msgId: String,
-        val recordId: String,
-        val storeTaskId: String,
-        val createdAt: String,
-        val name: String,
-        val recordType: String = "record",
-        val downloadUrl: String,
-        val fileSize: Long,
-        val crc32: String,
-        val durationMs: Int,
-        val container: String = "ogg",
-        val codec: String = "opus",
-        val sampleRate: Int = 24_000,
-        val channels: Int = 1,
-        val packetMs: Int = 20,
-        val bitrate: Int = 24_000,
-        val verifyOnly: Boolean = false,
-        val verifyKind: String? = null,
-        val expectedAudioCrc32: String? = null,
-        val expectedFirstSamples: List<Int> = emptyList(),
-        val temporary: Boolean = false,
-        val visible: Boolean = true,
-        val autoPlay: Boolean = false,
-        val playbackVolume: Int? = null
-    ) : SpeakerCommand(msgId, 114, "RECORD_DOWNLOAD")
-
     class PlayRecord(
         msgId: String,
         val recordId: String,

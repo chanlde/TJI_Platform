@@ -1,6 +1,5 @@
 package com.tji.device.product.speaker.core
 
-import android.util.Log
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerFeedbackProtocol
 import com.tji.device.product.speaker.audio.SpeakerOpusFile
@@ -23,7 +22,7 @@ object SpeakerCoreAudioEngine {
     /** 松手后对完整手机麦克风录音执行噪声估计、软门限和防爆音处理。 */
     fun processPushToTalk(pcm16le: ByteArray, sampleRate: Int): ByteArray {
         val processed = SpeakerPttProcessor.process(pcm16le, sampleRate)
-        Log.d(
+        SpeakerLogger.debug(
             SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
             "pttProcessor sampleRate=$sampleRate in=${pcm16le.size} out=${processed.size}"
         )
@@ -166,11 +165,11 @@ object SpeakerCoreAudioEngine {
     }
 
     private fun logNative(path: String, detail: String) {
-        Log.d(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=native path=$path $detail")
+        SpeakerLogger.debug(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=native path=$path $detail")
     }
 
     private fun logFallback(path: String, detail: String) {
-        Log.d(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=fallback path=$path $detail")
+        SpeakerLogger.debug(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=fallback path=$path $detail")
     }
 
     private const val BYTES_PER_PCM16_SAMPLE = 2

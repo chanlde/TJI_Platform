@@ -3,7 +3,7 @@ package com.tji.device.product.speaker.audio
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
-import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.BuildConfig
 import com.tji.device.product.speaker.core.SpeakerCoreNative
 import kotlinx.coroutines.Dispatchers
@@ -324,7 +324,7 @@ private class AndroidSpeakerFeedbackAudioSink(
         newTrack.setVolume(playbackGain)
         newTrack.play()
         if (BuildConfig.DEBUG) {
-            Log.d(
+            SpeakerLogger.debug(
                 SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                 "mcu monitor AudioTrack started session=${newTrack.audioSessionId} " +
                     "sampleRate=${newTrack.sampleRate} gain=$playbackGain"
@@ -372,7 +372,7 @@ private class AndroidSpeakerFeedbackAudioSink(
                 index += 2
             }
             val rms = if (samples == 0) 0.0 else kotlin.math.sqrt(sumSquares / samples)
-            Log.d(
+            SpeakerLogger.debug(
                 SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                 "mcu monitor pcm packet=$writtenPackets bytes=${pcm.size} " +
                     "rms=${rms.toInt()} peak=$peak"
@@ -408,7 +408,7 @@ private class AndroidSpeakerFeedbackAudioSink(
                 output.write(pcm)
                 capturedPcmBytes += pcm.size.toLong()
             }.onFailure {
-                Log.w(
+                SpeakerLogger.warn(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "mcu monitor capture write failed",
                     it
@@ -433,13 +433,13 @@ private class AndroidSpeakerFeedbackAudioSink(
             captureFile = outputFile
             captureOutput = output
             capturedPcmBytes = 0L
-            Log.d(
+            SpeakerLogger.debug(
                 SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                 "mcu monitor capture started file=${outputFile.absolutePath}"
             )
             true
         }.onFailure {
-            Log.w(
+            SpeakerLogger.warn(
                 SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                 "mcu monitor capture start failed",
                 it
@@ -455,14 +455,14 @@ private class AndroidSpeakerFeedbackAudioSink(
         runCatching {
             writeWavHeader(output, capturedPcmBytes)
             output.close()
-            Log.d(
+            SpeakerLogger.debug(
                 SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                 "mcu monitor capture saved file=${outputFile?.absolutePath} " +
                     "pcmBytes=$capturedPcmBytes"
             )
         }.onFailure {
             runCatching { output.close() }
-            Log.w(
+            SpeakerLogger.warn(
                 SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                 "mcu monitor capture save failed",
                 it

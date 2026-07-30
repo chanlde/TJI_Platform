@@ -9,6 +9,7 @@ header with deviceId, and are routed only to the matching online device.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import socket
 import struct
@@ -33,6 +34,7 @@ DEFAULT_LISTEN_HOST = "0.0.0.0"
 DEFAULT_LISTEN_PORT = 7000
 DEFAULT_TIMEOUT_S = 30.0
 AUDIO_STREAM_FLAG_FEEDBACK = 0x0008
+LOGGER = logging.getLogger("speaker_relay")
 
 
 @dataclass
@@ -334,7 +336,12 @@ def route_feedback_packet(
 ) -> bool:
     device = devices.get(route.device_id)
     if device is None or not device.online(now, timeout_s) or device.addr != addr:
-        print(f"drop feedback packet: invalid device source id={route.device_id} addr={addr[0]}:{addr[1]}")
+        LOGGER.warning(
+            "drop feedback packet: invalid device source id=%s addr=%s:%d",
+            route.device_id,
+            addr[0],
+            addr[1],
+        )
         return False
     key = listener_key(route.device_id, route.session_id, route.talk_id)
     listener = listeners.get(key)
@@ -368,9 +375,11 @@ def route_playback_packet(
     ):
         if listener is not None and not listener.online(now, timeout_s):
             listeners.pop(key, None)
-        print(
-            "drop playback packet: unregistered source "
-            f"id={route.device_id} addr={addr[0]}:{addr[1]}"
+        LOGGER.warning(
+            "drop playback packet: unregistered source id=%s addr=%s:%d",
+            route.device_id,
+            addr[0],
+            addr[1],
         )
         return False
     state = devices.get(route.device_id)
@@ -396,17 +405,15 @@ def forward_packet(
     if (state.forwarded_packets % 100) == 0:
         age = now - state.last_seen
         uptime = now - started
-        print(
-            "routed forwarded=%d dropped=%d id=%s device=%s:%d age=%.1fs uptime=%.0fs"
-            % (
-                state.forwarded_packets,
-                state.dropped_packets,
-                state.device_id,
-                state.addr[0],
-                state.addr[1],
-                age,
-                uptime,
-            )
+        LOGGER.info(
+            "routed forwarded=%d dropped=%d id=%s device=%s:%d age=%.1fs uptime=%.0fs",
+            state.forwarded_packets,
+            state.dropped_packets,
+            state.device_id,
+            state.addr[0],
+            state.addr[1],
+            age,
+            uptime,
         )
 
 
@@ -430,8 +437,8 @@ def serve(
             sock.settimeout(0.1)
         if ready_event is not None:
             ready_event.set()
-        print(f"UDP relay listening on {listen_host}:{listen_port}")
-        print('Device heartbeat format: "HLDEV1 <token> <device_id>"')
+        LOGGER.info("UDP relay listening on %s:%d", listen_host, listen_port)
+        LOGGER.info('device heartbeat format: "HLDEV1 <token> <device_id>"')
 
         while stop_event is None or not stop_event.is_set():
             try:
@@ -478,7 +485,12 @@ def serve(
                 state.rx_heartbeats += 1
                 latest_device_id = device_id
                 if (state.rx_heartbeats % 10) == 1:
-                    print(f"device online id={device_id} addr={addr[0]}:{addr[1]}")
+                    LOGGER.info(
+                        "device online id=%s addr=%s:%d",
+                        device_id,
+                        addr[0],
+                        addr[1],
+                    )
                 continue
 
             formal_route = parse_formal_v2_route(packet)
@@ -515,10 +527,14 @@ def serve(
             else:
                 dropped = 1
             if (dropped % 50) == 1:
-                print("drop packet: missing or invalid target deviceId")
+                LOGGER.warning("drop packet: missing or invalid target deviceId")
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--listen", default=DEFAULT_LISTEN_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_LISTEN_PORT)

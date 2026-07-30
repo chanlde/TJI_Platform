@@ -1,6 +1,6 @@
 package com.tji.device.product.speaker.viewmodel
 
-import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.common.DeviceCommandId
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerAudioRelay
@@ -158,7 +158,7 @@ internal class SpeakerRecordSaveCoordinator(
                 return@launch
             }
             if (!discard(pending)) return@launch
-            Log.w(
+            SpeakerLogger.warn(
                 SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                 "record save timeout recordId=${pending.recordId} " +
                     "elapsedMs=${System.currentTimeMillis() - pending.startedAt}"
@@ -181,7 +181,7 @@ internal class SpeakerRecordSaveCoordinator(
         val eventKey = listOf(event.type, event.recordId, event.code, event.timestamp).joinToString("|")
         if (eventKey == lastSaveEventKey) return
         lastSaveEventKey = eventKey
-        Log.d(
+        SpeakerLogger.debug(
             SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
             "record save device event type=${event.type} ok=${event.ok} code=${event.code} " +
                 "recordId=${event.recordId} elapsedMs=${System.currentTimeMillis() - pending.startedAt} " +
@@ -240,7 +240,7 @@ internal class SpeakerRecordSaveCoordinator(
         ).joinToString("|")
         if (eventKey == lastMutationEventKey) return
         lastMutationEventKey = eventKey
-        Log.d(
+        SpeakerLogger.debug(
             SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
             "record mutation refresh type=${event.type} recordId=${event.recordId} sn=$serialNumber"
         )
@@ -322,7 +322,7 @@ internal class SpeakerRecordSaveCoordinator(
             delay(RECORD_CONFIRM_PAGE_WAIT_MS)
             val state = devices.value.firstOrNull { it.serialNumber == serialNumber }
             if (state?.records.orEmpty().any { it.recordId == recordId }) {
-                Log.d(
+                SpeakerLogger.debug(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "record save confirmed by list recordId=$recordId offset=$offset"
                 )

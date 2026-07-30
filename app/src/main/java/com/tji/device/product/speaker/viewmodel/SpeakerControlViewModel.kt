@@ -1,7 +1,6 @@
 package com.tji.device.product.speaker.viewmodel
 
 import android.Manifest
-import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,6 +15,7 @@ import com.tji.device.product.speaker.audio.SpeakerMediaTransferRequest
 import com.tji.device.product.speaker.audio.SpeakerOpusFile
 import com.tji.device.product.speaker.audio.SpeakerMicrophoneFormat
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
 import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
@@ -141,7 +141,7 @@ class SpeakerControlViewModel(
     fun setVolume(serialNumber: String, volume: Int) {
         val normalizedVolume = volume.coerceIn(0, 100)
         _outputGain.value = percentToOutputGain(normalizedVolume)
-        Log.d(
+        SpeakerLogger.debug(
             SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
             "speaker volume commit serialNumber=$serialNumber volumePercent=$normalizedVolume"
         )
@@ -302,7 +302,7 @@ class SpeakerControlViewModel(
                     sampleRate = quality.sampleRate,
                     packetMs = quality.packetMs
                 )
-                Log.d(
+                SpeakerLogger.debug(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "tts temp file encoded recordId=$recordId engine=System " +
                         "fileSize=${opusFile.fileSize} codec=${opusFile.codec} uploadQuality=${quality.name} " +
@@ -353,7 +353,7 @@ class SpeakerControlViewModel(
         launchLatestAudioOperation {
             runCatchingPreservingCancellation {
                 val quality = _outputQuality.value
-                Log.d(
+                SpeakerLogger.debug(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "tts phone preview engine=System quality=${quality.name} sampleRate=${quality.sampleRate}"
                 )
@@ -559,7 +559,7 @@ class SpeakerControlViewModel(
                         visible = false
                     )
                 )
-                Log.d(
+                SpeakerLogger.debug(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "direct ptt sent session=$sessionId rate=${opusFile.sampleRate} " +
                         "bitrate=${opusFile.bitrate} packets=${opusFile.packetCount} " +
@@ -613,7 +613,7 @@ class SpeakerControlViewModel(
                     sampleRate = quality.sampleRate,
                     packetMs = quality.packetMs
                 )
-                Log.d(
+                SpeakerLogger.debug(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "record save encoded recordId=$recordId fileSize=${opusFile.fileSize} " +
                         "quality=${quality.name} sampleRate=${opusFile.sampleRate} " +

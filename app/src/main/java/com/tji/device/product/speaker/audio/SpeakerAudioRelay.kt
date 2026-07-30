@@ -5,7 +5,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerLogger
 import androidx.annotation.RequiresPermission
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -60,7 +60,7 @@ class SpeakerAudioRelay {
         } else {
             null
         }
-        Log.d(
+        SpeakerLogger.debug(
             SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
             "phone AEC available=$aecAvailable " +
                 "created=${echoCanceler != null} enabled=${echoCanceler?.enabled == true} " +

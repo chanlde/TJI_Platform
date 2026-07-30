@@ -1,6 +1,6 @@
 package com.tji.device.product.speaker.viewmodel
 
-import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.common.runCatchingPreservingCancellation
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerLocalAudioPlayer
@@ -45,7 +45,7 @@ internal class SpeakerTtsCoordinator(
                     voicePresetState.value = SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET
                 }
             }.onFailure { throwable ->
-                Log.w(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "TTS voice inspect failed", throwable)
+                SpeakerLogger.warn(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "TTS voice inspect failed", throwable)
                 availableVoicePresetsState.value =
                     listOf(SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET)
                 voicePresetState.value = SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET

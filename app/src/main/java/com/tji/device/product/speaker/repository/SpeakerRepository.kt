@@ -1,6 +1,6 @@
 package com.tji.device.product.speaker.repository
 
-import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.BuildConfig
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
@@ -342,7 +342,7 @@ class SpeakerControlRepo : SpeakerControlRepository {
             queueWhenDisconnected = false
         ).getOrThrow()
         if (BuildConfig.DEBUG) {
-            Log.d(
+            SpeakerLogger.debug(
                 TAG,
                 "Speaker command sent: topic=$topic cmd=${command.commandName} " +
                     "msgId=${command.msgId} bytes=${message.toByteArray().size} " +
