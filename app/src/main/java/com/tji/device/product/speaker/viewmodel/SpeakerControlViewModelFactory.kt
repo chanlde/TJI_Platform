@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.tji.device.product.speaker.audio.SpeakerAudioRelay
 import com.tji.device.product.speaker.audio.SpeakerFeedbackReceiver
-import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
 import com.tji.device.product.speaker.repository.SpeakerControlRepository
 import com.tji.device.product.speaker.repository.SpeakerRepository
@@ -14,7 +13,6 @@ class SpeakerControlViewModelFactory(
     private val controlRepository: SpeakerControlRepository,
     private val audioRelay: SpeakerAudioRelay,
     private val ttsSynthesizer: SpeakerTtsSynthesizer,
-    private val recordUploadClient: SpeakerRecordUploadClient,
     private val feedbackReceiver: SpeakerFeedbackReceiver
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -25,7 +23,6 @@ class SpeakerControlViewModelFactory(
                 controlRepository,
                 audioRelay,
                 ttsSynthesizer,
-                recordUploadClient,
                 feedbackReceiver
             ) as T
         }

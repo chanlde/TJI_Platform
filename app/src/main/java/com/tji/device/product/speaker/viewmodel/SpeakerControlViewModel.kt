@@ -11,9 +11,10 @@ import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerAudioQuality
 import com.tji.device.product.speaker.audio.SpeakerAudioRelay
 import com.tji.device.product.speaker.audio.SpeakerFeedbackReceiver
+import com.tji.device.product.speaker.audio.SpeakerMediaTransferMode
+import com.tji.device.product.speaker.audio.SpeakerMediaTransferRequest
 import com.tji.device.product.speaker.audio.SpeakerOpusFile
 import com.tji.device.product.speaker.audio.SpeakerMicrophoneFormat
-import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
 import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
 import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
@@ -43,7 +44,6 @@ class SpeakerControlViewModel(
     private val controlRepository: SpeakerControlRepository,
     private val audioRelay: SpeakerAudioRelay,
     private val ttsSynthesizer: SpeakerTtsSynthesizer,
-    recordUploadClient: SpeakerRecordUploadClient,
     feedbackReceiver: SpeakerFeedbackReceiver
 ) : ViewModel() {
     val devices: StateFlow<List<SpeakerDeviceState>> = stateRepository.devices
@@ -77,7 +77,7 @@ class SpeakerControlViewModel(
         scope = viewModelScope,
         stateRepository = stateRepository,
         controlRepository = controlRepository,
-        uploadClient = recordUploadClient,
+        audioRelay = audioRelay,
         commands = commandCoordinator,
         deviceActions = deviceActions,
         devices = devices,
@@ -309,7 +309,7 @@ class SpeakerControlViewModel(
                         "deviceOutputQuality=${_outputQuality.value.name} sampleRate=${opusFile.sampleRate} " +
                         "packets=${opusFile.packetCount} bitrate=${opusFile.bitrate} encodeMs=${System.currentTimeMillis() - startedAt}"
                 )
-                uploadOpusAndRequestPlayback(
+                transferOpusAndAwaitResult(
                     serialNumber = serialNumber,
                     recordId = recordId,
                     storeTaskId = storeTaskId,
@@ -413,7 +413,7 @@ class SpeakerControlViewModel(
                     sampleRate = quality.sampleRate,
                     packetMs = quality.packetMs
                 )
-                uploadOpusAndRequestPlayback(
+                transferOpusAndAwaitResult(
                     serialNumber = serialNumber,
                     recordId = recordId,
                     storeTaskId = storeTaskId,
@@ -546,12 +546,18 @@ class SpeakerControlViewModel(
                 val volume = devices.value
                     .firstOrNull { it.serialNumber == serialNumber }
                     ?.volume ?: DEFAULT_SPEAKER_VOLUME
-                audioRelay.sendPushToTalk(
-                    deviceId = serialNumber,
-                    sessionId = sessionId,
-                    talkId = talkId,
-                    opusFile = opusFile,
-                    volume = volume
+                audioRelay.sendMedia(
+                    SpeakerMediaTransferRequest(
+                        deviceId = serialNumber,
+                        sessionId = sessionId,
+                        recordId = talkId,
+                        name = "喊话",
+                        createdAt = isoNow(),
+                        opusFile = opusFile,
+                        mode = SpeakerMediaTransferMode.PlayTemporary,
+                        volume = volume,
+                        visible = false
+                    )
                 )
                 Log.d(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
@@ -614,7 +620,7 @@ class SpeakerControlViewModel(
                         "packets=${opusFile.packetCount} bitrate=${opusFile.bitrate} " +
                         "encodeMs=${System.currentTimeMillis() - startedAt}"
                 )
-                uploadOpusAndRequestPlayback(
+                transferOpusAndAwaitResult(
                     serialNumber = serialNumber,
                     recordId = recordId,
                     storeTaskId = storeTaskId,
@@ -704,8 +710,8 @@ class SpeakerControlViewModel(
         job.start()
     }
 
-    // 音频上传与 MQTT 命令回执
-    private suspend fun uploadOpusAndRequestPlayback(
+    // 统一 Ogg UDP 传输与 MCU 业务事件回执
+    private suspend fun transferOpusAndAwaitResult(
         serialNumber: String,
         recordId: String,
         storeTaskId: String,
@@ -723,8 +729,8 @@ class SpeakerControlViewModel(
         autoPlayInDownload: Boolean = false,
         fallbackPlayAfterSave: Boolean = true
     ) {
-        recordSaveCoordinator.uploadAndRequestPlayback(
-            SpeakerRecordUploadRequest(
+        recordSaveCoordinator.transferAndAwaitResult(
+            SpeakerRecordTransferRequest(
                 serialNumber = serialNumber,
                 recordId = recordId,
                 storeTaskId = storeTaskId,

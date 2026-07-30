@@ -137,7 +137,7 @@ class UdpRelayServerTest(unittest.TestCase):
         self.assertIsNotNone(route)
         self.assertEqual(route.sample_rate, 24000)
 
-    def test_parse_48khz_direct_opus_playback_route(self):
+    def test_parse_48khz_opus_media_route(self):
         route = parse_formal_v2_route(
             self.formal_packet(sample_rate=48000, packet_ms=20, flags=0x0014)
         )
@@ -145,20 +145,22 @@ class UdpRelayServerTest(unittest.TestCase):
         self.assertEqual(route.sample_rate, 48000)
         self.assertFalse(route.is_feedback)
 
-    def test_direct_ptt_golden_vector_matches_mcu_contract(self):
+    def test_media_transfer_golden_vector_matches_app_and_mcu_contract(self):
         packet = bytes.fromhex(
-            "5aa502024a001500000000000000000080bb01142500800709121300"
-            "5435544e42464d34515054545f5435544e42464d34515f54455354"
-            "54414c4b5f5435544e42464d34515f544553544450543101025000"
-            "000001000200000028000000007d00008b3ed597030011223302004455"
+            "5aa50202370015000000000000000000803e011459000000090a0800"
+            "5435544e42464d345153544f52455f544553545245435f54455354"
+            "4d54523101025000000001001d0000004331bf5c28000000c05d0000"
+            "4331bf5c0414010054657374323032362d30372d33305430303a3030"
+            "3a30305a4f6767530000000000000000000000000000000000000000"
+            "0000010111"
         )
         route = parse_formal_v2_route(packet)
         self.assertIsNotNone(route)
         self.assertEqual(route.device_id, "T5TNBFM4Q")
-        self.assertEqual(route.session_id, "PTT_T5TNBFM4Q_TEST")
-        self.assertEqual(route.talk_id, "TALK_T5TNBFM4Q_TEST")
+        self.assertEqual(route.session_id, "STORE_TEST")
+        self.assertEqual(route.talk_id, "REC_TEST")
         self.assertEqual(route.flags, 0x0015)
-        self.assertEqual(route.sample_rate, 48000)
+        self.assertEqual(route.sample_rate, 16000)
         self.assertEqual(route.packet_ms, 20)
 
     def test_parse_app_listener_registration(self):

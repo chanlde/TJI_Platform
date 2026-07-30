@@ -23,7 +23,7 @@ data class SpeakerRelayConfig(
  * 通信音源并绑定系统 AEC，因此 MCU 麦克风监听可以在按住录音期间继续播放。
  */
 class SpeakerAudioRelay {
-    private val directPttClient = SpeakerDirectPttClient()
+    private val mediaTransferClient = SpeakerMediaTransferClient()
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     suspend fun captureMicrophoneFrames(
@@ -87,20 +87,8 @@ class SpeakerAudioRelay {
         }
     }
 
-    /** @brief 将松手后生成的 48 kHz Opus 可靠直传给 MCU。 */
-    suspend fun sendPushToTalk(
-        deviceId: String,
-        sessionId: String,
-        talkId: String,
-        opusFile: SpeakerOpusFile,
-        volume: Int
-    ) {
-        directPttClient.send(
-            deviceId = deviceId,
-            sessionId = sessionId,
-            talkId = talkId,
-            opusFile = opusFile,
-            volume = volume
-        )
+    /** @brief 通过统一可靠通道发送完整 Ogg Opus 文件。 */
+    suspend fun sendMedia(request: SpeakerMediaTransferRequest) {
+        mediaTransferClient.send(request)
     }
 }

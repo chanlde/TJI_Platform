@@ -231,7 +231,7 @@ def parse_formal_v2_route(packet: bytes) -> AudioRoute | None:
         SPEAKER_AUDIO_CODEC_OPUS,
     }:
         return None
-    if sample_rate not in {8000, 16000, 24000, 48000} or channels != 1 or packet_ms not in {20, 40}:
+    if sample_rate not in {8000, 12000, 16000, 24000, 48000} or channels != 1 or packet_ms not in {20, 40}:
         return None
     if device_len <= 0:
         return None

@@ -35,7 +35,6 @@ import com.tji.device.product.radiodetection.viewmodel.RadioDetectionControlView
 import com.tji.device.product.runtime.ProductRuntimeRegistry
 import com.tji.device.product.speaker.audio.SpeakerAudioRelay
 import com.tji.device.product.speaker.audio.SpeakerFeedbackClient
-import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
 import java.io.File
 import com.tji.device.product.speaker.repository.SpeakerControlRepo
@@ -137,10 +136,6 @@ object AppContainer {
         SpeakerTtsSynthesizer(appContext)
     }
 
-    val speakerRecordUploadClient: SpeakerRecordUploadClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        SpeakerRecordUploadClient()
-    }
-
     val radioDetectionReplayStore: RadioDetectionReplayStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         check(::appContext.isInitialized) { "AppContainer.initialize(context) must be called before using replay store" }
         RadioDetectionReplayStore(appContext)
@@ -229,7 +224,6 @@ object AppContainer {
             controlRepository = speakerControlRepository,
             audioRelay = speakerAudioRelay,
             ttsSynthesizer = speakerTtsSynthesizer,
-            recordUploadClient = speakerRecordUploadClient,
             feedbackReceiver = speakerFeedbackClient
         )
     }
