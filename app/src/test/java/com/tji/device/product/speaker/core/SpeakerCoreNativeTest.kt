@@ -1,8 +1,5 @@
 package com.tji.device.product.speaker.core
 
-import com.tji.device.product.speaker.audio.SpeakerAdpcmPacketizer
-import com.tji.device.product.speaker.audio.SpeakerHadpCodec
-import com.tji.device.product.speaker.audio.SpeakerHadpFile
 import com.tji.device.product.speaker.model.SpeakerCommand
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -17,79 +14,18 @@ import kotlin.math.sin
 class SpeakerCoreNativeTest {
     @Test
     fun nativeWrapperReturnsUnavailableOnJvmUnitTests() {
-        val pcm = ByteArray(SpeakerAdpcmPacketizer.PCM_FRAME_BYTES)
+        val pcm = ByteArray(640)
 
         assertFalse(SpeakerCoreNative.isAvailable())
         assertNull(
-            SpeakerCoreNative.encodeHadpOrNull(
+            SpeakerCoreNative.encodeOggOpusOrNull(
                 pcm16le = pcm,
                 recordId = "REC_NATIVE_JVM_TEST",
-                codec = SpeakerHadpCodec.Pcm16
+                sampleRate = 24_000,
+                channels = 1,
+                packetMs = 20,
+                bitrate = 24_000
             )
-        )
-        assertNull(SpeakerCoreNative.createAdpcmPacketizerOrNull())
-    }
-
-    @Test
-    fun shadowVerifierDoesNotFailWhenNativeLibraryIsUnavailable() {
-        val kotlinHadp = SpeakerHadpFile(
-            data = byteArrayOf(1, 2, 3),
-            codec = SpeakerHadpCodec.Pcm16,
-            sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE,
-            channels = SpeakerAdpcmPacketizer.CHANNELS,
-            packetMs = SpeakerAdpcmPacketizer.PACKET_MS,
-            frameBytes = SpeakerHadpCodec.Pcm16.frameBytes,
-            samplesPerFrame = SpeakerHadpCodec.Pcm16.samplesPerFrame,
-            fileSize = 3,
-            crc32 = "0x00000000",
-            durationMs = 40,
-            frameCount = 1,
-            audioBytes = 3,
-            audioCrc32 = "0x00000000"
-        )
-
-        val result = SpeakerCoreShadowVerifier.compareHadp(
-            kotlinHadp = kotlinHadp,
-            pcm16le = ByteArray(SpeakerAdpcmPacketizer.PCM_FRAME_BYTES),
-            recordId = "REC_NATIVE_JVM_TEST"
-        )
-
-        assertTrue(result is SpeakerCoreShadowResult.NativeUnavailable)
-        assertEquals("speakerCoreShadow status=nativeUnavailable", result.toLogLine())
-    }
-
-    @Test
-    fun shadowMatchLogLineIncludesStableSummaryFields() {
-        val result = SpeakerCoreShadowResult.Match(
-            label = "hadp:pcm16",
-            byteCount = 768,
-            crc32 = "0x1234ABCD"
-        )
-
-        assertEquals(
-            "speakerCoreShadow status=match label=hadp:pcm16 byteCount=768 crc32=0x1234ABCD",
-            result.toLogLine()
-        )
-    }
-
-    @Test
-    fun shadowMismatchLogLineIncludesMismatchDiagnostics() {
-        val result = SpeakerCoreShadowResult.Mismatch(
-            label = "v2-adpcm-packet",
-            kotlinSize = 238,
-            nativeSize = 237,
-            mismatchOffset = 28,
-            kotlinCrc32 = "0x11111111",
-            nativeCrc32 = "0x22222222",
-            kotlinHeader = "5aa502014f000200",
-            nativeHeader = "5aa502014e000200"
-        )
-
-        assertEquals(
-            "speakerCoreShadow status=mismatch label=v2-adpcm-packet kotlinSize=238 nativeSize=237 " +
-                "mismatchOffset=28 kotlinCrc32=0x11111111 nativeCrc32=0x22222222 " +
-                "kotlinHeader=5aa502014f000200 nativeHeader=5aa502014e000200",
-            result.toLogLine()
         )
     }
 
@@ -205,16 +141,15 @@ class SpeakerCoreNativeTest {
                 storeTaskId = "STORE_1",
                 createdAt = "2026-06-21T09:00:00+08:00",
                 name = "录音 09:00",
-                downloadUrl = "http://example.com/REC_1.hadp",
+                downloadUrl = "http://example.com/REC_1.opus",
                 fileSize = 4228,
                 crc32 = "0x1234ABCD",
                 durationMs = 1000,
-                codec = "ima_adpcm",
-                sampleRate = 8_000,
+                codec = "opus",
+                sampleRate = 24_000,
                 channels = 1,
-                packetMs = 40,
-                frameBytes = 164,
-                samplesPerFrame = 320,
+                packetMs = 20,
+                bitrate = 24_000,
                 temporary = true,
                 visible = false,
                 autoPlay = true,
@@ -231,8 +166,9 @@ class SpeakerCoreNativeTest {
         assertEquals("REC_1", json.getString("recordId"))
         assertEquals("STORE_1", json.getString("storeTaskId"))
         assertEquals("录音 09:00", json.getString("name"))
+        assertEquals("record", json.getString("recordType"))
         assertEquals(4228L, json.getLong("fileSize"))
-        assertEquals("ima_adpcm", json.getString("codec"))
+        assertEquals("opus", json.getString("codec"))
         assertEquals(true, json.getBoolean("temporary"))
         assertEquals(false, json.getBoolean("visible"))
         assertEquals(true, json.getBoolean("autoPlay"))
@@ -261,13 +197,13 @@ class SpeakerCoreNativeTest {
             amplitude = 0.35f
         )
 
-        assertEquals(8_000 * 640 / 1_000 * 2, tone.size)
+        assertEquals(16_000 * 640 / 1_000 * 2, tone.size)
         assertEquals(0, tone[0].toInt())
         assertEquals(0, tone[1].toInt())
     }
 
     @Test
-    fun audioToolFallbackPrependsSilenceAndPadsFrame() {
+    fun audioToolFallbackPrependsSilence() {
         val input = syntheticVoicePcm(sampleRate = 8_000, sampleCount = 320)
 
         val withSilence = SpeakerCoreAudioEngine.prependSilencePcm16(
@@ -278,8 +214,6 @@ class SpeakerCoreNativeTest {
         assertEquals(input.size + 8_000 * 120 / 1_000 * 2, withSilence.size)
         assertEquals(input.toList(), withSilence.takeLast(input.size))
 
-        val padded = SpeakerCoreAudioEngine.padPcm16ToFrame(input.copyOf(input.size - 20), frameBytes = 640)
-        assertEquals(640, padded.size)
     }
 
     @Test

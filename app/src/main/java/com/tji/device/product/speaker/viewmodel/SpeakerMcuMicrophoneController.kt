@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicLong
  * 管理 MCU 板载麦克风监听的完整生命周期。
  *
  * 职责仅包括 relay 注册、cmd=116 租约续期、UDP 接收状态和关闭清理，
- * 不参与手机麦克风录音，也不把流式回传保存为 HADP 文件。
+ * 不参与手机麦克风录音，也不把流式回传保存为 Ogg Opus 文件。
  */
 internal class SpeakerMcuMicrophoneController(
     private val scope: CoroutineScope,
@@ -38,9 +38,11 @@ internal class SpeakerMcuMicrophoneController(
     val state: StateFlow<SpeakerMcuMicrophoneState> = _state.asStateFlow()
 
     private var listeningJob: Job? = null
+    private var listeningGeneration: Long = 0L
 
     fun start(serialNumber: String) {
         if (listeningJob?.isActive == true) return
+        val generation = ++listeningGeneration
         val session = runCatching { sessionFactory(serialNumber) }
             .getOrElse {
                 _state.value = SpeakerMcuMicrophoneState(
@@ -77,7 +79,12 @@ internal class SpeakerMcuMicrophoneController(
             } catch (throwable: Throwable) {
                 failure = throwable.toSpeakerUserVisibleMessage("设备麦克风监听失败")
             } finally {
-                if (enableCommandAttempted) {
+                /*
+                 * A cancelled job can reach here after the user has already
+                 * started a replacement session.  Only the current generation
+                 * may send the device-wide OFF command or clear UI/job state.
+                 */
+                if (enableCommandAttempted && generation == listeningGeneration) {
                     withContext(NonCancellable) {
                         runCatching {
                             sendCommand(
@@ -90,14 +97,16 @@ internal class SpeakerMcuMicrophoneController(
                         }
                     }
                 }
-                listeningJob = null
-                _state.value = if (failure == null) {
-                    SpeakerMcuMicrophoneState()
-                } else {
-                    SpeakerMcuMicrophoneState(
-                        phase = SpeakerMcuMicrophonePhase.Failed,
-                        error = failure
-                    )
+                if (generation == listeningGeneration) {
+                    listeningJob = null
+                    _state.value = if (failure == null) {
+                        SpeakerMcuMicrophoneState()
+                    } else {
+                        SpeakerMcuMicrophoneState(
+                            phase = SpeakerMcuMicrophonePhase.Failed,
+                            error = failure
+                        )
+                    }
                 }
             }
         }
@@ -112,6 +121,16 @@ internal class SpeakerMcuMicrophoneController(
         }
         _state.value = _state.value.copy(phase = SpeakerMcuMicrophonePhase.Stopping)
         job.cancel()
+    }
+
+    fun setPlaybackGain(gain: Float) {
+        receiver.setPlaybackGain(gain)
+    }
+
+    fun startDebugCapture(): Boolean = receiver.startDebugCapture()
+
+    fun stopDebugCapture() {
+        receiver.stopDebugCapture()
     }
 
     private suspend fun sendEnableCommand(

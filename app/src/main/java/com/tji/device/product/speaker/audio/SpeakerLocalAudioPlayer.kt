@@ -18,7 +18,7 @@ class SpeakerLocalAudioPlayer {
 
     suspend fun playPcm16le(
         pcm: ByteArray,
-        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        sampleRate: Int = SpeakerFeedbackProtocol.SAMPLE_RATE
     ) = withContext(Dispatchers.IO) {
         if (pcm.isEmpty()) return@withContext
         require(sampleRate > 0) { "本机播放采样率无效: $sampleRate" }
@@ -48,7 +48,12 @@ class SpeakerLocalAudioPlayer {
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                     .build()
             )
-            .setBufferSizeInBytes(max(minBuffer, SpeakerAdpcmPacketizer.PCM_FRAME_BYTES * 4))
+            .setBufferSizeInBytes(
+                max(
+                    minBuffer,
+                    SpeakerMicrophoneFormat.frameBytes(sampleRate) * AUDIO_BUFFER_FRAMES
+                )
+            )
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
         activeTrack.set(track)
@@ -77,5 +82,9 @@ class SpeakerLocalAudioPlayer {
         runCatching { track.pause() }
         runCatching { track.flush() }
         runCatching { track.stop() }
+    }
+
+    private companion object {
+        const val AUDIO_BUFFER_FRAMES = 4
     }
 }

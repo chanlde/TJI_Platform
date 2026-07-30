@@ -8,8 +8,8 @@ import java.util.TreeMap
 /**
  * MCU 板载 PDM 麦克风回传包。
  *
- * 这不是手机麦克风数据：MCU 固定输出 16 kHz/单声道/40 ms，App 只负责
- * 校验、抖动缓冲、ADPCM 解码和本机监听。
+ * 这不是手机麦克风数据：MCU 固定输出 16 kHz/单声道/20 ms，App 只负责
+ * 校验、抖动缓冲、Opus 解码和本机监听。
  */
 data class SpeakerFeedbackPacket(
     val sequence: Int,
@@ -48,7 +48,7 @@ object SpeakerFeedbackProtocol {
         header.get() // reserved
 
         if ((flags and FLAG_FEEDBACK) == 0 ||
-            codec !in setOf(CODEC_PCM16, CODEC_IMA_ADPCM) ||
+            codec != CODEC_OPUS ||
             sampleRate != SAMPLE_RATE ||
             channels != CHANNELS ||
             packetMs != PACKET_MS ||
@@ -64,12 +64,7 @@ object SpeakerFeedbackProtocol {
         }
         val expectedHeader = FIXED_HEADER_BYTES + deviceLength + sessionLength + talkLength
         if (headerBytes != expectedHeader || headerBytes + payloadBytes != length) return null
-        val expectedPayloadBytes = when (codec) {
-            CODEC_PCM16 -> PCM_BYTES_PER_PACKET
-            CODEC_IMA_ADPCM -> ADPCM_PAYLOAD_BYTES
-            else -> return null
-        }
-        if (payloadBytes != expectedPayloadBytes) return null
+        if (payloadBytes !in 1..MAX_OPUS_PACKET_BYTES) return null
 
         return runCatching {
             val deviceStart = FIXED_HEADER_BYTES
@@ -92,17 +87,6 @@ object SpeakerFeedbackProtocol {
         }.getOrNull()
     }
 
-    fun decodePcm16le(packet: SpeakerFeedbackPacket): ByteArray =
-        when (packet.codec) {
-            CODEC_PCM16 -> packet.payload
-            CODEC_IMA_ADPCM -> SpeakerAdpcmDecoder.decodeBlock(
-                block = packet.payload,
-                expectedSamples = packet.sampleCount,
-                blockBytes = packet.payload.size
-            )
-            else -> error("不支持的 MCU 麦克风编码: ${packet.codec}")
-        }
-
     private fun decodeUtf8Strict(bytes: ByteArray, start: Int, end: Int): String =
         Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
@@ -110,14 +94,13 @@ object SpeakerFeedbackProtocol {
             .decode(ByteBuffer.wrap(bytes, start, end - start))
             .toString()
 
-    const val CODEC_PCM16 = 0
-    const val CODEC_IMA_ADPCM = 1
+    const val CODEC_OPUS = 2
     const val SAMPLE_RATE = 16_000
     const val CHANNELS = 1
-    const val PACKET_MS = 40
-    const val SAMPLES_PER_PACKET = 640
+    const val PACKET_MS = 20
+    const val SAMPLES_PER_PACKET = 320
     const val PCM_BYTES_PER_PACKET = SAMPLES_PER_PACKET * 2
-    const val ADPCM_PAYLOAD_BYTES = 324
+    const val MAX_OPUS_PACKET_BYTES = 1_275
     const val MAX_DATAGRAM_BYTES = 1_600
     private const val MAX_ID_BYTES = 32
     private const val MAGIC = 0xA55A

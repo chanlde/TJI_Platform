@@ -3,7 +3,7 @@ package com.tji.device.product.speaker.viewmodel
 import android.util.Log
 import com.tji.device.product.common.DeviceCommandId
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
-import com.tji.device.product.speaker.audio.SpeakerHadpFile
+import com.tji.device.product.speaker.audio.SpeakerOpusFile
 import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
 import com.tji.device.product.speaker.audio.SpeakerRecordUploadResult
 import com.tji.device.product.speaker.model.SpeakerCommand
@@ -52,7 +52,7 @@ internal class SpeakerRecordSaveCoordinator(
             deviceId = request.serialNumber,
             recordId = request.recordId,
             name = request.recordName,
-            hadp = request.hadp
+            opusFile = request.opusFile
         )
         talkState.value = talkState.value.copy(progress = 0.80f)
         val downloadMsgId = id(request.downloadMsgPrefix)
@@ -86,16 +86,17 @@ internal class SpeakerRecordSaveCoordinator(
                     storeTaskId = request.storeTaskId,
                     createdAt = request.createdAt,
                     name = request.recordName,
+                    recordType = request.recordType,
                     downloadUrl = upload.downloadUrl,
                     fileSize = upload.fileSize,
                     crc32 = upload.crc32,
                     durationMs = upload.durationMs,
+                    container = upload.container,
                     codec = upload.codec,
                     sampleRate = upload.sampleRate,
                     channels = upload.channels,
                     packetMs = upload.packetMs,
-                    frameBytes = upload.frameBytes,
-                    samplesPerFrame = upload.samplesPerFrame,
+                    bitrate = upload.bitrate,
                     temporary = request.temporary,
                     visible = request.visible,
                     autoPlay = request.autoPlayInDownload,
@@ -365,7 +366,8 @@ internal data class SpeakerRecordUploadRequest(
     val storeTaskId: String,
     val createdAt: String,
     val recordName: String,
-    val hadp: SpeakerHadpFile,
+    val recordType: String = "record",
+    val opusFile: SpeakerOpusFile,
     val label: String,
     val downloadMsgPrefix: String,
     val autoPlayVolume: Int?,

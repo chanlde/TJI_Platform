@@ -61,7 +61,17 @@ class SpeakerRepo : SpeakerRepository {
                 if (isOlderDeviceTimestamp(timestamp, it.timestamp)) {
                     return@updateOrCreate it
                 }
-                it.copy(isOnline = isOnline, timestamp = timestamp ?: it.timestamp)
+                /*
+                 * The speaker's MQTT will payload has no timestamp. Treat that
+                 * offline event as the end of the current MCU uptime epoch.
+                 * Otherwise a rebooted MCU starts again from a smaller uptime
+                 * and every new online/state frame is rejected as stale.
+                 */
+                val nextTimestamp = when {
+                    !isOnline && timestamp == null -> null
+                    else -> timestamp ?: it.timestamp
+                }
+                it.copy(isOnline = isOnline, timestamp = nextTimestamp)
             }
         }
     }

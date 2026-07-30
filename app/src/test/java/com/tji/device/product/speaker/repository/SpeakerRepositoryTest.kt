@@ -12,6 +12,25 @@ import org.junit.Test
 class SpeakerRepositoryTest {
 
     @Test
+    fun untimestampedOfflineStartsANewDeviceUptimeEpoch() = runBlocking {
+        val repo = SpeakerRepo()
+
+        repo.updateState(
+            SpeakerDeviceState(
+                serialNumber = SERIAL,
+                isOnline = true,
+                timestamp = 500_000L
+            )
+        )
+        repo.updateOnlineStatus(SERIAL, isOnline = false, timestamp = null)
+        repo.updateOnlineStatus(SERIAL, isOnline = true, timestamp = 1_000L)
+
+        val state = repo.devices.value.single()
+        assertEquals(true, state.isOnline)
+        assertEquals(1_000L, state.timestamp)
+    }
+
+    @Test
     fun stateUpdateCanMarkPreviouslyOnlineDeviceOffline() = runBlocking {
         val repo = SpeakerRepo()
 

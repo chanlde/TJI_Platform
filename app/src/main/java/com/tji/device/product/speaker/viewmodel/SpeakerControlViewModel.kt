@@ -5,26 +5,18 @@ import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.tji.device.BuildConfig
 import com.tji.device.product.common.DeviceCommandId
 import com.tji.device.product.common.runCatchingPreservingCancellation
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
-import com.tji.device.product.speaker.audio.SpeakerAdpcmPacketizer
 import com.tji.device.product.speaker.audio.SpeakerAudioQuality
 import com.tji.device.product.speaker.audio.SpeakerAudioRelay
 import com.tji.device.product.speaker.audio.SpeakerFeedbackReceiver
-import com.tji.device.product.speaker.audio.SpeakerHadpEncoder
-import com.tji.device.product.speaker.audio.SpeakerHadpFile
+import com.tji.device.product.speaker.audio.SpeakerOpusFile
 import com.tji.device.product.speaker.audio.SpeakerMicrophoneFormat
 import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
-import com.tji.device.product.speaker.audio.SpeakerToneSettings
 import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
-import com.tji.device.product.speaker.audio.SpeakerUdpStreamContext
-import com.tji.device.product.speaker.audio.SpeakerUdpStreamType
-import com.tji.device.product.speaker.audio.SpeakerVoiceProcessor
 import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
-import com.tji.device.product.speaker.core.SpeakerCoreShadowVerifier
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
 import com.tji.device.product.speaker.model.SpeakerCommand
 import com.tji.device.product.speaker.model.SpeakerDeviceState
@@ -96,9 +88,12 @@ class SpeakerControlViewModel(
 
     private val _outputGain = MutableStateFlow(SpeakerAudioConfig.Gain.DEFAULT_OUTPUT_GAIN)
     val outputGain: StateFlow<Float> = _outputGain.asStateFlow()
-
-    private val _toneSettings = MutableStateFlow(SpeakerToneSettings())
-    val toneSettings: StateFlow<SpeakerToneSettings> = _toneSettings.asStateFlow()
+    private val _mcuMicrophoneGain =
+        MutableStateFlow(SpeakerAudioConfig.Gain.MCU_MONITOR_OUTPUT_GAIN)
+    val mcuMicrophoneGain: StateFlow<Float> = _mcuMicrophoneGain.asStateFlow()
+    private val _mcuMicrophoneCaptureActive = MutableStateFlow(false)
+    val mcuMicrophoneCaptureActive: StateFlow<Boolean> =
+        _mcuMicrophoneCaptureActive.asStateFlow()
 
     private val ttsCoordinator = SpeakerTtsCoordinator(viewModelScope, ttsSynthesizer)
     val ttsVoicePreset: StateFlow<SpeakerTtsVoicePreset> = ttsCoordinator.voicePreset
@@ -128,6 +123,13 @@ class SpeakerControlViewModel(
                 recordSaveCoordinator.handleEvent(envelope.serialNumber, envelope.event)
             }
         }
+        viewModelScope.launch {
+            mcuMicrophoneState.collect { state ->
+                if (state.phase != SpeakerMcuMicrophonePhase.Listening) {
+                    _mcuMicrophoneCaptureActive.value = false
+                }
+            }
+        }
     }
 
     // 基础控制
@@ -146,10 +148,6 @@ class SpeakerControlViewModel(
         deviceActions.setVolume(serialNumber, normalizedVolume)
     }
 
-    fun setToneSettings(toneSettings: SpeakerToneSettings) {
-        _toneSettings.value = toneSettings.normalized()
-    }
-
     fun setTtsVoicePreset(preset: SpeakerTtsVoicePreset) {
         ttsCoordinator.selectVoice(preset)
     }
@@ -159,15 +157,32 @@ class SpeakerControlViewModel(
     }
 
     /**
-     * 开关设备板载 PDM 麦克风监听；不会启动手机麦克风采集。
+     * 开关设备板载 PDM 麦克风监听；不会停止 MCU 扬声器。
      */
     fun setMcuMicrophoneListening(serialNumber: String, enabled: Boolean) {
         if (enabled) {
             if (!requireOnlineDevice(serialNumber, "设备麦克风监听")) return
             mcuMicrophoneController.start(serialNumber)
         } else {
+            stopMcuMicrophoneCapture()
             mcuMicrophoneController.stop()
         }
+    }
+
+    fun setMcuMicrophoneGain(gain: Float) {
+        val normalized = gain.coerceIn(0f, 1f)
+        _mcuMicrophoneGain.value = normalized
+        mcuMicrophoneController.setPlaybackGain(normalized)
+    }
+
+    fun startMcuMicrophoneCapture() {
+        _mcuMicrophoneCaptureActive.value =
+            mcuMicrophoneController.startDebugCapture()
+    }
+
+    fun stopMcuMicrophoneCapture() {
+        mcuMicrophoneController.stopDebugCapture()
+        _mcuMicrophoneCaptureActive.value = false
     }
 
     fun setServoAngle(serialNumber: String, angle: Int, speedDps: Int = SPEAKER_SERVO_DEFAULT_SPEED_DPS) {
@@ -270,48 +285,38 @@ class SpeakerControlViewModel(
                 val pcm = ttsCoordinator.synthesize(trimmed, _outputQuality.value.sampleRate)
                 if (pcm.isEmpty()) error("文字语音合成音频为空")
                 val quality = _outputQuality.value
-                val processedPcm = SpeakerCoreAudioEngine
-                    .applyPlaybackTone(pcm, _toneSettings.value, quality.sampleRate)
-                    .let {
-                        SpeakerCoreAudioEngine.prependSilencePcm16(
-                            pcm16le = it,
-                            durationMs = SpeakerAudioConfig.Voice.TTS_FILE_LEADING_SILENCE_MS,
-                            sampleRate = quality.sampleRate
-                        )
-                    }
+                val processedPcm = SpeakerCoreAudioEngine.prependSilencePcm16(
+                    pcm16le = pcm,
+                    durationMs = SpeakerAudioConfig.Timing.TTS_FILE_LEADING_SILENCE_MS,
+                    sampleRate = quality.sampleRate
+                )
                 val suffix = System.currentTimeMillis()
                 val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
                 val recordId = "TTS_PLAY_${cleanDeviceId}_$suffix"
                 val storeTaskId = "STORE_TTS_PLAY_${cleanDeviceId}_$suffix"
                 val createdAt = isoNow()
                 val recordName = "文字喊话 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"
-                val hadp = SpeakerCoreAudioEngine.encodeHadp(
+                val opusFile = SpeakerCoreAudioEngine.encodeOggOpus(
                     pcm = processedPcm,
                     recordId = recordId,
-                    codec = SpeakerAudioConfig.Codec.DEFAULT_HADP_CODEC,
                     sampleRate = quality.sampleRate,
                     packetMs = quality.packetMs
-                )
-                logHadpShadowResult(
-                    label = "tts-temp-file",
-                    hadp = hadp,
-                    pcm16le = processedPcm,
-                    recordId = recordId
                 )
                 Log.d(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                     "tts temp file encoded recordId=$recordId engine=System " +
-                        "fileSize=${hadp.fileSize} codec=${hadp.codec.wireName} uploadQuality=${quality.name} " +
-                        "deviceOutputQuality=${_outputQuality.value.name} sampleRate=${hadp.sampleRate} " +
-                        "audioBytes=${hadp.audioBytes} frames=${hadp.frameCount} encodeMs=${System.currentTimeMillis() - startedAt}"
+                        "fileSize=${opusFile.fileSize} codec=${opusFile.codec} uploadQuality=${quality.name} " +
+                        "deviceOutputQuality=${_outputQuality.value.name} sampleRate=${opusFile.sampleRate} " +
+                        "packets=${opusFile.packetCount} bitrate=${opusFile.bitrate} encodeMs=${System.currentTimeMillis() - startedAt}"
                 )
-                uploadHadpAndRequestPlayback(
+                uploadOpusAndRequestPlayback(
                     serialNumber = serialNumber,
                     recordId = recordId,
                     storeTaskId = storeTaskId,
                     createdAt = createdAt,
                     recordName = recordName,
-                    hadp = hadp,
+                    recordType = "tts",
+                    opusFile = opusFile,
                     label = "文字语音",
                     downloadMsgPrefix = "tts-download",
                     autoPlayVolume = volume.coerceIn(0, 100),
@@ -356,7 +361,7 @@ class SpeakerControlViewModel(
                     status = SpeakerCommandFeedbackStatus.Pending,
                     text = "正在本机试听"
                 )
-                ttsCoordinator.preview(trimmed, quality.sampleRate, _toneSettings.value)
+                ttsCoordinator.preview(trimmed, quality.sampleRate)
                 _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle)
                 _feedback.value = SpeakerCommandFeedback(
                     status = SpeakerCommandFeedbackStatus.Success,
@@ -380,27 +385,55 @@ class SpeakerControlViewModel(
         _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Tone)
         _feedback.value = SpeakerCommandFeedback(
             status = SpeakerCommandFeedbackStatus.Pending,
-            text = "正在发送蜂鸣"
+            text = "正在生成蜂鸣"
         )
         launchLatestAudioOperation {
             runCatchingPreservingCancellation {
+                val startedAt = System.currentTimeMillis()
+                val quality = _outputQuality.value
                 val tonePcm = SpeakerCoreAudioEngine.generateTonePcm16(
                     frequencyHz = SpeakerAudioConfig.Tone.FREQUENCY_HZ,
                     durationMs = SpeakerAudioConfig.Tone.DURATION_MS,
-                    amplitude = SpeakerAudioConfig.Tone.AMPLITUDE * _outputGain.value
+                    amplitude = SpeakerAudioConfig.Tone.AMPLITUDE * _outputGain.value,
+                    sampleRate = quality.sampleRate,
+                    minDurationMs = quality.packetMs
                 )
-                audioRelay.sendRecordedPcm(
-                    pcm = tonePcm,
-                    prebufferPackets = SpeakerAudioConfig.Tone.PREBUFFER_PACKETS,
-                    leadingSilenceMs = SpeakerAudioConfig.Tone.LEADING_SILENCE_MS,
-                    streamContext = playbackStreamContext(serialNumber, "tone")
-                ) {}
+                val playbackPcm = SpeakerCoreAudioEngine.prependSilencePcm16(
+                    pcm16le = tonePcm,
+                    durationMs = SpeakerAudioConfig.Tone.LEADING_SILENCE_MS,
+                    sampleRate = quality.sampleRate
+                )
+                val suffix = System.currentTimeMillis()
+                val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
+                val recordId = "TONE_PLAY_${cleanDeviceId}_$suffix"
+                val storeTaskId = "STORE_TONE_PLAY_${cleanDeviceId}_$suffix"
+                val opusFile = SpeakerCoreAudioEngine.encodeOggOpus(
+                    pcm = playbackPcm,
+                    recordId = recordId,
+                    sampleRate = quality.sampleRate,
+                    packetMs = quality.packetMs
+                )
+                uploadOpusAndRequestPlayback(
+                    serialNumber = serialNumber,
+                    recordId = recordId,
+                    storeTaskId = storeTaskId,
+                    createdAt = isoNow(),
+                    recordName = "蜂鸣测试",
+                    recordType = "test",
+                    opusFile = opusFile,
+                    label = "蜂鸣",
+                    downloadMsgPrefix = "tone-download",
+                    autoPlayVolume = devices.value
+                        .firstOrNull { it.serialNumber == serialNumber }
+                        ?.volume ?: DEFAULT_SPEAKER_VOLUME,
+                    autoPlayLabel = "播放蜂鸣",
+                    startedAt = startedAt,
+                    temporary = true,
+                    visible = false,
+                    autoPlayInDownload = true,
+                    fallbackPlayAfterSave = false
+                )
                 _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle)
-                _feedback.value = SpeakerCommandFeedback(
-                    status = SpeakerCommandFeedbackStatus.Success,
-                    text = "蜂鸣已发送"
-                )
-                clearFeedbackAfter(null)
             }.onFailure { throwable ->
                 val message = throwable.toSpeakerUserVisibleMessage("蜂鸣失败")
                 _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = message)
@@ -419,7 +452,11 @@ class SpeakerControlViewModel(
         if (pttRecordJob?.isActive == true || pttDeliveryJob?.isActive == true) return
         if (!pttTargetLock.claim(serialNumber)) return
         cancelPlaybackOperation()
-        val captureQuality = _outputQuality.value
+        /*
+         * 松手喊话固定使用真实 48 kHz；“低/中/高”仍用于 TTS 和保存录音，
+         * 防止用户切换文件音质后意外破坏直接 UDP 协议。
+         */
+        val captureQuality = SpeakerAudioQuality.High
         pttCaptureQuality = captureQuality
         pttSaveName = null
         pttBuffer = ByteArrayOutputStream()
@@ -482,21 +519,13 @@ class SpeakerControlViewModel(
             _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Sending)
             runCatchingPreservingCancellation {
                 val startedAt = System.currentTimeMillis()
-                if (!SpeakerVoiceProcessor.hasPushToTalkSpeech(pcm, quality.sampleRate)) {
-                    _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle)
-                    _feedback.value = SpeakerCommandFeedback(
-                        status = SpeakerCommandFeedbackStatus.Failed,
-                        text = "未检测到语音"
-                    )
-                    clearFeedbackAfter(null)
-                    return@runCatchingPreservingCancellation
+                check(SpeakerCoreAudioEngine.hasPushToTalkSpeech(pcm, quality.sampleRate)) {
+                    "未检测到有效语音，请靠近手机麦克风后重试"
                 }
                 val processedPcm = SpeakerCoreAudioEngine.processPushToTalk(
                     pcm16le = pcm,
-                    toneSettings = _toneSettings.value,
                     sampleRate = quality.sampleRate
                 )
-                logPttAudioStats(pcm, processedPcm)
                 val playbackPcm = SpeakerCoreAudioEngine.prependSilencePcm16(
                     pcm16le = processedPcm,
                     durationMs = SpeakerAudioConfig.Timing.RECORDED_LEADING_SILENCE_MS,
@@ -504,40 +533,31 @@ class SpeakerControlViewModel(
                 )
                 val suffix = System.currentTimeMillis()
                 val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
-                val recordId = "PTT_PLAY_${cleanDeviceId}_$suffix"
-                val storeTaskId = "STORE_PTT_PLAY_${cleanDeviceId}_$suffix"
-                val createdAt = isoNow()
-                val recordName = "按住喊话 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"
-                val hadp = SpeakerCoreAudioEngine.encodeHadp(
+                val shortSuffix = suffix.toString(36).uppercase(Locale.US)
+                val sessionId = "PTT_${cleanDeviceId}_$shortSuffix"
+                val talkId = "TALK_${cleanDeviceId}_$shortSuffix"
+                val opusFile = SpeakerCoreAudioEngine.encodeOggOpus(
                     pcm = playbackPcm,
-                    recordId = recordId,
-                    codec = SpeakerMicrophoneFormat.hadpCodec(quality),
+                    recordId = talkId,
                     sampleRate = quality.sampleRate,
-                    packetMs = quality.packetMs
+                    packetMs = quality.packetMs,
+                    bitrate = SpeakerAudioConfig.DirectPtt.BITRATE
                 )
-                logHadpShadowResult(
-                    label = "ptt-temp-file",
-                    hadp = hadp,
-                    pcm16le = playbackPcm,
-                    recordId = recordId
+                val volume = devices.value
+                    .firstOrNull { it.serialNumber == serialNumber }
+                    ?.volume ?: DEFAULT_SPEAKER_VOLUME
+                audioRelay.sendPushToTalk(
+                    deviceId = serialNumber,
+                    sessionId = sessionId,
+                    talkId = talkId,
+                    opusFile = opusFile,
+                    volume = volume
                 )
-                uploadHadpAndRequestPlayback(
-                    serialNumber = serialNumber,
-                    recordId = recordId,
-                    storeTaskId = storeTaskId,
-                    createdAt = createdAt,
-                    recordName = recordName,
-                    hadp = hadp,
-                    label = "按住喊话",
-                    downloadMsgPrefix = "ptt-download",
-                    autoPlayVolume = devices.value.firstOrNull { it.serialNumber == serialNumber }?.volume
-                        ?: DEFAULT_SPEAKER_VOLUME,
-                    autoPlayLabel = "播放按住喊话",
-                    startedAt = startedAt,
-                    temporary = true,
-                    visible = false,
-                    autoPlayInDownload = true,
-                    fallbackPlayAfterSave = false
+                Log.d(
+                    SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
+                    "direct ptt sent session=$sessionId rate=${opusFile.sampleRate} " +
+                        "bitrate=${opusFile.bitrate} packets=${opusFile.packetCount} " +
+                        "bytes=${opusFile.fileSize} elapsedMs=${System.currentTimeMillis() - startedAt}"
                 )
                 _talkState.value = _talkState.value.copy(mode = SpeakerTalkMode.Idle)
             }.onFailure { throwable ->
@@ -568,42 +588,39 @@ class SpeakerControlViewModel(
             _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.SavingRecord, progress = 0.10f)
             runCatchingPreservingCancellation {
                 val startedAt = System.currentTimeMillis()
-                val processedPcm = SpeakerCoreAudioEngine.processPushToTalk(
-                    pcm16le = pcm,
-                    toneSettings = _toneSettings.value,
-                    sampleRate = quality.sampleRate
-                )
                 _talkState.value = _talkState.value.copy(progress = 0.25f)
                 val suffix = System.currentTimeMillis()
                 val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
                 val recordId = "REC_${cleanDeviceId}_$suffix"
                 val storeTaskId = "STORE_${cleanDeviceId}_$suffix"
                 val createdAt = isoNow()
-                val hadp = SpeakerCoreAudioEngine.encodeHadp(
+                check(SpeakerCoreAudioEngine.hasPushToTalkSpeech(pcm, quality.sampleRate)) {
+                    "未检测到有效语音，请靠近手机麦克风后重试"
+                }
+                val processedPcm = SpeakerCoreAudioEngine.processPushToTalk(
+                    pcm16le = pcm,
+                    sampleRate = quality.sampleRate
+                )
+                val opusFile = SpeakerCoreAudioEngine.encodeOggOpus(
                     pcm = processedPcm,
                     recordId = recordId,
                     sampleRate = quality.sampleRate,
                     packetMs = quality.packetMs
                 )
-                logHadpShadowResult(
-                    label = "record-save",
-                    hadp = hadp,
-                    pcm16le = processedPcm,
-                    recordId = recordId
-                )
                 Log.d(
                     SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-                    "record save encoded recordId=$recordId fileSize=${hadp.fileSize} " +
-                        "quality=${quality.name} sampleRate=${hadp.sampleRate} audioBytes=${hadp.audioBytes} " +
-                        "frames=${hadp.frameCount} encodeMs=${System.currentTimeMillis() - startedAt}"
+                    "record save encoded recordId=$recordId fileSize=${opusFile.fileSize} " +
+                        "quality=${quality.name} sampleRate=${opusFile.sampleRate} " +
+                        "packets=${opusFile.packetCount} bitrate=${opusFile.bitrate} " +
+                        "encodeMs=${System.currentTimeMillis() - startedAt}"
                 )
-                uploadHadpAndRequestPlayback(
+                uploadOpusAndRequestPlayback(
                     serialNumber = serialNumber,
                     recordId = recordId,
                     storeTaskId = storeTaskId,
                     createdAt = createdAt,
                     recordName = recordName,
-                    hadp = hadp,
+                    opusFile = opusFile,
                     label = "录音",
                     downloadMsgPrefix = "record-download",
                     autoPlayVolume = null,
@@ -687,36 +704,15 @@ class SpeakerControlViewModel(
         job.start()
     }
 
-    private fun logPttAudioStats(raw: ByteArray, processed: ByteArray) {
-        val rawStats = SpeakerVoiceProcessor.measurePcm(raw)
-        val processedStats = SpeakerVoiceProcessor.measurePcm(processed)
-        val ratio = if (rawStats.rms > 0f) processedStats.rms / rawStats.rms else 0f
-        Log.d(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "ptt rawRms=${rawStats.rms} rawPeak=${rawStats.peak} " +
-                "processedRms=${processedStats.rms} processedPeak=${processedStats.peak} " +
-                "rmsRatio=$ratio samples=${processedStats.samples}"
-        )
-    }
-
-    private fun playbackStreamContext(serialNumber: String, prefix: String): SpeakerUdpStreamContext {
-        val id = "PLAY_${prefix.uppercase(Locale.US)}_${System.currentTimeMillis()}"
-        return SpeakerUdpStreamContext(
-            deviceId = serialNumber,
-            taskId = id,
-            type = SpeakerUdpStreamType.Playback,
-            talkId = id
-        )
-    }
-
     // 音频上传与 MQTT 命令回执
-    private suspend fun uploadHadpAndRequestPlayback(
+    private suspend fun uploadOpusAndRequestPlayback(
         serialNumber: String,
         recordId: String,
         storeTaskId: String,
         createdAt: String,
         recordName: String,
-        hadp: SpeakerHadpFile,
+        recordType: String = "record",
+        opusFile: SpeakerOpusFile,
         label: String,
         downloadMsgPrefix: String,
         autoPlayVolume: Int?,
@@ -734,7 +730,8 @@ class SpeakerControlViewModel(
                 storeTaskId = storeTaskId,
                 createdAt = createdAt,
                 recordName = recordName,
-                hadp = hadp,
+                recordType = recordType,
+                opusFile = opusFile,
                 label = label,
                 downloadMsgPrefix = downloadMsgPrefix,
                 autoPlayVolume = autoPlayVolume,
@@ -786,43 +783,6 @@ class SpeakerControlViewModel(
 
     private fun newMsgId(action: String): String = DeviceCommandId.next("speaker", action)
 
-    private fun logHadpShadowResult(
-        label: String,
-        hadp: SpeakerHadpFile,
-        pcm16le: ByteArray,
-        recordId: String
-    ) {
-        if (!BuildConfig.DEBUG) return
-        val kotlinHadp = runCatching {
-            SpeakerHadpEncoder.encode(
-                pcm = pcm16le,
-                recordId = recordId,
-                codec = hadp.codec,
-                sampleRate = hadp.sampleRate,
-                channels = hadp.channels,
-                packetMs = hadp.packetMs
-            )
-        }.getOrNull()
-        if (kotlinHadp == null) {
-            Log.d(
-                SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-                "speakerCoreShadow status=kotlinUnavailable path=$label recordId=$recordId"
-            )
-            return
-        }
-        val result = SpeakerCoreShadowVerifier.compareHadp(
-            kotlinHadp = kotlinHadp,
-            pcm16le = pcm16le,
-            recordId = recordId
-        )
-        Log.d(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "${result.toLogLine()} path=$label recordId=$recordId " +
-                "codec=${hadp.codec.wireName} sampleRate=${hadp.sampleRate} packetMs=${hadp.packetMs} " +
-                "frames=${hadp.frameCount} fileSize=${hadp.fileSize}"
-        )
-    }
-
     private fun defaultRecordName(): String =
         "录音 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"
 
@@ -830,6 +790,7 @@ class SpeakerControlViewModel(
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.CHINA).format(Date())
 
     override fun onCleared() {
+        mcuMicrophoneController.stop()
         stopAllAudioOperations()
         super.onCleared()
     }

@@ -8,14 +8,13 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 
-DEFAULT_TARGET_SAMPLE_RATE = 8000
 DEFAULT_RECORD_TMP_DIR = "/tmp/tji-speaker-records"
 DEFAULT_RECORD_TTL_SECONDS = 30 * 60
 DEFAULT_PUBLIC_BASE_URL = "http://146.56.250.203:8008"
 MAX_RECORD_UPLOAD_BYTES = 8 * 1024 * 1024
 
 
-app = FastAPI(title="TJI Speaker Record Transfer Service", version="1.1.0")
+app = FastAPI(title="TJI Speaker Record Transfer Service", version="1.2.0")
 
 
 @app.get("/")
@@ -34,7 +33,7 @@ def health():
     }
 
 
-@app.post("/api/speaker/records/upload-temp")
+@app.post("/api/speaker/audio/upload-temp")
 async def upload_temp_record(
     file: UploadFile = File(...),
     deviceId: str = Form(...),
@@ -43,28 +42,26 @@ async def upload_temp_record(
     fileSize: int = Form(...),
     crc32: str = Form(...),
     durationMs: int = Form(...),
-    codec: str = Form("ima_adpcm"),
-    sampleRate: int = Form(DEFAULT_TARGET_SAMPLE_RATE),
+    container: str = Form("ogg"),
+    codec: str = Form("opus"),
+    sampleRate: int = Form(24000),
     channels: int = Form(1),
-    packetMs: int = Form(40),
-    frameBytes: int | None = Form(None),
-    samplesPerFrame: int | None = Form(None),
+    packetMs: int = Form(20),
+    bitrate: int = Form(24000),
 ):
     _cleanup_expired_records()
     clean_device_id = _safe_id(deviceId, "DEVICE")
     clean_record_id = _safe_id(recordId, "REC")
-    expected_frame_bytes, expected_samples_per_frame = _expected_hadp_frame_shape(
-        codec=codec,
-        sample_rate=sampleRate,
-        channels=channels,
-        packet_ms=packetMs,
-    )
-    if expected_frame_bytes is None:
+    if (
+        container != "ogg"
+        or codec != "opus"
+        or sampleRate not in (8000, 12000, 16000, 24000, 48000)
+        or channels != 1
+        or packetMs != 20
+        or bitrate < 6000
+        or bitrate > 128000
+    ):
         raise HTTPException(status_code=400, detail="unsupported audio metadata")
-    if frameBytes is not None and frameBytes != expected_frame_bytes:
-        raise HTTPException(status_code=400, detail="frameBytes mismatch")
-    if samplesPerFrame is not None and samplesPerFrame != expected_samples_per_frame:
-        raise HTTPException(status_code=400, detail="samplesPerFrame mismatch")
     if fileSize <= 0 or fileSize > MAX_RECORD_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail="invalid fileSize")
 
@@ -73,20 +70,21 @@ async def upload_temp_record(
         raise HTTPException(status_code=413, detail="record file too large")
     if len(body) != fileSize:
         raise HTTPException(status_code=400, detail="fileSize mismatch")
+    _validate_ogg_opus(body, sampleRate, channels)
 
     actual_crc = _format_crc32(zlib.crc32(body) & 0xFFFFFFFF)
     if _normalize_crc32(crc32) != actual_crc:
         raise HTTPException(status_code=400, detail=f"crc32 mismatch: expected {crc32}, actual {actual_crc}")
 
     token = uuid.uuid4().hex
-    filename = f"{clean_record_id}.hadp"
+    filename = f"{clean_record_id}.opus"
     record_dir = _record_tmp_dir() / token
     record_dir.mkdir(parents=True, exist_ok=True)
     path = record_dir / filename
     path.write_bytes(body)
 
     expires_at = int(time.time() + _record_ttl_seconds())
-    download_url = f"{_public_base_url()}/api/speaker/records/temp/{token}/{filename}"
+    download_url = f"{_public_base_url()}/api/speaker/audio/temp/{token}/{filename}"
     return {
         "ok": True,
         "deviceId": clean_device_id,
@@ -96,41 +94,35 @@ async def upload_temp_record(
         "fileSize": fileSize,
         "crc32": actual_crc,
         "durationMs": durationMs,
+        "container": container,
         "codec": codec,
         "sampleRate": sampleRate,
         "channels": channels,
         "packetMs": packetMs,
-        "frameBytes": expected_frame_bytes,
-        "samplesPerFrame": expected_samples_per_frame,
+        "bitrate": bitrate,
         "expiresAt": expires_at,
     }
 
 
-def _expected_hadp_frame_shape(
-    codec: str,
-    sample_rate: int,
-    channels: int,
-    packet_ms: int,
-) -> tuple[int | None, int | None]:
-    if channels != 1 or packet_ms != 40:
-        return None, None
-    if codec == "ima_adpcm":
-        if sample_rate != 8000:
-            return None, None
-        return 164, 320
-    if codec == "pcm16":
-        if sample_rate not in (8000, 16000, 24000):
-            return None, None
-        samples_per_frame = sample_rate * packet_ms // 1000
-        return samples_per_frame * 2, samples_per_frame
-    return None, None
+def _validate_ogg_opus(body: bytes, sample_rate: int, channels: int) -> None:
+    if len(body) < 47 or body[:4] != b"OggS" or body[4] != 0:
+        raise HTTPException(status_code=400, detail="invalid Ogg stream")
+    segment_count = body[26]
+    payload_offset = 27 + segment_count
+    if payload_offset + 19 > len(body) or body[payload_offset:payload_offset + 8] != b"OpusHead":
+        raise HTTPException(status_code=400, detail="missing OpusHead")
+    if body[payload_offset + 9] != channels:
+        raise HTTPException(status_code=400, detail="Opus channel mismatch")
+    input_rate = int.from_bytes(body[payload_offset + 12:payload_offset + 16], "little")
+    if input_rate not in (0, sample_rate):
+        raise HTTPException(status_code=400, detail="Opus sampleRate mismatch")
 
 
-@app.get("/api/speaker/records/temp/{token}/{filename}")
+@app.get("/api/speaker/audio/temp/{token}/{filename}")
 def download_temp_record(token: str, filename: str):
     clean_token = _safe_id(token, "")
     clean_filename = _safe_filename(filename)
-    if not clean_token or not clean_filename.endswith(".hadp"):
+    if not clean_token or not clean_filename.endswith(".opus"):
         raise HTTPException(status_code=404, detail="record not found")
 
     path = _record_tmp_dir() / clean_token / clean_filename
@@ -141,7 +133,7 @@ def download_temp_record(token: str, filename: str):
 
     return FileResponse(
         path,
-        media_type="application/octet-stream",
+        media_type="audio/ogg",
         filename=clean_filename,
         headers={"Cache-Control": "no-store"},
     )

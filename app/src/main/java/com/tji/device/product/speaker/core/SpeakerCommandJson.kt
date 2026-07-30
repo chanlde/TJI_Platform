@@ -16,34 +16,7 @@ object SpeakerCommandJson {
         }
 
     private fun encodeRecordDownload(command: SpeakerCommand.RecordDownload, deviceId: String): JSONObject {
-        val native = SpeakerCoreNative.buildRecordDownloadCommandJsonOrNull(
-            deviceId = deviceId,
-            msgId = command.msgId,
-            recordId = command.recordId,
-            storeTaskId = command.storeTaskId,
-            createdAt = command.createdAt,
-            name = command.name,
-            downloadUrl = command.downloadUrl,
-            fileSize = command.fileSize,
-            crc32 = command.crc32,
-            durationMs = command.durationMs,
-            codec = command.codec,
-            sampleRate = command.sampleRate,
-            channels = command.channels,
-            packetMs = command.packetMs,
-            frameBytes = command.frameBytes,
-            samplesPerFrame = command.samplesPerFrame,
-            verifyOnly = command.verifyOnly,
-            verifyKind = command.verifyKind.orEmpty(),
-            expectedAudioCrc32 = command.expectedAudioCrc32.orEmpty(),
-            expectedFirstSamplesJson = JSONArray(command.expectedFirstSamples).toString(),
-            temporary = command.temporary,
-            visible = command.visible,
-            autoPlay = command.autoPlay,
-            playbackVolume = command.playbackVolume ?: 0,
-            hasPlaybackVolume = command.playbackVolume != null
-        )
-        return native?.let(::JSONObject) ?: command.toRecordDownloadJson(deviceId)
+        return command.toRecordDownloadJson(deviceId)
     }
 
     private fun encodeStandard(command: SpeakerCommand, deviceId: String, timestampMs: Long): JSONObject {
@@ -69,16 +42,17 @@ object SpeakerCommandJson {
             put("storeTaskId", storeTaskId)
             put("createdAt", createdAt)
             put("name", name)
+            put("recordType", recordType)
             put("downloadUrl", downloadUrl)
             put("fileSize", fileSize)
             put("crc32", crc32)
             put("durationMs", durationMs)
+            put("container", container)
             put("codec", codec)
             put("sampleRate", sampleRate)
             put("channels", channels)
             put("packetMs", packetMs)
-            put("frameBytes", frameBytes)
-            put("samplesPerFrame", samplesPerFrame)
+            put("bitrate", bitrate)
             if (temporary) {
                 put("temporary", true)
                 put("visible", visible)
@@ -172,10 +146,10 @@ object SpeakerCommandJson {
                 put("storeTaskId", storeTaskId)
                 put("createdAt", createdAt)
                 put("name", name)
-                put("codec", "ima_adpcm")
-                put("sampleRate", 8_000)
+                put("codec", "opus")
+                put("sampleRate", 16_000)
                 put("channels", 1)
-                put("packetMs", 40)
+                put("packetMs", 20)
                 expectedDurationMs?.let { put("expectedDurationMs", it) }
                 expectedFileSize?.let { put("expectedFileSize", it) }
             }
@@ -220,10 +194,10 @@ object SpeakerCommandJson {
                 put("storeTaskId", storeTaskId)
                 put("createdAt", createdAt)
                 put("name", name)
-                put("codec", "ima_adpcm")
-                put("sampleRate", 8_000)
+                put("codec", "opus")
+                put("sampleRate", 16_000)
                 put("channels", 1)
-                put("packetMs", 40)
+                put("packetMs", 20)
                 expectedDurationMs?.let { put("expectedDurationMs", it) }
                 expectedFileSize?.let { put("expectedFileSize", it) }
             }

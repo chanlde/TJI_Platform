@@ -1,8 +1,8 @@
 # Speaker Record Transfer Service
 
-喊话器临时音频文件传输服务。App 上传完整 `.hadp` 文件，服务生成短期下载链接，MCU 通过链接下载后播放或保存。
+喊话器临时音频文件传输服务。App 上传标准 Ogg Opus 文件，服务生成短期下载链接，MCU 边下载、边解码、边播放或保存。
 
-这个服务不再负责 TTS 合成。文字转语音由 App 本地生成音频，再走同一套 `.hadp` 上传下载链路。
+这个服务不再负责 TTS 合成。文字转语音由 App 本地生成音频，再走同一套 Ogg Opus 上传下载链路。
 
 ## 安装
 
@@ -48,36 +48,36 @@ service: tji-kokoro-tts.service
 
 ## 接口
 
-### 上传临时 HADP
+### 上传临时 Ogg Opus
 
 ```text
-POST /api/speaker/records/upload-temp
+POST /api/speaker/audio/upload-temp
 ```
 
 Multipart 字段：
 
 ```text
-file              .hadp 文件
+file              .opus 文件（Ogg 容器）
 deviceId          设备正式通信身份
 recordId          录音 ID
 name              显示名称
 fileSize          文件字节数
 crc32             文件 CRC32
 durationMs        音频时长
-codec             pcm16 或 ima_adpcm
-sampleRate        8000 / 16000 / 24000
+container         ogg
+codec             opus
+sampleRate        8000 / 12000 / 16000 / 24000 / 48000
 channels          1
-packetMs          40
-frameBytes        每帧字节数
-samplesPerFrame   每帧采样数
+packetMs          20
+bitrate           6000..128000 bit/s
 ```
 
 返回 `downloadUrl`，供 MCU 下载。
 
-### 下载临时 HADP
+### 下载临时 Ogg Opus
 
 ```text
-GET /api/speaker/records/temp/{token}/{filename}
+GET /api/speaker/audio/temp/{token}/{filename}
 ```
 
 临时文件默认保留 30 分钟，不写数据库。

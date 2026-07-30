@@ -28,12 +28,13 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tji.device.BuildConfig
 import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.di.AppContainer
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
-import com.tji.device.product.speaker.audio.SpeakerToneSettings
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.viewmodel.SpeakerControlViewModel
+import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophonePhase
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophoneState
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_CYCLES
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_HOLD_MS
@@ -68,11 +69,15 @@ fun SpeakerControlScreen(
     val mcuMicrophoneState by viewModel?.mcuMicrophoneState?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerMcuMicrophoneState()) }
     }
+    val mcuMicrophoneGain by viewModel?.mcuMicrophoneGain?.collectAsStateWithLifecycle().let {
+        it ?: remember { mutableFloatStateOf(SpeakerAudioConfig.Gain.MCU_MONITOR_OUTPUT_GAIN) }
+    }
+    val mcuMicrophoneCaptureActive by
+        viewModel?.mcuMicrophoneCaptureActive?.collectAsStateWithLifecycle().let {
+            it ?: remember { mutableStateOf(false) }
+        }
     val outputGain by viewModel?.outputGain?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableFloatStateOf(1f) }
-    }
-    val toneSettings by viewModel?.toneSettings?.collectAsStateWithLifecycle().let {
-        it ?: remember { mutableStateOf(SpeakerToneSettings()) }
     }
     val ttsVoicePreset by viewModel?.ttsVoicePreset?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET) }
@@ -179,10 +184,20 @@ fun SpeakerControlScreen(
             if (selectedPanel == SpeakerPanel.Talk) item {
                 McuMicrophoneMonitorCard(
                     state = mcuMicrophoneState,
+                    volumeGain = mcuMicrophoneGain,
                     enabled = deviceControlsEnabled,
                     onEnabledChange = {
                         viewModel?.setMcuMicrophoneListening(device.serialNumber, it)
-                    }
+                    },
+                    onVolumeGainChange = { viewModel?.setMcuMicrophoneGain(it) }
+                )
+            }
+            if (BuildConfig.DEBUG && selectedPanel == SpeakerPanel.Talk) item {
+                McuMicrophoneCaptureCard(
+                    isCapturing = mcuMicrophoneCaptureActive,
+                    enabled = mcuMicrophoneState.phase == SpeakerMcuMicrophonePhase.Listening,
+                    onStart = { viewModel?.startMcuMicrophoneCapture() },
+                    onStop = { viewModel?.stopMcuMicrophoneCapture() }
                 )
             }
             if (selectedPanel == SpeakerPanel.Talk) item {
@@ -247,13 +262,6 @@ fun SpeakerControlScreen(
                     selected = outputQuality,
                     enabled = deviceControlsEnabled,
                     onSelect = { viewModel?.setOutputQuality(it) }
-                )
-            }
-            if (selectedPanel == SpeakerPanel.Settings) item {
-                SpeakerToneSettingsCard(
-                    toneSettings = toneSettings,
-                    enabled = viewModel != null,
-                    onToneChanged = { viewModel?.setToneSettings(it) }
                 )
             }
             if (selectedPanel == SpeakerPanel.Settings) item {

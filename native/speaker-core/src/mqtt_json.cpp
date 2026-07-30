@@ -351,10 +351,10 @@ std::vector<uint8_t> parse_mqtt_record_list_json(const std::string &payload_json
         append(records, first, "name", quoted(name));
         append(records, first, "fileSize", std::to_string(int_field(item, "fileSize", 0)));
         append(records, first, "durationMs", std::to_string(int_field(item, "durationMs", 0)));
-        append(records, first, "codec", quoted(string_field(item, "codec", "ima_adpcm")));
-        append(records, first, "sampleRate", std::to_string(int_field(item, "sampleRate", 8000)));
+        append(records, first, "codec", quoted(string_field(item, "codec", "opus")));
+        append(records, first, "sampleRate", std::to_string(int_field(item, "sampleRate", 24000)));
         append(records, first, "channels", std::to_string(int_field(item, "channels", 1)));
-        append(records, first, "packetMs", std::to_string(int_field(item, "packetMs", 40)));
+        append(records, first, "packetMs", std::to_string(int_field(item, "packetMs", 20)));
         append(records, first, "crc32", nullable_string_raw(item, "crc32"));
         append(records, first, "createdAt", nullable_string_raw(item, "createdAt"));
         append(records, first, "createdMs", nullable_int_raw(item, "createdMs"));
@@ -421,10 +421,10 @@ std::vector<uint8_t> parse_mqtt_record_event_json(
     append(out, first, "name", nullable_string_raw(payload_json, "name"));
     append(out, first, "fileSize", std::to_string(int_field(payload_json, "fileSize", 0)));
     append(out, first, "durationMs", std::to_string(int_field(payload_json, "durationMs", 0)));
-    append(out, first, "codec", quoted(string_field(payload_json, "codec", "pcm16")));
-    append(out, first, "sampleRate", std::to_string(int_field(payload_json, "sampleRate", 8000)));
+    append(out, first, "codec", quoted(string_field(payload_json, "codec", "opus")));
+    append(out, first, "sampleRate", std::to_string(int_field(payload_json, "sampleRate", 24000)));
     append(out, first, "channels", std::to_string(int_field(payload_json, "channels", 1)));
-    append(out, first, "packetMs", std::to_string(int_field(payload_json, "packetMs", 40)));
+    append(out, first, "packetMs", std::to_string(int_field(payload_json, "packetMs", 20)));
     append(out, first, "crc32", nullable_string_raw(payload_json, "crc32"));
     append(out, first, "createdAt", nullable_string_raw(payload_json, "createdAt"));
     append(out, first, "path", nullable_string_raw(payload_json, "path"));

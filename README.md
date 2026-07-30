@@ -9,8 +9,9 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 - 重构网络与会话边界：统一 HTTP 入口、端点配置、登录会话和 MQTT 连接状态，旧账号或旧请求返回后不再覆盖当前界面状态。
 - 整理多产品运行时和 MQTT 生命周期，补齐命令等待、ACK 匹配、重连订阅及退出清理逻辑，降低跨设备、跨账号状态串扰。
 - 拆分喊话器大 ViewModel，将设备命令、录音保存、TTS、MCU 麦克风回传和 UI 状态分到职责明确的协调类。
-- 收口喊话器音频链路：移除无业务用途的 WAV/本地 Kokoro 路径；手机录音按低/中/高音质从源头采集 8/16/24 kHz，分别使用 8 kHz ADPCM 或 16/24 kHz PCM16。
-- 增加 MCU 麦克风 ADPCM 回传接收、抖动缓冲及生命周期控制，并补充 App、UDP relay、native speaker-core 和 MCU 协议测试。
+- 收口喊话器音频链路：松手喊话使用 48 kHz raw Opus 可靠 UDP 直传；
+  TTS、保存录音和非实时播放继续使用 Ogg Opus 文件。
+- 增加 MCU 麦克风 raw Opus 回传接收、抖动缓冲及生命周期控制，并补充 App、UDP relay、native speaker-core 和 MCU 协议测试。
 - 将地图能力拆成 `map` / `noMap` 两个正式构建变体，非地图包不再携带地图 SDK、资源和权限。
 - 清理含糊工具类、过时仓库和重复组件，改用按职责命名的 session、error、concurrent、repository、controller 与 coordinator。
 - 发布前验证覆盖双变体单测、Lint、R8 Release 打包及模拟器冷启动。
@@ -25,8 +26,8 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 - 喊话器页面收口客户可见状态：按住喊话页不再展示底层设备状态数据，不再把设备 `lastError` 转成“设备处理失败，请重试”暴露给客户。
 - 录音库支持按时间排序切换，刷新和加载更多会按当前排序方向请求设备列表，并在 App 本地保持显示顺序一致。
 - 统一 App 滑动条样式，移除旧 `PayloadSlider` / `CustomSlider` / `SpeakerSmoothSlider`，全部收敛到光伏清洗同款 `TjiControlSlider`。
-- 修复小尺寸控制按钮中文显示不完整的问题，音效模式里的“远距离”“自定义”等按钮不再显示成省略号。
-- 完善喊话器音效参数、音频处理和 native speaker-core 对齐，继续保留 App/Kotlin fallback 与 native 优先链路。
+- 喊话器 App 音频改为 PCM 直通：录音和 TTS 不再经过自研门限、AGC、压缩或 EQ，避免轻声与首尾被误切。
+- MCU 麦克风回传直接播放 MCU 的 SpeexDSP AEC 输出，不在 App 重复处理。
 
 ## V2.0.5 更新内容
 
@@ -65,7 +66,8 @@ TJI Platform 是一个基于 Android Jetpack Compose 的多产品设备管理 Ap
 - 消防吊桶 `FireBucket`：保留 Link / 桶控制逻辑，一个账号可有多个 Link，一个 Link 下可挂多个桶。
 - 光伏清洗 `SolarClean`：已接入 MQTT 状态、控制、悬浮窗快捷控制、设备设置与 OTA 入口。
 - 六段抛投 `SixStageDropper`：支持 6 路通道状态展示、单通道控制、全部开/关、定时开钩和测试循环。
-- 喊话器 `Speaker`：支持按住录音后上传播放、录音保存/播放/删除/改名、文字转语音、音色调节和存储状态展示。
+- 喊话器 `Speaker`：支持按住录音后 Opus UDP 直传播放、录音
+  保存/播放/删除/改名、文字转语音、音色调节和存储状态展示。
 - 无线电侦测 `RadioDetection`：支持侦测监控界面、目标列表、回放/轨迹/告警等业务页面骨架。
 - MQTT 实时通信：按产品订阅 `status` / `lifecycle`，按设备发布 `control`。
 - 悬浮窗控制：按产品类型显示不同控制面板。

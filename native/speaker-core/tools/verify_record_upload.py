@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a HADP sample with the C++ core and upload it to the speaker server."""
+"""Generate an Ogg Opus sample and verify the temporary transfer endpoint."""
 
 from __future__ import annotations
 
@@ -23,7 +23,10 @@ def parse_kv(output: str) -> dict[str, str]:
     for line in output.splitlines():
         if "=" in line:
             key, value = line.split("=", 1)
-            result[key.strip()] = value.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] == '"':
+                value = value[1:-1]
+            result[key.strip()] = value
     return result
 
 
@@ -63,7 +66,7 @@ def run_generator(generator: Path, output: Path, device_id: str, record_id: str)
 
 
 def upload(server: str, metadata: dict[str, str], file_path: Path) -> dict[str, object]:
-    url = f"{server.rstrip('/')}/api/speaker/records/upload-temp"
+    url = f"{server.rstrip('/')}/api/speaker/audio/upload-temp"
     fields = {
         "deviceId": metadata["deviceId"],
         "recordId": metadata["recordId"],
@@ -71,12 +74,12 @@ def upload(server: str, metadata: dict[str, str], file_path: Path) -> dict[str, 
         "fileSize": metadata["fileSize"],
         "crc32": metadata["crc32"],
         "durationMs": metadata["durationMs"],
+        "container": metadata["container"],
         "codec": metadata["codec"],
         "sampleRate": metadata["sampleRate"],
         "channels": metadata["channels"],
         "packetMs": metadata["packetMs"],
-        "frameBytes": metadata["frameBytes"],
-        "samplesPerFrame": metadata["samplesPerFrame"],
+        "bitrate": metadata["bitrate"],
     }
     body, content_type = multipart_body(fields, file_path)
     request = urllib.request.Request(
@@ -112,7 +115,7 @@ def main() -> int:
     output = args.output
     with tempfile.TemporaryDirectory(prefix="tji-speaker-core-") as tmp:
         if output is None:
-            output = Path(tmp) / f"{args.record_id}.hadp"
+            output = Path(tmp) / f"{args.record_id}.opus"
         metadata = run_generator(args.generator, output, args.device_id, args.record_id)
         file_path = Path(metadata["file"])
         try:

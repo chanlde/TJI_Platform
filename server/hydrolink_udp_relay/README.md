@@ -8,7 +8,7 @@ MCU heartbeat. It also routes MCU `FEEDBACK` packets back to an explicitly
 registered App UDP listener:
 
 ```text
-HLDEV1 hydrolink TEWNHZDBK
+HLDEV1 <relay-token> TEWNHZDBK
 ```
 
 The App registers and refreshes its listener mapping from the same UDP socket
@@ -16,13 +16,13 @@ that receives audio. The production App refreshes every 10 seconds; mappings
 expire after 30 seconds:
 
 ```text
-HLAPP1 hydrolink TEWNHZDBK FEEDBACK_SESSION LISTEN_TALK
+HLAPP1 <relay-token> TEWNHZDBK FEEDBACK_SESSION LISTEN_TALK
 ```
 
 It unregisters before closing:
 
 ```text
-HLAPP0 hydrolink TEWNHZDBK FEEDBACK_SESSION LISTEN_TALK
+HLAPP0 <relay-token> TEWNHZDBK FEEDBACK_SESSION LISTEN_TALK
 ```
 
 Formal Speaker UDP v2 packets must use the Notion 28-byte fixed header:
@@ -49,6 +49,11 @@ python3 -m unittest discover server/hydrolink_udp_relay
 
 ## Deploy
 
+Configure the same nonblank secret in the App build property
+`TJI_SPEAKER_RELAY_TOKEN` and in the relay service environment. The server no
+longer contains a production default token:
+
 ```bash
+export TJI_SPEAKER_RELAY_TOKEN='<generated-secret>'
 server/hydrolink_udp_relay/deploy_server.sh
 ```

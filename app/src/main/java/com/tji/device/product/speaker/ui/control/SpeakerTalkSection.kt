@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -187,8 +188,10 @@ internal fun PushToTalkCard(
 @Composable
 internal fun McuMicrophoneMonitorCard(
     state: SpeakerMcuMicrophoneState,
+    volumeGain: Float,
     enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit
+    onEnabledChange: (Boolean) -> Unit,
+    onVolumeGainChange: (Float) -> Unit
 ) {
     SpeakerCard(title = "设备麦克风监听") {
         Row(
@@ -196,51 +199,79 @@ internal fun McuMicrophoneMonitorCard(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+            Text(
+                text = "开启监听",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SpeakerFg,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = when (state.phase) {
-                        SpeakerMcuMicrophonePhase.Idle -> "未监听"
-                        SpeakerMcuMicrophonePhase.Connecting -> "正在连接设备"
-                        SpeakerMcuMicrophonePhase.Listening -> "正在监听现场声音"
-                        SpeakerMcuMicrophonePhase.Stopping -> "正在停止"
-                        SpeakerMcuMicrophonePhase.Failed -> "监听失败"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (state.phase == SpeakerMcuMicrophonePhase.Failed) {
-                        SpeakerDanger
-                    } else {
-                        SpeakerFg
-                    },
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "声音来自 MCU 板载 PDM 麦克风，不会调用手机麦克风",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = SpeakerMuted
-                )
-            }
+            )
             TjiMiniSwitch(
                 checked = state.enabled,
                 enabled = enabled && state.phase != SpeakerMcuMicrophonePhase.Stopping,
                 onCheckedChange = onEnabledChange
             )
         }
-        if (state.phase == SpeakerMcuMicrophonePhase.Listening) {
-            val impairedPackets = state.packetsConcealed + state.packetsRejected
-            SpeakerSoftRow(
-                label = "监听质量",
-                value = if (impairedPackets == 0L) "良好" else "网络有波动",
-                valueColor = if (impairedPackets == 0L) SpeakerSuccess else SpeakerWarning
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "监听音量",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SpeakerMuted
+            )
+            Text(
+                text = "${(volumeGain.coerceIn(0f, 1f) * 100f).roundToInt()}%",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SpeakerFg,
+                fontWeight = FontWeight.SemiBold
             )
         }
+        TjiControlSlider(
+            value = volumeGain.coerceIn(0f, 1f),
+            onValueChange = onVolumeGainChange,
+            valueRange = 0f..1f,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth()
+        )
         state.error?.let {
             Text(
                 text = it,
                 style = MaterialTheme.typography.labelMedium,
                 color = SpeakerDanger
+            )
+        }
+    }
+}
+
+@Composable
+internal fun McuMicrophoneCaptureCard(
+    isCapturing: Boolean,
+    enabled: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    SpeakerCard(title = "回传录音分析") {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SpeakerActionButton(
+                text = "开始录音",
+                enabled = enabled && !isCapturing,
+                color = SpeakerAccent,
+                onClick = onStart,
+                modifier = Modifier.weight(1f)
+            )
+            SpeakerActionButton(
+                text = "停止录音",
+                enabled = enabled && isCapturing,
+                color = SpeakerDanger,
+                soft = !isCapturing,
+                onClick = onStop,
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -621,6 +652,12 @@ internal fun PushToTalkButton(
     onCancel: () -> Unit
 ) {
     val active = mode in activeModes
+    val latestEnabled by rememberUpdatedState(enabled)
+    val latestHasMicPermission by rememberUpdatedState(hasMicPermission)
+    val latestRequestPermission by rememberUpdatedState(requestPermission)
+    val latestOnPress by rememberUpdatedState(onPress)
+    val latestOnRelease by rememberUpdatedState(onRelease)
+    val latestOnCancel by rememberUpdatedState(onCancel)
     val buttonSize = if (compact) 112.dp else 184.dp
     val stageHeight = if (compact) 176.dp else 275.dp
     val scale by animateFloatAsState(
@@ -646,23 +683,25 @@ internal fun PushToTalkButton(
                 .clip(CircleShape)
                 .background(if (active) SpeakerDanger else SpeakerAccent)
                 .border(1.dp, if (active) SpeakerDanger else SpeakerAccent, CircleShape)
-                .pointerInput(enabled, hasMicPermission) {
+                // 录音开始后 mode 会变为 Recording，父级随即把 enabled 改为 false。
+                // 手势监听不能以这些动态状态作为 key，否则重组会取消正在等待松手的 onPress。
+                .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
-                            if (!enabled) return@detectTapGestures
-                            if (!hasMicPermission) {
-                                requestPermission()
+                            if (!latestEnabled) return@detectTapGestures
+                            if (!latestHasMicPermission) {
+                                latestRequestPermission()
                                 return@detectTapGestures
                             }
                             var releaseHandled = false
-                            onPress()
+                            latestOnPress()
                             try {
                                 val released = tryAwaitRelease()
                                 releaseHandled = true
-                                if (released) onRelease() else onCancel()
+                                if (released) latestOnRelease() else latestOnCancel()
                             } finally {
                                 if (!releaseHandled) {
-                                    onCancel()
+                                    latestOnCancel()
                                 }
                             }
                         }

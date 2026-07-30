@@ -16,12 +16,12 @@ server/kokoro_tts_service/
 
 当前服务职责：
 
-- 接收 App 上传的完整 `.hadp` 文件。
-- 接收后续 Qt 上位机上传的完整 `.hadp` 文件。
+- 接收 App 上传的完整 `.opus`（Ogg/Opus）文件。
 - 生成短期下载 URL。
 - 供 MCU 下载后播放或保存。
 - 临时文件默认短期保留，不写数据库。
-- 不重新编码、不修改 header、不修补音频区；HADP 文件格式见 [hadp-file-format.md](hadp-file-format.md)。
+- 不重新编码、不修改 Ogg 页面或 Opus 包；受控格式见
+  [ogg-opus-profile.md](ogg-opus-profile.md)。
 
 该服务不再负责 TTS 合成。
 
@@ -33,7 +33,10 @@ server/kokoro_tts_service/
 server/hydrolink_udp_relay/
 ```
 
-用于喊话器 UDP 4G relay 联调，路由 App UDP 音频包到 MCU 最新 4G endpoint。
+用于喊话器 UDP 4G relay，路由 App 直接喊话到 MCU 最新 4G endpoint，并将
+MCU 麦克风回传/直接喊话 ACK 路由给 App。App 必须先使用共享 token 从发送
+socket 注册完全相同的 `deviceId/sessionId/talkId`；中继拒绝未注册、过期或
+来源地址不一致的下行包。生产 token 只从构建配置/服务环境注入，不写入源码。
 
 ## 设备绑定
 

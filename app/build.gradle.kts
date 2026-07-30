@@ -72,7 +72,7 @@ android {
         buildConfigField(
             "String",
             "TJI_SPEAKER_RELAY_TOKEN",
-            "\"${configString("TJI_SPEAKER_RELAY_TOKEN", "hydrolink")}\""
+            "\"${configString("TJI_SPEAKER_RELAY_TOKEN", "")}\""
         )
         buildConfigField(
             "String",

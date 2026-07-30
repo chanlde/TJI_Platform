@@ -32,7 +32,7 @@ DEFAULT_QT_MONITOR = (
 DEFAULT_ANDROID_PACKAGE = "com.tji.device"
 DEFAULT_ANDROID_ACTIVITY = ".ui.main.MainActivity"
 TRIGGER_STEPS = {
-    "tts-temp-file": "Trigger text-to-speech playback that uploads a temporary HADP file.",
+    "tts-temp-file": "Trigger text-to-speech playback that uploads a temporary Ogg/Opus file.",
     "local-kokoro-tts-file": "Trigger local Kokoro TTS file generation and upload.",
     "record-save": "Record and save a push-to-talk clip.",
     "live-legacy-udp": "Start live microphone talk so legacy UDP packets are sent.",

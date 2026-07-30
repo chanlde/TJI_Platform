@@ -27,25 +27,24 @@ import java.util.concurrent.atomic.AtomicReference
 
 class SpeakerFeedbackProtocolTest {
     @Test
-    fun parsesAndDecodesMcuAdpcmPacket() {
+    fun parsesMcuOpusPacket() {
         val parsed = SpeakerFeedbackProtocol.parse(feedbackPacket(sequence = 7))
 
         assertNotNull(parsed)
         assertEquals(7, parsed?.sequence)
         assertEquals(16_000, parsed?.sampleRate)
-        assertEquals(640, parsed?.sampleCount)
+        assertEquals(320, parsed?.sampleCount)
         assertEquals("TEWNHZDBK", parsed?.deviceId)
         assertEquals("FB_1", parsed?.sessionId)
         assertEquals("MON_1", parsed?.talkId)
-        assertEquals(
-            SpeakerFeedbackProtocol.PCM_BYTES_PER_PACKET,
-            SpeakerFeedbackProtocol.decodePcm16le(requireNotNull(parsed)).size
-        )
+        assertEquals(SpeakerFeedbackProtocol.CODEC_OPUS, parsed?.codec)
+        assertTrue(requireNotNull(parsed).payload.isNotEmpty())
     }
 
     @Test
     fun rejectsWrongFlagsLengthsAndMalformedRoutingIds() {
         assertNull(SpeakerFeedbackProtocol.parse(feedbackPacket(flags = 0x0004)))
+        assertNull(SpeakerFeedbackProtocol.parse(feedbackPacket(codec = 1)))
         assertNull(SpeakerFeedbackProtocol.parse(feedbackPacket().copyOf(40)))
 
         val malformedUtf8 = feedbackPacket()
@@ -104,6 +103,7 @@ class SpeakerFeedbackProtocolTest {
         assertEquals(1, enabled.getInt("enabled"))
         assertEquals(1, enabled.getJSONObject("params").getInt("enabled"))
         assertEquals(16_000, enabled.getJSONObject("params").getInt("sampleRate"))
+        assertEquals(20, enabled.getJSONObject("params").getInt("packetMs"))
         assertEquals(30_000L, enabled.getJSONObject("params").getLong("ttlMs"))
         assertEquals(116, disabled.getInt("cmd"))
         assertEquals(0, disabled.getInt("enabled"))
@@ -171,8 +171,10 @@ class SpeakerFeedbackProtocolTest {
                 firstAudioTimeoutMs = 1_000,
                 audioIdleTimeoutMs = 1_000
             ),
-            audioSinkFactory = { sink }
+            audioSinkFactory = { sink },
+            opusDecoderFactory = { _, _ -> FakeFeedbackOpusDecoder() }
         )
+        client.setPlaybackGain(0.6f)
         val clientJob = launch(Dispatchers.IO) {
             client.listen(
                 session = SpeakerFeedbackSession("TEWNHZDBK", "FB_1", "MON_1"),
@@ -186,6 +188,7 @@ class SpeakerFeedbackProtocolTest {
             withTimeout(2_000) {
                 while (sink.writes.size < 4 || leaseRefreshes.get() < 1) delay(10)
             }
+            client.setPlaybackGain(0.8f)
         } finally {
             clientJob.cancelAndJoin()
             withTimeout(500) {
@@ -201,6 +204,7 @@ class SpeakerFeedbackProtocolTest {
         assertEquals(1, unregisters.get())
         assertTrue(sink.started)
         assertTrue(sink.closed)
+        assertEquals(listOf(0.6f, 0.8f), sink.volumes)
         assertEquals(4, sink.writes.size)
         assertTrue(sink.writes.all { it.size == SpeakerFeedbackProtocol.PCM_BYTES_PER_PACKET })
         assertNull(relayFailure.get())
@@ -214,18 +218,19 @@ class SpeakerFeedbackProtocolTest {
         flags: Int = 0x0008,
         deviceId: String = "TEWNHZDBK",
         sessionId: String = "FB_1",
-        talkId: String = "MON_1"
+        talkId: String = "MON_1",
+        codec: Int = SpeakerFeedbackProtocol.CODEC_OPUS
     ): ByteArray {
         val device = deviceId.toByteArray()
         val session = sessionId.toByteArray()
         val talk = talkId.toByteArray()
-        val payload = ByteArray(SpeakerFeedbackProtocol.ADPCM_PAYLOAD_BYTES)
+        val payload = ByteArray(16) { 0xF8.toByte() }
         val headerBytes = 28 + device.size + session.size + talk.size
         return ByteBuffer.allocate(headerBytes + payload.size)
             .order(ByteOrder.LITTLE_ENDIAN)
             .putShort(0xA55A.toShort())
             .put(2)
-            .put(SpeakerFeedbackProtocol.CODEC_IMA_ADPCM.toByte())
+            .put(codec.toByte())
             .putShort(headerBytes.toShort())
             .putShort(flags.toShort())
             .putInt(sequence)
@@ -255,6 +260,8 @@ class SpeakerFeedbackProtocolTest {
 
         val writes: MutableList<ByteArray> =
             Collections.synchronizedList(mutableListOf())
+        val volumes: MutableList<Float> =
+            Collections.synchronizedList(mutableListOf())
 
         override fun start() {
             started = true
@@ -264,8 +271,22 @@ class SpeakerFeedbackProtocolTest {
             writes += pcm.copyOf()
         }
 
+        override fun setVolume(gain: Float) {
+            volumes += gain
+        }
+
         override fun close() {
             closed = true
         }
+    }
+
+    private class FakeFeedbackOpusDecoder : SpeakerFeedbackOpusDecoder {
+        override fun decode(payload: ByteArray): ByteArray? =
+            ByteArray(SpeakerFeedbackProtocol.PCM_BYTES_PER_PACKET)
+
+        override fun conceal(): ByteArray? =
+            ByteArray(SpeakerFeedbackProtocol.PCM_BYTES_PER_PACKET)
+
+        override fun close() = Unit
     }
 }

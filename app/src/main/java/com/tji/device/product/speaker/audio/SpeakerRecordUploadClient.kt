@@ -22,26 +22,26 @@ class SpeakerRecordUploadClient(
         deviceId: String,
         recordId: String,
         name: String,
-        hadp: SpeakerHadpFile
+        opusFile: SpeakerOpusFile
     ): SpeakerRecordUploadResult = withContext(Dispatchers.IO) {
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("deviceId", deviceId)
             .addFormDataPart("recordId", recordId)
             .addFormDataPart("name", name)
-            .addFormDataPart("fileSize", hadp.fileSize.toString())
-            .addFormDataPart("crc32", hadp.crc32)
-            .addFormDataPart("durationMs", hadp.durationMs.toString())
-            .addFormDataPart("codec", hadp.codec.wireName)
-            .addFormDataPart("sampleRate", hadp.sampleRate.toString())
-            .addFormDataPart("channels", hadp.channels.toString())
-            .addFormDataPart("packetMs", hadp.packetMs.toString())
-            .addFormDataPart("frameBytes", hadp.frameBytes.toString())
-            .addFormDataPart("samplesPerFrame", hadp.samplesPerFrame.toString())
+            .addFormDataPart("fileSize", opusFile.fileSize.toString())
+            .addFormDataPart("crc32", opusFile.crc32)
+            .addFormDataPart("durationMs", opusFile.durationMs.toString())
+            .addFormDataPart("container", opusFile.container)
+            .addFormDataPart("codec", opusFile.codec)
+            .addFormDataPart("sampleRate", opusFile.sampleRate.toString())
+            .addFormDataPart("channels", opusFile.channels.toString())
+            .addFormDataPart("packetMs", opusFile.packetMs.toString())
+            .addFormDataPart("bitrate", opusFile.bitrate.toString())
             .addFormDataPart(
                 "file",
-                "$recordId.hadp",
-                hadp.data.toRequestBody(HADP_MEDIA_TYPE)
+                "$recordId.opus",
+                opusFile.data.toRequestBody(OPUS_MEDIA_TYPE)
             )
             .build()
 
@@ -62,15 +62,15 @@ class SpeakerRecordUploadClient(
             SpeakerRecordUploadResult(
                 recordId = json.optString("recordId", recordId),
                 downloadUrl = json.optString("downloadUrl"),
-                fileSize = json.optLong("fileSize", hadp.fileSize.toLong()),
-                crc32 = json.optString("crc32", hadp.crc32),
-                durationMs = json.optInt("durationMs", hadp.durationMs),
-                codec = json.optString("codec", hadp.codec.wireName),
-                sampleRate = json.optInt("sampleRate", hadp.sampleRate),
-                channels = json.optInt("channels", hadp.channels),
-                packetMs = json.optInt("packetMs", hadp.packetMs),
-                frameBytes = json.optInt("frameBytes", hadp.frameBytes),
-                samplesPerFrame = json.optInt("samplesPerFrame", hadp.samplesPerFrame),
+                fileSize = json.optLong("fileSize", opusFile.fileSize.toLong()),
+                crc32 = json.optString("crc32", opusFile.crc32),
+                durationMs = json.optInt("durationMs", opusFile.durationMs),
+                container = json.optString("container", opusFile.container),
+                codec = json.optString("codec", opusFile.codec),
+                sampleRate = json.optInt("sampleRate", opusFile.sampleRate),
+                channels = json.optInt("channels", opusFile.channels),
+                packetMs = json.optInt("packetMs", opusFile.packetMs),
+                bitrate = json.optInt("bitrate", opusFile.bitrate),
                 expiresAt = json.optLong("expiresAt", 0L)
             ).also {
                 require(it.downloadUrl.isNotBlank()) { "服务器未返回下载链接" }
@@ -79,7 +79,7 @@ class SpeakerRecordUploadClient(
     }
 
     private companion object {
-        val HADP_MEDIA_TYPE = "application/octet-stream".toMediaType()
+        val OPUS_MEDIA_TYPE = "audio/ogg".toMediaType()
     }
 }
 
@@ -89,11 +89,11 @@ data class SpeakerRecordUploadResult(
     val fileSize: Long,
     val crc32: String,
     val durationMs: Int,
+    val container: String,
     val codec: String,
     val sampleRate: Int,
     val channels: Int,
     val packetMs: Int,
-    val frameBytes: Int,
-    val samplesPerFrame: Int,
+    val bitrate: Int,
     val expiresAt: Long
 )

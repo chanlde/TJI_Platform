@@ -37,6 +37,7 @@ import com.tji.device.product.speaker.audio.SpeakerAudioRelay
 import com.tji.device.product.speaker.audio.SpeakerFeedbackClient
 import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
+import java.io.File
 import com.tji.device.product.speaker.repository.SpeakerControlRepo
 import com.tji.device.product.speaker.repository.SpeakerControlRepository
 import com.tji.device.product.speaker.repository.SpeakerRepo
@@ -122,7 +123,13 @@ object AppContainer {
     }
 
     val speakerFeedbackClient: SpeakerFeedbackClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        SpeakerFeedbackClient()
+        check(::appContext.isInitialized) { "AppContainer.initialize(context) must be called first" }
+        SpeakerFeedbackClient(
+            debugCaptureDirectory = File(
+                appContext.getExternalFilesDir(null),
+                "speaker-audio-debug"
+            )
+        )
     }
 
     val speakerTtsSynthesizer: SpeakerTtsSynthesizer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

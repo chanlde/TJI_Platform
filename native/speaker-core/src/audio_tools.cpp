@@ -227,7 +227,7 @@ std::vector<uint8_t> decode_wav_pcm16_mono(
     }
 
     int channels = 1;
-    int sample_rate = kSampleRate;
+    int sample_rate = kDefaultPcmSampleRate;
     int bits_per_sample = 16;
     size_t data_offset = 0;
     size_t data_size = 0;

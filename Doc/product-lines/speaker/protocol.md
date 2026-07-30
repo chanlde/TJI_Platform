@@ -31,6 +31,23 @@ App 当前覆盖：
 - 存储状态查询。
 - MCU 板载麦克风监听开关。
 
+### 松手喊话直接下行
+
+App 松手后将语音编码为 48 kHz、单声道、20 ms、32 kbit/s raw Opus，
+按最多 20 帧组成直接喊话分块。App 从同一个 UDP socket 注册
+`deviceId/sessionId/talkId` 后，以四分块窗口发送；MCU 只 ACK 已提交到播放
+缓冲的分块，重复包只 ACK 不重播，缺口返回期望分块号。TTS、保存录音和
+非实时文件播放不走该链路，继续使用 Ogg/Opus 文件。
+
+App、relay 和 MCU 共同使用 `DPT1-GOLDEN-1` 字节门禁：
+
+```text
+5aa502024a001500000000000000000080bb011425008007091213005435544e42464d34515054545f5435544e42464d34515f5445535454414c4b5f5435544e42464d34515f544553544450543101025000000001000200000028000000007d00008b3ed597030011223302004455
+```
+
+relay 只转发由该路由当前注册 endpoint 发出的正式 UDP v2 下行包；共享
+token 由 App 构建配置和 relay 服务环境注入，源码不提供生产默认值。
+
 ### MCU 板载麦克风监听
 
 该链路不生成下载链接，也不属于手机实时喊话。App 先用接收 UDP socket
@@ -43,10 +60,10 @@ App 当前覆盖：
   "enabled": 1,
   "sessionId": "FB_T123_ABC",
   "talkId": "MON_T123_ABC",
-  "codec": "ima_adpcm",
+  "codec": "opus",
   "sampleRate": 16000,
   "channels": 1,
-  "packetMs": 40,
+  "packetMs": 20,
   "ttlMs": 30000
 }
 ```
@@ -55,8 +72,9 @@ App 当前覆盖：
 - App 每 10 秒刷新 relay 注册并重发相同会话的开启命令。
 - MCU 租约为 30 秒；App 异常退出或断网后 MCU 会自动停止采集。
 - UDP v2 包必须带 `FEEDBACK (0x0008)` 标志，固定 16 kHz、单声道、
-  40 ms、每包 640 个解码采样。
-- 默认 IMA ADPCM payload 为 324 字节；App 解码后得到 1280 字节 PCM16。
+  20 ms、每包 320 个解码采样。
+- 负载是 raw Opus packet（`codec=2`，非 Ogg 文件）；目标 16 kbit/s CBR，
+  通常约 40 字节。App 保持一个 Opus 解码器状态，并对缺失序号执行 PLC。
 - App 校验 `deviceId/sessionId/talkId`，不接收其他设备或旧会话的数据。
 
 ### 舵机角度设置
@@ -177,13 +195,12 @@ App 通过 `SERVO_STEP_TEST` 下发分段测试：
 - `servoAngle` 仍作为兼容字段保留。
 - App 不假设下发后舵机会立即到位，会优先显示固件上报的 `servo.currentAngle` 和 `servo.targetAngle`。
 
-## HADP 文件
+## Ogg/Opus 文件
 
-- App 生成或录制音频后封装为 `.hadp`。
-- Qt 上位机后续也必须生成同一格式的 `.hadp`，优先复用 `native/speaker-core`。
+- App 生成或录制音频后封装为标准 `.opus`（Ogg 容器）。
 - 临时上传服务返回下载 URL。
 - MCU 通过 URL 下载后播放或保存。
-- 具体字节布局、codec、CRC 和四端职责见 [hadp-file-format.md](hadp-file-format.md)。
+- 当前受控参数和端到端职责见 [ogg-opus-profile.md](ogg-opus-profile.md)。
 
 ## ACK 和事件
 
