@@ -113,8 +113,9 @@ object SpeakerFeedbackProtocol {
  * 对少量 UDP 乱序进行重排；超过窗口的缺包输出静音帧，避免 AudioTrack 时间轴跳变。
  */
 class SpeakerFeedbackJitterBuffer(
-    private val prebufferPackets: Int = 4,
-    private val maxReorderPackets: Int = 6
+    /* 双链路实测最长 500.3 ms 到达空窗；26 帧提供 520 ms 有界起播储备。 */
+    private val prebufferPackets: Int = 26,
+    private val maxReorderPackets: Int = 4
 ) {
     private val pending = TreeMap<Int, SpeakerFeedbackPacket>()
     private var expectedSequence: Int? = null

@@ -35,8 +35,8 @@ app/src/main/java/com/tji/device/product/speaker/
 
 | 功能 | 音频源 | 采样率 | 传输 |
 |---|---|---:|---|
-| 手机松手喊话 | Android `AudioRecord` | 低 8 kHz / 中 16 kHz / 高 48 kHz；发送统一 48 kHz | raw Opus UDP，ACK/重传/窗口背压 |
-| 手机保存录音 | Android `AudioRecord` | 低 8 kHz / 中 16 kHz / 高 48 kHz | Ogg/Opus 文件上传，MCU 下载保存 |
+| 手机松手喊话 | Android `AudioRecord` | 固定发送 48 kHz | Ogg Opus 可靠 UDP 临时播放 |
+| 手机保存录音 | Android `AudioRecord` | 低 8 kHz / 中 16 kHz / 高 48 kHz | Ogg Opus 可靠 UDP 保存 |
 | 设备麦克风监听 | MCU PDM 麦克风 | 固定 16 kHz | MCU → relay → App 实时 UDP |
 
 手机录音的音质选择从 `AudioRecord` 源头开始生效。保存文件保持所选采样率；
@@ -60,5 +60,5 @@ App 生成 `.opus` 必须遵守 [ogg-opus-profile.md](ogg-opus-profile.md)。
   注册续租和注销。
 - `SpeakerDirectPttProtocolTest` 使用与 MCU/Python relay 相同的字节级
   golden vector，锁定直接喊话包格式。
-- `SpeakerMcuMicrophoneControllerTest` 覆盖 cmd=116 开启、续租、异常和
-  关闭清理。
+- `SpeakerMcuMicrophoneControllerTest` 覆盖 cmd=116 开启、续租、异常、
+  长按喊话暂停/恢复、ACK 失败保护和关闭清理。

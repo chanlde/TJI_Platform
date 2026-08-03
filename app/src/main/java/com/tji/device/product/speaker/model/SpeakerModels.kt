@@ -19,6 +19,7 @@ data class SpeakerDeviceState(
     val records: List<SpeakerRecord> = emptyList(),
     val recordOffset: Int = 0,
     val recordLimit: Int = 8,
+    val recordNextOffset: Int = 0,
     val recordTotal: Int = 0,
     val recordHasMore: Boolean = false,
     val recordListTimestamp: Long? = null,

@@ -31,13 +31,17 @@ App 当前覆盖：
 - 存储状态查询。
 - MCU 板载麦克风监听开关。
 
-### 松手喊话直接下行
+### 松手喊话统一媒体下行
 
-App 松手后将语音编码为 48 kHz、单声道、20 ms、32 kbit/s raw Opus，
-按最多 20 帧组成直接喊话分块。App 从同一个 UDP socket 注册
-`deviceId/sessionId/talkId` 后，以四分块窗口发送；MCU 只 ACK 已提交到播放
-缓冲的分块，重复包只 ACK 不重播，缺口返回期望分块号。TTS、保存录音和
-非实时文件播放不走该链路，继续使用 Ogg/Opus 文件。
+App 松手后将语音编码为 48 kHz、单声道、20 ms、32 kbit/s Ogg Opus，
+与 TTS、录音保存共用可靠 UDP 媒体协议。App 从同一个 UDP socket 注册
+`deviceId/sessionId/recordId` 后，以四分块滑动窗口发送；MCU 返回累计
+`expectedChunk`，重复包只确认、不重复解码，缺口返回期望分块号。
+
+临时播放先采用最小的 5 帧输出预填（100 ms）起播；D3 源缓冲水位可配置，
+默认不增加额外等待。真机若仍出现欠载，再依据 ACK RTT 和缓冲低水位按
+100 ms 步进增加，而不是直接使用允许的 1 秒上限。网络收包、Opus 解码和
+硬件播放分别由独立队列/任务推进。
 
 App、relay 和 MCU 共同使用 `DPT1-GOLDEN-1` 字节门禁：
 
@@ -69,6 +73,7 @@ token 由 App 构建配置和 relay 服务环境注入，源码不提供生产�
 ```
 
 - 开启和关闭都使用 `cmd=116`，只改变 `enabled=1/0`。
+- `cmd=116` 的成功 ACK 表示 MCU 已经完成 PDM 回传启停，不是仅进入命令队列。
 - App 每 10 秒刷新 relay 注册并重发相同会话的开启命令。
 - MCU 租约为 30 秒；App 异常退出或断网后 MCU 会自动停止采集。
 - UDP v2 包必须带 `FEEDBACK (0x0008)` 标志，固定 16 kHz、单声道、
@@ -76,6 +81,10 @@ token 由 App 构建配置和 relay 服务环境注入，源码不提供生产�
 - 负载是 raw Opus packet（`codec=2`，非 Ogg 文件）；目标 16 kbit/s CBR，
   通常约 40 字节。App 保持一个 Opus 解码器状态，并对缺失序号执行 PLC。
 - App 校验 `deviceId/sessionId/talkId`，不接收其他设备或旧会话的数据。
+- 麦克风监听开启时按住喊话，App 立即暂停并清空本地回传播放，同时下发
+  `enabled=0`；松手后用原会话下发 `enabled=1`，等待 MCU ACK 和新的
+  160 ms 抖动预缓冲，再发送喊话音频。这样手机录音不会录入自身回传，
+  MCU 上行带宽也在录音期间释放。
 
 ### 舵机角度设置
 

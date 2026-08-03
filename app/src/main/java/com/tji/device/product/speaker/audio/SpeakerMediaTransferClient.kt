@@ -3,8 +3,12 @@ package com.tji.device.product.speaker.audio
 import com.tji.device.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.channels.ReceiveChannel
 import java.io.ByteArrayOutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -44,9 +48,16 @@ class SpeakerMediaTransferClient(
     private val token: String = BuildConfig.TJI_SPEAKER_RELAY_TOKEN,
     private val monotonicNowMs: () -> Long = { System.nanoTime() / 1_000_000L }
 ) {
+    /**
+     * 同一 App 生命周期复用媒体 UDP 端口，避免每段喊话重新建立公网 NAT 映射。
+     * sendMutex 同时保证不同业务不会在同一个 socket 上交叉消费 ACK。
+     */
+    private val sendMutex = Mutex()
+    private var sharedSocket: DatagramSocket? = null
+
     suspend fun send(request: SpeakerMediaTransferRequest) = withContext(Dispatchers.IO) {
         require(token.isNotBlank() && token.none(Char::isWhitespace)) {
-            "UDP relay token 未配置或包含空白字符"
+            "语音传输服务未配置"
         }
         require(request.opusFile.packetMs == PACKET_MS) { "仅支持 20 ms Opus 包" }
         require(request.opusFile.sampleRate in SUPPORTED_SAMPLE_RATES) {
@@ -63,43 +74,73 @@ class SpeakerMediaTransferClient(
         }
         val chunks = buildChunks(request)
         val relay = InetAddress.getByName(config.host)
-        DatagramSocket().use { socket ->
-            socket.soTimeout = SOCKET_POLL_MS
-            socket.sendBufferSize = maxOf(socket.sendBufferSize, SOCKET_BUFFER_BYTES)
-            socket.receiveBufferSize = maxOf(socket.receiveBufferSize, SOCKET_BUFFER_BYTES)
-            registerAndAwaitAck(
-                socket, relay, request.deviceId, request.sessionId, request.recordId
+        sendMutex.lock()
+        try {
+            val routeLease = SpeakerSharedUdpTransport.acquireMediaRoute(
+                request.deviceId,
+                request.sessionId,
+                request.recordId,
+                relay,
+                config.port
             )
+            val ownsSocket = routeLease == null
+            val socket = routeLease?.socket ?: mediaSocket()
             try {
-                sendReliably(
-                    socket, relay,
-                    request.deviceId, request.sessionId, request.recordId, chunks
+                registerAndAwaitAck(
+                    socket, relay, request.deviceId, request.sessionId, request.recordId,
+                    routeLease?.packets
                 )
-            } finally {
-                runCatching {
-                    sendListenerCommand(
-                        socket, relay, enabled = false,
-                        deviceId = request.deviceId,
-                        sessionId = request.sessionId,
-                        recordId = request.recordId
+                try {
+                    sendReliably(
+                        socket, relay,
+                        request.deviceId, request.sessionId, request.recordId, chunks,
+                        routeLease?.packets
                     )
+                } finally {
+                    runCatching {
+                        sendListenerCommand(
+                            socket, relay, enabled = false,
+                            deviceId = request.deviceId,
+                            sessionId = request.sessionId,
+                            recordId = request.recordId
+                        )
+                    }
                 }
+            } catch (throwable: Throwable) {
+                if (ownsSocket) {
+                    // 后备端口失败说明 NAT 映射不可用；下一次发送重新建端口。
+                    socket.close()
+                    if (sharedSocket === socket) sharedSocket = null
+                }
+                throw throwable
+            } finally {
+                routeLease?.close()
             }
+        } finally {
+            sendMutex.unlock()
         }
     }
 
-    private fun registerAndAwaitAck(
+    private fun mediaSocket(): DatagramSocket =
+        sharedSocket?.takeUnless { it.isClosed } ?: DatagramSocket().also { socket ->
+            socket.soTimeout = SOCKET_POLL_MS
+            socket.sendBufferSize = maxOf(socket.sendBufferSize, SOCKET_BUFFER_BYTES)
+            socket.receiveBufferSize = maxOf(socket.receiveBufferSize, SOCKET_BUFFER_BYTES)
+            sharedSocket = socket
+        }
+
+    private suspend fun registerAndAwaitAck(
         socket: DatagramSocket,
         relay: InetAddress,
         deviceId: String,
         sessionId: String,
-        recordId: String
+        recordId: String,
+        sharedPackets: ReceiveChannel<ByteArray>?
     ) {
         val expected =
             "HLAPPACK1 REGISTERED $deviceId $sessionId $recordId".encodeToByteArray()
         val deadline = monotonicNowMs() + REGISTRATION_TIMEOUT_MS
         var lastSend = 0L
-        val receive = ByteArray(MAX_DATAGRAM_BYTES)
         while (monotonicNowMs() < deadline) {
             val now = monotonicNowMs()
             if (lastSend == 0L || now - lastSend >= REGISTRATION_RETRY_MS) {
@@ -108,16 +149,9 @@ class SpeakerMediaTransferClient(
                 )
                 lastSend = now
             }
-            val datagram = DatagramPacket(receive, receive.size)
-            try {
-                socket.receive(datagram)
-            } catch (_: SocketTimeoutException) {
-                continue
-            }
-            if (datagram.address == relay &&
-                datagram.port == config.port &&
-                datagram.length == expected.size &&
-                receive.regionMatches(0, expected)
+            val received = receiveFromRelay(socket, relay, sharedPackets) ?: continue
+            if (received.size == expected.size &&
+                received.regionMatches(0, expected)
             ) return
         }
         error("音频 UDP 注册超时")
@@ -129,13 +163,14 @@ class SpeakerMediaTransferClient(
         deviceId: String,
         sessionId: String,
         recordId: String,
-        chunks: List<ByteArray>
+        chunks: List<ByteArray>,
+        sharedPackets: ReceiveChannel<ByteArray>?
     ) {
         val acked = BooleanArray(chunks.size)
         val attempts = IntArray(chunks.size)
         val sentAt = LongArray(chunks.size)
-        val receive = ByteArray(MAX_DATAGRAM_BYTES)
         var ackedCount = 0
+        var fastRetransmitChunk = -1
         var lastRegistration = monotonicNowMs()
         val deadline = monotonicNowMs() +
             maxOf(MIN_TRANSFER_TIMEOUT_MS, chunks.size * 1_000L)
@@ -155,7 +190,9 @@ class SpeakerMediaTransferClient(
                 !acked[it] && sentAt[it] != 0L &&
                     now - sentAt[it] < RETRY_TIMEOUT_MS
             }
-            for (index in chunks.indices) {
+            /* 0 号块先握手建会话，避免公网乱序令 MCU 丢弃整个首窗口。 */
+            val sendEnd = if (acked[0]) chunks.size else 1
+            for (index in 0 until sendEnd) {
                 if (acked[index]) continue
                 val due = sentAt[index] == 0L ||
                     now - sentAt[index] >= RETRY_TIMEOUT_MS
@@ -167,39 +204,66 @@ class SpeakerMediaTransferClient(
                     DatagramPacket(chunks[index], chunks[index].size, relay, config.port)
                 )
                 attempts[index]++
-                sentAt[index] = now
+                sentAt[index] = monotonicNowMs()
                 outstanding++
+                delay(SEND_PACING_MS)
             }
 
-            val datagram = DatagramPacket(receive, receive.size)
-            try {
-                socket.receive(datagram)
-            } catch (_: SocketTimeoutException) {
-                continue
-            }
-            if (datagram.address != relay || datagram.port != config.port) continue
+            val received = receiveFromRelay(socket, relay, sharedPackets) ?: continue
             val ack = parseAck(
-                receive, datagram.length, deviceId, sessionId, recordId
+                received, received.size, deviceId, sessionId, recordId
             ) ?: continue
             when (ack.status) {
                 ACK_OK -> {
-                    if (ack.chunkIndex in acked.indices && !acked[ack.chunkIndex]) {
-                        acked[ack.chunkIndex] = true
-                        ackedCount++
+                    /* expectedChunk 是 MCU 已连续接收的累计边界，ACK 丢失无需逐块重传。 */
+                    val cumulativeEnd = ack.expectedChunk.coerceIn(0, acked.size)
+                    val previousAckedCount = ackedCount
+                    for (index in 0 until cumulativeEnd) {
+                        if (!acked[index]) {
+                            acked[index] = true
+                            ackedCount++
+                        }
                     }
+                    if (ackedCount != previousAckedCount) fastRetransmitChunk = -1
                 }
                 ACK_BUSY -> error("设备音频或存储服务正忙")
                 ACK_BAD_PACKET -> error("设备拒绝了 Ogg Opus 数据")
                 ACK_GAP -> {
                     if (ack.expectedChunk in sentAt.indices &&
-                        !acked[ack.expectedChunk]
-                    ) sentAt[ack.expectedChunk] = 0L
+                        !acked[ack.expectedChunk] &&
+                        fastRetransmitChunk != ack.expectedChunk
+                    ) {
+                        /* 同一窗口的多个 GAP 只触发一次快速重传，避免 ACK 风暴。 */
+                        sentAt[ack.expectedChunk] = 0L
+                        fastRetransmitChunk = ack.expectedChunk
+                    }
                 }
             }
         }
         check(ackedCount == chunks.size) {
             "音频传输超时: $ackedCount/${chunks.size}"
         }
+    }
+
+    private suspend fun receiveFromRelay(
+        socket: DatagramSocket,
+        relay: InetAddress,
+        sharedPackets: ReceiveChannel<ByteArray>?
+    ): ByteArray? {
+        if (sharedPackets != null) {
+            return withTimeoutOrNull(SOCKET_POLL_MS.toLong()) {
+                sharedPackets.receiveCatching().getOrNull()
+            }
+        }
+        val receive = ByteArray(MAX_DATAGRAM_BYTES)
+        val datagram = DatagramPacket(receive, receive.size)
+        try {
+            socket.receive(datagram)
+        } catch (_: SocketTimeoutException) {
+            return null
+        }
+        if (datagram.address != relay || datagram.port != config.port) return null
+        return receive.copyOf(datagram.length)
     }
 
     private fun sendListenerCommand(
@@ -458,9 +522,11 @@ class SpeakerMediaTransferClient(
         private const val ACK_BUSY = 1
         private const val ACK_BAD_PACKET = 2
         private const val ACK_GAP = 3
-        private const val SEND_WINDOW = 4
+        /* 与 MCU 8 包乱序深度一致，避免大窗口制造无效 GAP 和突发重传。 */
+        private const val SEND_WINDOW = 8
         private const val MAX_SEND_ATTEMPTS = 20
-        private const val RETRY_TIMEOUT_MS = 300L
+        private const val RETRY_TIMEOUT_MS = 750L
+        private const val SEND_PACING_MS = 20L
         private const val SOCKET_POLL_MS = 100
         private const val SOCKET_BUFFER_BYTES = 128 * 1_024
         private const val REGISTRATION_RETRY_MS = 1_000L

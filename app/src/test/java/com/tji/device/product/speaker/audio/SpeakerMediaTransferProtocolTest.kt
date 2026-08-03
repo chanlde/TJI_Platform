@@ -1,7 +1,9 @@
 package com.tji.device.product.speaker.audio
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class SpeakerMediaTransferProtocolTest {
@@ -13,28 +15,7 @@ class SpeakerMediaTransferProtocolTest {
             *ByteArray(22),
             0x01, 0x01, 0x11
         )
-        val packets = SpeakerMediaTransferClient(token = "test-token").buildChunks(
-            SpeakerMediaTransferRequest(
-                deviceId = "T5TNBFM4Q",
-                sessionId = "STORE_TEST",
-                recordId = "REC_TEST",
-                name = "Test",
-                createdAt = "2026-07-30T00:00:00Z",
-                opusFile = SpeakerOpusFile(
-                    data = file,
-                    sampleRate = 16_000,
-                    channels = 1,
-                    packetMs = 20,
-                    bitrate = 24_000,
-                    fileSize = file.size,
-                    crc32 = "0x5CBF3143",
-                    durationMs = 40,
-                    packetCount = 2
-                ),
-                mode = SpeakerMediaTransferMode.Store,
-                volume = 80
-            )
-        )
+        val packets = SpeakerMediaTransferClient(token = "test-token").buildChunks(request(file))
 
         assertEquals(1, packets.size)
         assertArrayEquals(
@@ -49,6 +30,38 @@ class SpeakerMediaTransferProtocolTest {
             packets.single()
         )
     }
+
+    @Test
+    fun missingRelayCredentialReportsConfigurationErrorBeforeNetworkAccess() = runBlocking {
+        val failure = runCatching {
+            SpeakerMediaTransferClient(token = "").send(request(byteArrayOf(1)))
+        }.exceptionOrNull()
+
+        assertNotNull(failure)
+        assertEquals("语音传输服务未配置", failure?.message)
+    }
+
+    private fun request(file: ByteArray): SpeakerMediaTransferRequest =
+        SpeakerMediaTransferRequest(
+            deviceId = "T5TNBFM4Q",
+            sessionId = "STORE_TEST",
+            recordId = "REC_TEST",
+            name = "Test",
+            createdAt = "2026-07-30T00:00:00Z",
+            opusFile = SpeakerOpusFile(
+                data = file,
+                sampleRate = 16_000,
+                channels = 1,
+                packetMs = 20,
+                bitrate = 24_000,
+                fileSize = file.size,
+                crc32 = "0x5CBF3143",
+                durationMs = 40,
+                packetCount = 2
+            ),
+            mode = SpeakerMediaTransferMode.Store,
+            volume = 80
+        )
 
     private fun String.hexToBytes(): ByteArray {
         require(length % 2 == 0)

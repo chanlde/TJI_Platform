@@ -19,6 +19,9 @@ interface MqttTopicLayout {
     fun lifecycleTopic(deviceId: String): String
     fun statusTopic(deviceId: String): String
     fun controlTopic(deviceId: String): String
+
+    fun lifecycleTopics(deviceId: String): List<String> = listOf(lifecycleTopic(deviceId))
+    fun statusTopics(deviceId: String): List<String> = listOf(statusTopic(deviceId))
 }
 
 fun mqttTopicsFor(productType: ProductType): MqttTopicLayout = when (productType) {

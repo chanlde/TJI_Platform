@@ -91,14 +91,35 @@ class DropperSixStageMqttInboundTest {
     }
 
     @Test
-    fun retainedIdentityCannotMarkDeviceOnline() = runBlocking {
+    fun retainedIdentityWithExplicitOnlineMarksFireDropDeviceOnline() = runBlocking {
         val repo = DropperSixStageRepo()
         val inbound = DropperSixStageMqttInbound(repo)
 
         inbound.handleEvent(
             serialNumber = SERIAL,
             eventType = "identity",
-            json = JSONObject("""{"deviceId":"$SERIAL","online":true}"""),
+            json = JSONObject(
+                """{"type":"identity","deviceId":"D29D5405F","product":"FC100_FireDrop","fw":"1.7.42.114","online":true}"""
+            ),
+            isRetained = true
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals("D29D5405F", state.serialNumber)
+        assertEquals(true, state.isOnline)
+        assertEquals("FC100_FireDrop", state.name)
+        assertEquals("1.7.42.114", state.firmwareVersion)
+    }
+
+    @Test
+    fun retainedIdentityWithoutOnlineFieldCannotGuessDeviceOnline() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "identity",
+            json = JSONObject("""{"deviceId":"$SERIAL","fw":"1.7.42.114"}"""),
             isRetained = true
         )
 
@@ -223,6 +244,22 @@ class DropperSixStageMqttInboundTest {
         assertEquals(false, state.lastAck?.ok)
         assertEquals("busy", state.lastAck?.message)
         assertEquals(false, state.stages.first { it.index == 3 }.isOpen)
+    }
+
+    @Test
+    fun zeroCodeAckIsAcceptedAndDeviceMessageIsPreserved() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "ack",
+            json = JSONObject("""{"msgId":"arm-1","code":0,"message":"ARMED"}""")
+        )
+
+        val ack = repo.devices.value.single().lastAck
+        assertEquals(true, ack?.ok)
+        assertEquals("ARMED", ack?.message)
     }
 
     @Test

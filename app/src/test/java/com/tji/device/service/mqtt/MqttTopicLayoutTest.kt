@@ -14,7 +14,7 @@ class MqttTopicLayoutTest {
         listOf(
             ProductType.FireBucket to "FireBucket",
             ProductType.SolarClean to "SolarClean",
-            ProductType.DropperSixStage to "SixStageDropper",
+            ProductType.DropperSixStage to "FC100_FireDrop",
             ProductType.Speaker to "Speaker",
             ProductType.BreakWindowProjectile to "GlassBreaker",
             ProductType.Searchlight to "Searchlight"
@@ -34,6 +34,27 @@ class MqttTopicLayoutTest {
                 topics.controlTopic(deviceId)
             )
         }
+    }
+
+    @Test
+    fun sixStageDropperSubscribesToDeviceAndCompatibilityTopics() {
+        val deviceId = "D29D5405F"
+        val topics = mqttTopicsFor(ProductType.DropperSixStage)
+
+        assertEquals(
+            listOf(
+                "FC100_FireDrop/devices/$deviceId/lifecycle",
+                "SixStageDropper/devices/$deviceId/lifecycle"
+            ),
+            topics.lifecycleTopics(deviceId)
+        )
+        assertEquals(
+            listOf(
+                "FC100_FireDrop/devices/$deviceId/status",
+                "SixStageDropper/devices/$deviceId/status"
+            ),
+            topics.statusTopics(deviceId)
+        )
     }
 
     @Test

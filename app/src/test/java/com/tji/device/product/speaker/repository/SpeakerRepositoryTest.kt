@@ -31,6 +31,138 @@ class SpeakerRepositoryTest {
     }
 
     @Test
+    fun untimestampedOfflineAlsoStartsANewRecordListEpoch() = runBlocking {
+        val repo = SpeakerRepo()
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_OLD", 500)),
+            offset = 0,
+            limit = 4,
+            total = 1,
+            hasMore = false,
+            timestamp = 500_000L
+        )
+
+        repo.updateOnlineStatus(SERIAL, isOnline = false, timestamp = null)
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_AFTER_REBOOT", 1)),
+            offset = 0,
+            limit = 4,
+            total = 1,
+            hasMore = false,
+            timestamp = 1_000L
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(listOf("REC_AFTER_REBOOT"), state.records.map { it.recordId })
+        assertEquals(1_000L, state.recordListTimestamp)
+    }
+
+    @Test
+    fun successfulRenameEventUpdatesTheVisibleRecordImmediately() = runBlocking {
+        val repo = SpeakerRepo()
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_1", 1)),
+            offset = 0,
+            limit = 4,
+            total = 1,
+            hasMore = false,
+            timestamp = 100L
+        )
+
+        repo.updateRecordEvent(
+            serialNumber = SERIAL,
+            event = SpeakerRecordEvent(
+                type = "record_updated",
+                recordId = "REC_1",
+                name = "巡检完成",
+                ok = true,
+                timestamp = 200L
+            )
+        )
+
+        assertEquals("巡检完成", repo.devices.value.single().records.single().name)
+    }
+
+    @Test
+    fun paginationUsesTheServerCursorInsteadOfTheLocalListSize() = runBlocking {
+        val repo = SpeakerRepo()
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_4", 4), record("REC_3", 3)),
+            offset = 0,
+            limit = 4,
+            total = 6,
+            hasMore = true,
+            timestamp = 100L,
+            nextOffset = 4
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(2, state.records.size)
+        assertEquals(4, state.recordNextOffset)
+    }
+
+    @Test
+    fun terminalEmptyPageKeepsTheServerCursorAndStopsPagination() = runBlocking {
+        val repo = SpeakerRepo()
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_1", 1)),
+            offset = 0,
+            limit = 4,
+            total = 1,
+            hasMore = true,
+            timestamp = 100L,
+            nextOffset = 1
+        )
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = emptyList(),
+            offset = 1,
+            limit = 4,
+            total = 1,
+            hasMore = false,
+            timestamp = 200L,
+            nextOffset = 1
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(listOf("REC_1"), state.records.map { it.recordId })
+        assertEquals(1, state.recordNextOffset)
+        assertFalse(state.recordHasMore)
+    }
+
+    @Test
+    fun failedRenameEventDoesNotChangeTheVisibleName() = runBlocking {
+        val repo = SpeakerRepo()
+        repo.updateRecords(
+            serialNumber = SERIAL,
+            records = listOf(record("REC_1", 1)),
+            offset = 0,
+            limit = 4,
+            total = 1,
+            hasMore = false,
+            timestamp = 100L
+        )
+        repo.updateRecordEvent(
+            serialNumber = SERIAL,
+            event = SpeakerRecordEvent(
+                type = "record_updated",
+                recordId = "REC_1",
+                name = "不应生效",
+                ok = false,
+                code = 486,
+                timestamp = 200L
+            )
+        )
+
+        assertEquals("REC_1", repo.devices.value.single().records.single().name)
+    }
+
+    @Test
     fun stateUpdateCanMarkPreviouslyOnlineDeviceOffline() = runBlocking {
         val repo = SpeakerRepo()
 

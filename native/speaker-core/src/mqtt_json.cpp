@@ -370,6 +370,11 @@ std::vector<uint8_t> parse_mqtt_record_list_json(const std::string &payload_json
     append(out, first, "offset", std::to_string(int_field(payload_json, "offset", 0)));
     append(out, first, "limit", std::to_string(std::clamp<int64_t>(int_field(payload_json, "limit", 8), 1, 8)));
     append(out, first, "total", std::to_string(int_field(payload_json, "total", int_field(payload_json, "count", parsed_record_count))));
+    append(out, first, "nextOffset", std::to_string(int_field(
+        payload_json,
+        "nextOffset",
+        int_field(payload_json, "offset", 0) + parsed_record_count
+    )));
     append(out, first, "hasMore", bool_field(payload_json, "hasMore", false) ? "true" : "false");
     append(out, first, "timestamp", timestamp_raw(payload_json));
     out << '}';

@@ -27,6 +27,23 @@ import java.util.concurrent.atomic.AtomicReference
 
 class SpeakerFeedbackProtocolTest {
     @Test
+    fun missingRelayTokenDoesNotCrashClientConstruction() = runBlocking {
+        val client = SpeakerFeedbackClient(token = "")
+
+        val failure = runCatching {
+            client.listen(
+                session = SpeakerFeedbackSession("TEWNHZDBK", "FB_1", "MON_1"),
+                onRegistered = {},
+                onLeaseRefresh = {},
+                onStats = {}
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(failure)
+        assertEquals("设备麦克风监听服务未配置", failure?.message)
+    }
+
+    @Test
     fun parsesMcuOpusPacket() {
         val parsed = SpeakerFeedbackProtocol.parse(feedbackPacket(sequence = 7))
 
@@ -132,7 +149,7 @@ class SpeakerFeedbackProtocolTest {
                                 .toByteArray()
                             relay.send(DatagramPacket(ack, ack.size, datagram.address, datagram.port))
                             if (count == 1) {
-                                repeat(4) { sequence ->
+                                repeat(TEST_PREBUFFER_PACKETS) { sequence ->
                                     val audio = feedbackPacket(sequence = sequence)
                                     relay.send(
                                         DatagramPacket(audio, audio.size, datagram.address, datagram.port)
@@ -186,7 +203,9 @@ class SpeakerFeedbackProtocolTest {
 
         try {
             withTimeout(2_000) {
-                while (sink.writes.size < 4 || leaseRefreshes.get() < 1) delay(10)
+                while (sink.writes.size < TEST_PREBUFFER_PACKETS ||
+                    leaseRefreshes.get() < 1
+                ) delay(10)
             }
             client.setPlaybackGain(0.8f)
         } finally {
@@ -205,9 +224,105 @@ class SpeakerFeedbackProtocolTest {
         assertTrue(sink.started)
         assertTrue(sink.closed)
         assertEquals(listOf(0.6f, 0.8f), sink.volumes)
-        assertEquals(4, sink.writes.size)
+        assertEquals(TEST_PREBUFFER_PACKETS, sink.writes.size)
         assertTrue(sink.writes.all { it.size == SpeakerFeedbackProtocol.PCM_BYTES_PER_PACKET })
         assertNull(relayFailure.get())
+    }
+
+    @Test
+    fun pushToTalkPauseDropsOldAudioAndResumeAcceptsSequenceRestart() = runBlocking {
+        val relay = DatagramSocket(0, InetAddress.getByName("127.0.0.1"))
+        relay.soTimeout = 100
+        val running = AtomicBoolean(true)
+        val endpoint = AtomicReference<Pair<InetAddress, Int>?>(null)
+        val relayThread = Thread {
+            val buffer = ByteArray(2_048)
+            while (running.get()) {
+                try {
+                    val datagram = DatagramPacket(buffer, buffer.size)
+                    relay.receive(datagram)
+                    val text = buffer.copyOf(datagram.length).toString(Charsets.UTF_8)
+                    if (text == "HLAPP1 hydrolink TEWNHZDBK FB_1 MON_1") {
+                        endpoint.set(datagram.address to datagram.port)
+                        val ack = "HLAPPACK1 REGISTERED TEWNHZDBK FB_1 MON_1".toByteArray()
+                        relay.send(DatagramPacket(ack, ack.size, datagram.address, datagram.port))
+                    }
+                } catch (_: java.net.SocketTimeoutException) {
+                    // Poll running.
+                } catch (_: SocketException) {
+                    return@Thread
+                }
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+        val sink = FakeFeedbackAudioSink()
+        val decoderCount = AtomicInteger()
+        val client = SpeakerFeedbackClient(
+            config = SpeakerRelayConfig(host = "127.0.0.1", port = relay.localPort),
+            token = "hydrolink",
+            timing = SpeakerFeedbackTiming(
+                socketTimeoutMs = 20,
+                registrationRetryMs = 50,
+                registrationTimeoutMs = 1_000,
+                registrationRefreshMs = 10_000,
+                firstAudioTimeoutMs = 1_000,
+                audioIdleTimeoutMs = 1_000
+            ),
+            audioSinkFactory = { sink },
+            opusDecoderFactory = { _, _ ->
+                decoderCount.incrementAndGet()
+                FakeFeedbackOpusDecoder()
+            }
+        )
+        val clientJob = launch(Dispatchers.IO) {
+            client.listen(
+                SpeakerFeedbackSession("TEWNHZDBK", "FB_1", "MON_1"),
+                onRegistered = {},
+                onLeaseRefresh = {},
+                onStats = {}
+            )
+        }
+
+        try {
+            val target = withTimeout(1_000) {
+                while (endpoint.get() == null) delay(5)
+                requireNotNull(endpoint.get())
+            }
+            repeat(TEST_PREBUFFER_PACKETS) { sequence ->
+                val audio = feedbackPacket(sequence)
+                relay.send(DatagramPacket(audio, audio.size, target.first, target.second))
+            }
+            withTimeout(1_000) {
+                while (sink.writes.size < TEST_PREBUFFER_PACKETS) delay(5)
+            }
+
+            client.pauseForPushToTalk()
+            repeat(TEST_PREBUFFER_PACKETS) { sequence ->
+                val stale = feedbackPacket(sequence + TEST_PREBUFFER_PACKETS)
+                relay.send(DatagramPacket(stale, stale.size, target.first, target.second))
+            }
+            delay(100)
+            assertEquals(TEST_PREBUFFER_PACKETS, sink.writes.size)
+
+            val resumeJob = launch(Dispatchers.IO) { client.resumeAfterPushToTalk() }
+            delay(50)
+            repeat(TEST_PREBUFFER_PACKETS) { sequence ->
+                val restarted = feedbackPacket(sequence)
+                relay.send(DatagramPacket(restarted, restarted.size, target.first, target.second))
+            }
+            withTimeout(1_000) {
+                resumeJob.join()
+                while (sink.writes.size < TEST_PREBUFFER_PACKETS * 2) delay(5)
+            }
+            assertEquals(2, decoderCount.get())
+        } finally {
+            clientJob.cancelAndJoin()
+            running.set(false)
+            relay.close()
+            relayThread.join(1_000)
+        }
     }
 
     private fun parsedPacket(sequence: Int): SpeakerFeedbackPacket =
@@ -288,5 +403,9 @@ class SpeakerFeedbackProtocolTest {
             ByteArray(SpeakerFeedbackProtocol.PCM_BYTES_PER_PACKET)
 
         override fun close() = Unit
+    }
+
+    private companion object {
+        const val TEST_PREBUFFER_PACKETS = 26
     }
 }

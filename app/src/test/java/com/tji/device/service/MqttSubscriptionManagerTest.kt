@@ -51,6 +51,29 @@ class MqttSubscriptionManagerTest {
     }
 
     @Test
+    fun fireDropSubscribesToActualAndCompatibilityTopicPrefixes() = runBlocking {
+        val gateway = RecordingMqttGateway()
+        val manager = MqttSubscriptionManager(
+            mqttEventHandler = RecordingMessageHandler(),
+            clientFor = { gateway }
+        )
+
+        manager.subscribeToDevices(listOf("D29D5405F"), ProductType.DropperSixStage)
+
+        assertEquals(
+            listOf(
+                "FC100_FireDrop/devices/D29D5405F/lifecycle",
+                "SixStageDropper/devices/D29D5405F/lifecycle",
+                "FC100_FireDrop/devices/D29D5405F/status",
+                "SixStageDropper/devices/D29D5405F/status"
+            ),
+            gateway.subscribedTopics
+        )
+        assertEquals(listOf(1, 1, 1, 1), gateway.subscribedQos)
+        manager.cleanup()
+    }
+
+    @Test
     fun sharedStatusPayloadClassificationSeparatesAckFromTelemetry() {
         assertEquals(false, isPriorityStatusMessage("""{"type":"state","battery":80}"""))
         assertEquals(false, isPriorityStatusMessage("""{"type":"status","battery":80}"""))

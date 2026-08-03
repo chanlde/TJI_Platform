@@ -23,6 +23,7 @@ data class SpeakerMcuMicrophoneState(
     val packetsConcealed: Long = 0,
     val packetsRejected: Long = 0,
     val duplicatePackets: Long = 0,
+    val temporarilyPaused: Boolean = false,
     val error: String? = null
 ) {
     val enabled: Boolean

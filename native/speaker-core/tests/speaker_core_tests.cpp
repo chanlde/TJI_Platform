@@ -80,6 +80,23 @@ void test_invalid_opus_format_is_rejected()
     tji_sc_free(&file);
 }
 
+void test_record_list_parser_preserves_server_cursor()
+{
+    const char *payload =
+        R"({"items":[{"recordId":"REC_1","name":"one"}],"offset":0,"limit":4,"total":8,"nextOffset":4,"hasMore":true,"ts":123})";
+    TjiScBuffer parsed{};
+
+    require(tji_sc_parse_mqtt_record_list_json(payload, &parsed) == TJI_SC_OK,
+            "record list parse failed");
+    const std::string json(
+        reinterpret_cast<const char *>(parsed.data), parsed.size);
+    require(json.find("\"nextOffset\":4") != std::string::npos,
+            "record list nextOffset was lost");
+    require(json.find("\"recordId\":\"REC_1\"") != std::string::npos,
+            "record list item was lost");
+    tji_sc_free(&parsed);
+}
+
 } // namespace
 
 int main()
@@ -87,6 +104,7 @@ int main()
     try {
         test_ogg_opus_encode();
         test_invalid_opus_format_is_rejected();
+        test_record_list_parser_preserves_server_cursor();
         std::cout << "speaker-core tests passed\n";
         return 0;
     } catch (const std::exception &error) {

@@ -223,8 +223,9 @@ class MqttSubscriptionManager(
             val generation = subscriptionGeneration.get()
             val client = clientFor(target.productType)
             val topics = subscriptionTopicsFor(target)
-            val statusTopic = mqttTopicsFor(target.productType)
-                .statusTopic(target.serialNumber)
+            val statusTopics = mqttTopicsFor(target.productType)
+                .statusTopics(target.serialNumber)
+                .toSet()
             val newlySubscribed = mutableListOf<Pair<String, String>>()
 
             try {
@@ -249,7 +250,7 @@ class MqttSubscriptionManager(
                                         message = message,
                                         isRetained = isRetained,
                                         reliable = qos > 0 && (
-                                            topic != statusTopic ||
+                                            topic !in statusTopics ||
                                                 isPriorityStatusMessage(message)
                                             )
                                     )
@@ -515,10 +516,10 @@ class MqttSubscriptionManager(
     private fun subscriptionTopicsFor(target: SubscriptionTarget): List<Pair<String, Int>> {
         val layout = mqttTopicsFor(target.productType)
         return buildList {
-            add(layout.lifecycleTopic(target.serialNumber) to 1)
+            layout.lifecycleTopics(target.serialNumber).forEach { add(it to 1) }
             // ACK 与遥测共用 status topic。订阅 QoS 1 才能保留设备发布的 ACK
             // 可靠性；入站后再按 payload 分类，周期 state 仍走普通遥测队列。
-            add(layout.statusTopic(target.serialNumber) to 1)
+            layout.statusTopics(target.serialNumber).forEach { add(it to 1) }
             if (target.productType == ProductType.RadioDetection) {
                 add(RadioDetectionMqttTopics.rgbAckTopic(target.serialNumber) to 1)
             }

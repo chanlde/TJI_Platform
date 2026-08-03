@@ -20,6 +20,7 @@ val amapApiKey: String = providers.gradleProperty("AMAP_API_KEY")
 
 fun configString(name: String, defaultValue: String): String =
     providers.gradleProperty(name)
+        .orElse(providers.environmentVariable(name))
         .orElse(localProperties.getProperty(name, defaultValue))
         .get()
 

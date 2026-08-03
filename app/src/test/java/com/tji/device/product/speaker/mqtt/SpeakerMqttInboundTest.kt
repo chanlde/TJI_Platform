@@ -311,6 +311,7 @@ class SpeakerMqttInboundTest {
                   ],
                   "offset": -2,
                   "limit": 99,
+                  "nextOffset": 1,
                   "hasMore": true,
                   "ts": 1710000000100
                 }
@@ -324,6 +325,7 @@ class SpeakerMqttInboundTest {
         assertEquals("rec-2", state.records[1].name)
         assertEquals(-2, state.recordOffset)
         assertEquals(8, state.recordLimit)
+        assertEquals(1, state.recordNextOffset)
         assertEquals(2, state.recordTotal)
         assertEquals(true, state.recordHasMore)
         assertEquals(1710000000100L, state.timestamp)

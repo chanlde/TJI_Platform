@@ -47,6 +47,7 @@ class SpeakerMqttInbound(
                 debugLog {
                     "Speaker record list parsed deviceId=$serialNumber offset=${parsed.offset} " +
                         "limit=${parsed.limit} total=${parsed.total} " +
+                        "nextOffset=${parsed.nextOffset} hasMore=${parsed.hasMore} " +
                         "count=${records.size} first=${records.firstOrNull()?.recordId.orEmpty()} " +
                         "last=${records.lastOrNull()?.recordId.orEmpty()}"
                 }
@@ -60,7 +61,8 @@ class SpeakerMqttInbound(
                     limit = parsed.limit,
                     total = parsed.total,
                     hasMore = parsed.hasMore,
-                    timestamp = parsed.timestamp
+                    timestamp = parsed.timestamp,
+                    nextOffset = parsed.nextOffset
                 )
             }
             "storage_status" -> {

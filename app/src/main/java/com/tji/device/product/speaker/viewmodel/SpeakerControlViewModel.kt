@@ -28,12 +28,14 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -66,7 +68,8 @@ class SpeakerControlViewModel(
     private val mcuMicrophoneController = SpeakerMcuMicrophoneController(
         scope = viewModelScope,
         receiver = feedbackReceiver,
-        sendCommand = controlRepository::sendCommand
+        sendCommand = controlRepository::sendCommand,
+        sendCommandAndAwaitAck = commandCoordinator::sendAndAwaitAck
     )
     val mcuMicrophoneState: StateFlow<SpeakerMcuMicrophoneState> =
         mcuMicrophoneController.state
@@ -106,6 +109,8 @@ class SpeakerControlViewModel(
     private val latestAudioOperation = LatestAudioOperation()
     private var pttRecordJob: Job? = null
     private var pttDeliveryJob: Job? = null
+    private var pttFeedbackPauseJob: Job? = null
+    private var pttFeedbackWasPaused = false
     private var pttBuffer: ByteArrayOutputStream? = null
     private var pttSaveName: String? = null
     private var pttCaptureQuality: SpeakerAudioQuality? = null
@@ -290,10 +295,9 @@ class SpeakerControlViewModel(
                     durationMs = SpeakerAudioConfig.Timing.TTS_FILE_LEADING_SILENCE_MS,
                     sampleRate = quality.sampleRate
                 )
-                val suffix = System.currentTimeMillis()
-                val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
-                val recordId = "TTS_PLAY_${cleanDeviceId}_$suffix"
-                val storeTaskId = "STORE_TTS_PLAY_${cleanDeviceId}_$suffix"
+                val routeTimestamp = System.currentTimeMillis()
+                val recordId = speakerTransferRouteId("TTS", serialNumber, routeTimestamp)
+                val storeTaskId = speakerTransferRouteId("STTS", serialNumber, routeTimestamp)
                 val createdAt = isoNow()
                 val recordName = "文字喊话 ${SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(Date())}"
                 val opusFile = SpeakerCoreAudioEngine.encodeOggOpus(
@@ -403,10 +407,9 @@ class SpeakerControlViewModel(
                     durationMs = SpeakerAudioConfig.Tone.LEADING_SILENCE_MS,
                     sampleRate = quality.sampleRate
                 )
-                val suffix = System.currentTimeMillis()
-                val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
-                val recordId = "TONE_PLAY_${cleanDeviceId}_$suffix"
-                val storeTaskId = "STORE_TONE_PLAY_${cleanDeviceId}_$suffix"
+                val routeTimestamp = System.currentTimeMillis()
+                val recordId = speakerTransferRouteId("TONE", serialNumber, routeTimestamp)
+                val storeTaskId = speakerTransferRouteId("STONE", serialNumber, routeTimestamp)
                 val opusFile = SpeakerCoreAudioEngine.encodeOggOpus(
                     pcm = playbackPcm,
                     recordId = recordId,
@@ -457,6 +460,10 @@ class SpeakerControlViewModel(
          * 防止用户切换文件音质后意外破坏直接 UDP 协议。
          */
         val captureQuality = SpeakerAudioQuality.High
+        if (!beginFeedbackPauseForCapture(serialNumber)) {
+            pttTargetLock.clearIfOwnedBy(serialNumber)
+            return
+        }
         pttCaptureQuality = captureQuality
         pttSaveName = null
         pttBuffer = ByteArrayOutputStream()
@@ -483,6 +490,10 @@ class SpeakerControlViewModel(
         if (!pttTargetLock.claim(serialNumber)) return
         cancelPlaybackOperation()
         val captureQuality = _outputQuality.value
+        if (!beginFeedbackPauseForCapture(serialNumber)) {
+            pttTargetLock.clearIfOwnedBy(serialNumber)
+            return
+        }
         pttCaptureQuality = captureQuality
         pttSaveName = defaultName?.trim()?.takeIf { it.isNotBlank() } ?: defaultRecordName()
         pttBuffer = ByteArrayOutputStream()
@@ -508,10 +519,20 @@ class SpeakerControlViewModel(
         pttRecordJob = null
         pttDeliveryJob = viewModelScope.launch(Dispatchers.IO) {
             job.cancelAndJoin()
+            val feedbackRestored = withContext(NonCancellable) {
+                restoreFeedbackAfterCapture(serialNumber)
+            }
             val pcm = pttBuffer?.toByteArray() ?: ByteArray(0)
             val quality = pttCaptureQuality ?: SpeakerAudioConfig.Tts.DEFAULT_TTS_QUALITY
             pttBuffer = null
             pttCaptureQuality = null
+            if (!feedbackRestored) {
+                _talkState.value = SpeakerTalkState(
+                    mode = SpeakerTalkMode.Idle,
+                    error = "设备麦克风监听恢复失败，请关闭监听后重新开启"
+                )
+                return@launch
+            }
             if (pcm.isEmpty()) {
                 _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = "录音时间太短")
                 return@launch
@@ -531,11 +552,9 @@ class SpeakerControlViewModel(
                     durationMs = SpeakerAudioConfig.Timing.RECORDED_LEADING_SILENCE_MS,
                     sampleRate = quality.sampleRate
                 )
-                val suffix = System.currentTimeMillis()
-                val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
-                val shortSuffix = suffix.toString(36).uppercase(Locale.US)
-                val sessionId = "PTT_${cleanDeviceId}_$shortSuffix"
-                val talkId = "TALK_${cleanDeviceId}_$shortSuffix"
+                val routeTimestamp = System.currentTimeMillis()
+                val sessionId = speakerTransferRouteId("PTT", serialNumber, routeTimestamp)
+                val talkId = speakerTransferRouteId("TALK", serialNumber, routeTimestamp)
                 val opusFile = SpeakerCoreAudioEngine.encodeOggOpus(
                     pcm = playbackPcm,
                     recordId = talkId,
@@ -581,12 +600,22 @@ class SpeakerControlViewModel(
         pttRecordJob = null
         pttDeliveryJob = viewModelScope.launch(Dispatchers.IO) {
             job.cancelAndJoin()
+            val feedbackRestored = withContext(NonCancellable) {
+                restoreFeedbackAfterCapture(serialNumber)
+            }
             val pcm = pttBuffer?.toByteArray() ?: ByteArray(0)
             val recordName = pttSaveName ?: defaultRecordName()
             val quality = pttCaptureQuality ?: SpeakerAudioConfig.Tts.DEFAULT_TTS_QUALITY
             pttBuffer = null
             pttSaveName = null
             pttCaptureQuality = null
+            if (!feedbackRestored) {
+                _talkState.value = SpeakerTalkState(
+                    mode = SpeakerTalkMode.Idle,
+                    error = "设备麦克风监听恢复失败，请关闭监听后重新开启"
+                )
+                return@launch
+            }
             if (pcm.isEmpty()) {
                 _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle, error = "录音时间太短")
                 return@launch
@@ -595,10 +624,9 @@ class SpeakerControlViewModel(
             runCatchingPreservingCancellation {
                 val startedAt = System.currentTimeMillis()
                 _talkState.value = _talkState.value.copy(progress = 0.25f)
-                val suffix = System.currentTimeMillis()
-                val cleanDeviceId = serialNumber.filter { it.isLetterOrDigit() }.ifBlank { "DEVICE" }
-                val recordId = "REC_${cleanDeviceId}_$suffix"
-                val storeTaskId = "STORE_${cleanDeviceId}_$suffix"
+                val routeTimestamp = System.currentTimeMillis()
+                val recordId = speakerTransferRouteId("REC", serialNumber, routeTimestamp)
+                val storeTaskId = speakerTransferRouteId("STORE", serialNumber, routeTimestamp)
                 val createdAt = isoNow()
                 check(SpeakerCoreAudioEngine.hasPushToTalkSpeech(pcm, quality.sampleRate)) {
                     "未检测到有效语音，请靠近手机麦克风后重试"
@@ -643,13 +671,16 @@ class SpeakerControlViewModel(
     }
 
     fun cancelPushToTalkRecord(serialNumber: String? = null) {
-        if (!pttTargetLock.clearIfOwnedBy(serialNumber)) return
+        val target = pttTargetLock.clearAndGetIfOwnedBy(serialNumber) ?: return
         pttRecordJob?.cancel()
         pttRecordJob = null
         pttBuffer = null
         pttSaveName = null
         pttCaptureQuality = null
         _talkState.value = SpeakerTalkState(mode = SpeakerTalkMode.Idle)
+        if (pttFeedbackWasPaused || pttFeedbackPauseJob != null) {
+            scheduleFeedbackRestore(target)
+        }
     }
 
     private fun appendPttFrame(frame: ByteArray) {
@@ -671,6 +702,69 @@ class SpeakerControlViewModel(
             mode = SpeakerTalkMode.Idle,
             error = message
         )
+        if (pttFeedbackWasPaused || pttFeedbackPauseJob != null) {
+            scheduleFeedbackRestore(serialNumber)
+        }
+    }
+
+    /** 手机端先立即停止回传播放，再并行等待 MCU cmd116 OFF，录音无需丢开头。 */
+    private fun beginFeedbackPauseForCapture(serialNumber: String): Boolean {
+        if (pttFeedbackPauseJob != null || pttFeedbackWasPaused) {
+            _talkState.value = SpeakerTalkState(
+                mode = SpeakerTalkMode.Idle,
+                error = "设备麦克风监听正在切换，请稍后再按住喊话"
+            )
+            return false
+        }
+        when (mcuMicrophoneController.beginPushToTalkPause(serialNumber)) {
+            SpeakerPushToTalkPauseResult.NotListening -> {
+                pttFeedbackWasPaused = false
+                return true
+            }
+            SpeakerPushToTalkPauseResult.Busy -> {
+                pttFeedbackWasPaused = false
+                _talkState.value = SpeakerTalkState(
+                    mode = SpeakerTalkMode.Idle,
+                    error = "设备麦克风监听正在切换，请稍后再按住喊话"
+                )
+                return false
+            }
+            SpeakerPushToTalkPauseResult.Paused -> pttFeedbackWasPaused = true
+        }
+        pttFeedbackPauseJob = viewModelScope.launch(Dispatchers.IO) {
+            val confirmed = mcuMicrophoneController.confirmPushToTalkPause(serialNumber)
+            if (!confirmed) {
+                SpeakerLogger.warn(
+                    SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
+                    "MCU 未确认暂停回传；手机端仍保持暂停以保护录音"
+                )
+            }
+        }
+        return true
+    }
+
+    /** 等待暂停命令收尾，再恢复同一会话和 320 ms jitter 预缓冲。 */
+    private suspend fun restoreFeedbackAfterCapture(serialNumber: String): Boolean {
+        val pauseJob = pttFeedbackPauseJob
+        val shouldResume = pttFeedbackWasPaused
+        pttFeedbackPauseJob = null
+        pttFeedbackWasPaused = false
+        pauseJob?.join()
+        return !shouldResume || mcuMicrophoneController.resumeAfterPushToTalk(serialNumber)
+    }
+
+    private fun scheduleFeedbackRestore(serialNumber: String) {
+        lateinit var cleanup: Job
+        cleanup = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                withContext(NonCancellable) {
+                    restoreFeedbackAfterCapture(serialNumber)
+                }
+            } finally {
+                if (pttDeliveryJob === cleanup) pttDeliveryJob = null
+            }
+        }
+        pttDeliveryJob = cleanup
     }
 
     private fun stopAllAudioOperations() {

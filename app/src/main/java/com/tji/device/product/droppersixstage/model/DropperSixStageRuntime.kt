@@ -48,16 +48,14 @@ data class DropperSixStageAck(
     val message: String? = null
 )
 
-object DropperSixStageCommandCode {
-    const val PING = 0
-    const val SET_STAGE_SWITCH = 10
-    const val SET_ALL_STAGES = 11
-}
-
 sealed interface DropperSixStageCommand {
     val msgId: String
 
     data class Ping(override val msgId: String) : DropperSixStageCommand
+
+    data class Arm(override val msgId: String) : DropperSixStageCommand
+
+    data class Disarm(override val msgId: String) : DropperSixStageCommand
 
     data class StageSwitch(
         override val msgId: String,

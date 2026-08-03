@@ -49,11 +49,20 @@ python3 -m unittest discover server/hydrolink_udp_relay
 
 ## Deploy
 
-Configure the same nonblank secret in the App build property
-`TJI_SPEAKER_RELAY_TOKEN` and in the relay service environment. The server no
-longer contains a production default token:
+Configure the same nonblank secret in the App build property/environment
+`TJI_SPEAKER_RELAY_TOKEN` and in the relay service. The server contains no
+production default token. Do not commit the secret or print it in build logs:
 
 ```bash
 export TJI_SPEAKER_RELAY_TOKEN='<generated-secret>'
 server/hydrolink_udp_relay/deploy_server.sh
+```
+
+For the connected Android test device, use the repository helper. It reads the
+credential from the already-running relay over SSH, keeps it in process memory,
+runs the speaker regression tests, and injects it into the debug build without
+printing or storing it:
+
+```bash
+tools/install_no_map_debug_from_relay.sh
 ```

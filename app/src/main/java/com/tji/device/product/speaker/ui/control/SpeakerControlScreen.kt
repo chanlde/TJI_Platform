@@ -247,7 +247,7 @@ fun SpeakerControlScreen(
                     onLoadMore = {
                         viewModel?.refreshRecords(
                             serialNumber = device.serialNumber,
-                            offset = state?.records.orEmpty().size,
+                            offset = state?.recordNextOffset ?: 0,
                             limit = 4,
                             order = recordSortOrder.wireName
                         )

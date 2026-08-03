@@ -73,11 +73,16 @@ fun DropperSixStageControlScreen(
     val feedback by viewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(DropperCommandFeedback()) }
     }
+    val armedDeviceIds by viewModel?.armedDeviceIds?.collectAsStateWithLifecycle().let {
+        it ?: remember { mutableStateOf(emptySet()) }
+    }
     val visibleFeedback = feedback.takeIf { it.serialNumber == null || it.serialNumber == device.serialNumber }
         ?: DropperCommandFeedback()
     val state = devices.firstOrNull { it.serialNumber == device.serialNumber }
     val displayState = if (isPreview) previewDropperState(device.serialNumber, device.name) else state
-    val enabled = viewModel != null && displayState?.isOnline == true
+    val online = viewModel != null && displayState?.isOnline == true
+    val armed = device.serialNumber in armedDeviceIds
+    val enabled = online && armed
     val stages = displayState?.stages?.takeIf { it.isNotEmpty() } ?: DropperStageState.defaults()
     var openDurationMs by remember(device.serialNumber) { mutableIntStateOf(DEFAULT_OPEN_DURATION_MS) }
     var selectedStageIndex by remember(device.serialNumber) { mutableIntStateOf(1) }
@@ -115,6 +120,14 @@ fun DropperSixStageControlScreen(
                 device = device,
                 state = displayState,
                 feedback = visibleFeedback
+            )
+        }
+        item {
+            DropperSafetyControlCard(
+                online = online,
+                armed = armed,
+                onArm = { viewModel?.arm(device.serialNumber) },
+                onDisarm = { viewModel?.disarm(device.serialNumber) }
             )
         }
         item {
@@ -178,6 +191,49 @@ fun DropperSixStageControlScreen(
                 }
             )
         }
+    }
+}
+
+@Composable
+internal fun DropperSafetyControlCard(
+    online: Boolean,
+    armed: Boolean,
+    onArm: () -> Unit,
+    onDisarm: () -> Unit
+) {
+    TjiSectionCard(
+        title = "安全锁",
+        trailing = {
+            TjiStatusText(
+                text = if (armed) "已解锁" else "已上锁",
+                color = if (armed) PayloadColors.Success else PayloadColors.Warning
+            )
+        }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            TjiActionButton(
+                text = "解锁",
+                enabled = online && !armed,
+                color = PayloadColors.Primary,
+                onClick = onArm,
+                modifier = Modifier.weight(1f)
+            )
+            TjiActionButton(
+                text = "上锁",
+                enabled = online && armed,
+                color = PayloadColors.Warning,
+                onClick = onDisarm,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Text(
+            text = if (armed) "设备已解锁，可以执行抛投。" else "请先解锁设备，再执行单路或全部抛投。",
+            style = MaterialTheme.typography.bodySmall,
+            color = PayloadColors.TextSecondary
+        )
     }
 }
 

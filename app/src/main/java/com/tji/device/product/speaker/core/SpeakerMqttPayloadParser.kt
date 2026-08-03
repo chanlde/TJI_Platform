@@ -74,15 +74,19 @@ object SpeakerMqttPayloadParser {
             timestamp = optNullableLong("timestamp")
         )
 
-    private fun JSONObject.toRecordList(): ParsedRecordList =
-        ParsedRecordList(
-            records = parseRecords(optJSONArray("records")),
-            offset = optInt("offset", 0),
+    private fun JSONObject.toRecordList(): ParsedRecordList {
+        val records = parseRecords(optJSONArray("records"))
+        val offset = optInt("offset", 0)
+        return ParsedRecordList(
+            records = records,
+            offset = offset,
             limit = optInt("limit", 8).coerceIn(1, 8),
-            total = optInt("total", optJSONArray("records")?.length() ?: 0),
+            total = optInt("total", records.size),
+            nextOffset = optInt("nextOffset", offset + records.size),
             hasMore = optBoolean("hasMore", false),
             timestamp = optNullableLong("timestamp")
         )
+    }
 
     private fun JSONObject.toStorageStatus(): SpeakerStorageStatus =
         SpeakerStorageStatus(
@@ -257,6 +261,7 @@ object SpeakerMqttPayloadParser {
             offset = json.optInt("offset", 0),
             limit = json.optInt("limit", 8).coerceIn(1, 8),
             total = json.optInt("total", json.optInt("count", records.size)),
+            nextOffset = json.optInt("nextOffset", json.optInt("offset", 0) + records.size),
             hasMore = json.optBoolean("hasMore", false),
             timestamp = json.optNullableLong("ts")
         )
@@ -341,6 +346,7 @@ data class ParsedRecordList(
     val offset: Int,
     val limit: Int,
     val total: Int,
+    val nextOffset: Int,
     val hasMore: Boolean,
     val timestamp: Long?
 )
