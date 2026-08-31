@@ -1,5 +1,6 @@
 package com.tji.device.product.radiodetection.ui.control
 
+import android.app.Application
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,15 +14,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -30,6 +35,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tji.device.product.radiodetection.map.RadioDetectionAmapView
+import com.tji.device.MapSdkInitializer
 import com.tji.device.product.radiodetection.map.RadioDetectionMapConfig
 import com.tji.device.product.radiodetection.map.RadioDetectionMapRuntime
 import com.tji.device.product.radiodetection.model.RadioDetectionTarget
@@ -53,7 +59,17 @@ internal fun TacticalMap(
     var zoomSignal by remember { mutableIntStateOf(0) }
     var zoomDelta by remember { mutableFloatStateOf(0f) }
     var recenterSignal by remember { mutableIntStateOf(0) }
-    val useGaodeMap = remember { RadioDetectionMapRuntime.shouldUseGaodeMap() }
+    val context = LocalContext.current
+    val mapBuildCanUseGaode = remember { RadioDetectionMapRuntime.shouldUseGaodeMap() }
+    var privacyAccepted by remember(context) {
+        mutableStateOf(MapSdkInitializer.isPrivacyAccepted(context))
+    }
+    var showPrivacyPrompt by remember(context) {
+        mutableStateOf(
+            mapBuildCanUseGaode && MapSdkInitializer.isPrivacyPromptRequired(context)
+        )
+    }
+    val useGaodeMap = mapBuildCanUseGaode && privacyAccepted
     val mapConfig = remember { RadioDetectionMapConfig() }
 
     Box(modifier = modifier.background(MapBg)) {
@@ -147,18 +163,59 @@ internal fun TacticalMap(
         }
         if (!useGaodeMap) {
             Text(
-                text = "兼容态势图",
+                text = if (mapBuildCanUseGaode && !privacyAccepted) {
+                    "兼容态势图 · 点击启用地图"
+                } else {
+                    "兼容态势图"
+                },
                 color = Color.White.copy(alpha = 0.72f),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
+                    .clickable(enabled = mapBuildCanUseGaode && !privacyAccepted) {
+                        showPrivacyPrompt = true
+                    }
                     .padding(start = 16.dp, bottom = 16.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Black.copy(alpha = 0.42f))
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             )
         }
+    }
+
+    if (showPrivacyPrompt) {
+        AlertDialog(
+            onDismissRequest = { showPrivacyPrompt = false },
+            title = { Text("启用高德地图") },
+            text = {
+                Text("高德地图 SDK 会联网加载地图，并在系统已授权定位时使用设备位置。是否同意并启用？")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val application = context.applicationContext as Application
+                        MapSdkInitializer.acceptPrivacy(application)
+                        privacyAccepted = true
+                        showPrivacyPrompt = false
+                    }
+                ) {
+                    Text("同意并启用")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        val application = context.applicationContext as Application
+                        MapSdkInitializer.declinePrivacy(application)
+                        privacyAccepted = false
+                        showPrivacyPrompt = false
+                    }
+                ) {
+                    Text("暂不启用")
+                }
+            }
+        )
     }
 }
 

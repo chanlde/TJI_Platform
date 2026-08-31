@@ -1,7 +1,7 @@
 package com.tji.device.service.mqtt
 
-import com.tji.device.data.model.ProductType
 import com.tji.device.data.model.ProductCatalog
+import com.tji.device.data.model.ProductType
 import com.tji.device.product.droppersixstage.mqtt.DropperSixStageMqttTopics
 import com.tji.device.product.firebucket.mqtt.FireBucketMqttTopics
 import com.tji.device.product.glassbreaker.mqtt.GlassBreakerMqttTopics
@@ -19,22 +19,22 @@ interface MqttTopicLayout {
     fun lifecycleTopic(deviceId: String): String
     fun statusTopic(deviceId: String): String
     fun controlTopic(deviceId: String): String
+
+    fun lifecycleTopics(deviceId: String): List<String> = listOf(lifecycleTopic(deviceId))
+    fun statusTopics(deviceId: String): List<String> = listOf(statusTopic(deviceId))
 }
 
-fun mqttTopicsFor(productType: ProductType): MqttTopicLayout = when (productType) {
-    ProductType.FireBucket -> FireBucketMqttTopics
-    ProductType.SolarClean -> SolarCleanMqttTopics
-    ProductType.DropperSixStage -> DropperSixStageMqttTopics
-    ProductType.RadioDetection -> RadioDetectionMqttTopics
-    ProductType.Speaker -> SpeakerMqttTopics
-    ProductType.BreakWindowProjectile -> GlassBreakerMqttTopics
-    ProductType.Searchlight -> PlaceholderProductMqttTopics(ProductCatalog.productCodeOf(productType))
-}
-
-private class PlaceholderProductMqttTopics(
-    private val productCode: String
-) : MqttTopicLayout {
-    override fun lifecycleTopic(deviceId: String): String = "$productCode/devices/$deviceId/lifecycle"
-    override fun statusTopic(deviceId: String): String = "$productCode/devices/$deviceId/status"
-    override fun controlTopic(deviceId: String): String = "$productCode/devices/$deviceId/control"
+fun mqttTopicsFor(productType: ProductType): MqttTopicLayout {
+    require(ProductCatalog.isEnabled(productType)) {
+        "Product $productType is not enabled for MQTT"
+    }
+    return when (productType) {
+        ProductType.FireBucket -> FireBucketMqttTopics
+        ProductType.SolarClean -> SolarCleanMqttTopics
+        ProductType.DropperSixStage -> DropperSixStageMqttTopics
+        ProductType.RadioDetection -> RadioDetectionMqttTopics
+        ProductType.Speaker -> SpeakerMqttTopics
+        ProductType.BreakWindowProjectile -> GlassBreakerMqttTopics
+        ProductType.Searchlight -> error("Disabled product passed catalog guard")
+    }
 }

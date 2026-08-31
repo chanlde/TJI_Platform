@@ -23,9 +23,7 @@ class DropperSixStageMqttInbound(
                     repository.updateOnlineStatus(serialNumber, isOnline = true, timestamp = json.optNullableLong("ts"))
                 }
             }
-            "identity" -> repository.updateState(
-                parseIdentity(serialNumber, json, allowOnline = !isRetained)
-            )
+            "identity" -> repository.updateState(parseIdentity(serialNumber, json, isRetained))
             "offline" -> repository.updateOnlineStatus(
                 serialNumber = serialNumber,
                 isOnline = false,
@@ -42,16 +40,21 @@ class DropperSixStageMqttInbound(
     private fun parseIdentity(
         serialNumber: String,
         json: JSONObject,
-        allowOnline: Boolean
+        isRetained: Boolean
     ): DropperSixStageState {
         val payloadDeviceId = json.optString("deviceId").ifBlank { serialNumber }
         val current = repository.devices.value.firstOrNull { it.serialNumber == payloadDeviceId }
         return DropperSixStageState(
             serialNumber = payloadDeviceId,
             name = json.optString("name").ifBlank { json.optString("product").ifBlank { null } },
-            isOnline = allowOnline && (
-                if (json.has("online")) json.optNullableBoolean("online") == true else true
-            ),
+            // FC100_FireDrop uses identity as its lifecycle frame. An explicit online
+            // value is authoritative even when the broker delivers the frame retained;
+            // only an old identity without lifecycle data must stay offline.
+            isOnline = if (json.has("online")) {
+                json.optNullableBoolean("online") == true
+            } else {
+                !isRetained
+            },
             stages = current?.stages ?: DropperStageState.defaults(),
             firmwareVersion = json.optString("fw").ifBlank {
                 json.optString("firmware_version").ifBlank { null }
@@ -103,9 +106,17 @@ class DropperSixStageMqttInbound(
     private fun parseAck(json: JSONObject): DropperSixStageAck {
         return DropperSixStageAck(
             msgId = json.optString("msgId"),
-            ok = json.optBoolean("ok"),
+            ok = when {
+                json.has("ok") -> json.optNullableBoolean("ok") == true
+                json.has("code") -> json.optNullableInt("code") == 0
+                else -> false
+            },
             stage = json.optNullableInt("stage"),
-            message = json.optString("msg").ifBlank { null }
+            message = json.optString("msg").ifBlank {
+                json.optString("message").ifBlank {
+                    json.optString("error").ifBlank { null }
+                }
+            }
         )
     }
 

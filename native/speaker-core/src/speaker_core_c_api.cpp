@@ -34,14 +34,6 @@ int translate_exception() {
 
 } // namespace
 
-struct TjiScAdpcmPacketizer {
-    int step_index = 0;
-};
-
-struct TjiScVoiceProcessor {
-    tji::speaker::VoiceProcessor processor;
-};
-
 extern "C" {
 
 void tji_sc_free(TjiScBuffer *buffer) {
@@ -51,255 +43,32 @@ void tji_sc_free(TjiScBuffer *buffer) {
     buffer->size = 0;
 }
 
-int tji_sc_encode_hadp(
+int tji_sc_encode_ogg_opus(
     const uint8_t *pcm16le,
     size_t pcm16le_size,
     const char *record_id,
-    int codec_id,
     int sample_rate,
     int channels,
     int packet_ms,
+    int bitrate,
     TjiScBuffer *out_file,
-    TjiScHadpMetadata *out_metadata
+    TjiScOpusMetadata *out_metadata
 ) {
     if (out_file == nullptr || out_metadata == nullptr || record_id == nullptr) {
         return TJI_SC_INVALID_ARGUMENT;
     }
     try {
-        const auto result = tji::speaker::encode_hadp(
+        const auto result = tji::speaker::encode_ogg_opus(
             pcm16le,
             pcm16le_size,
             record_id,
-            codec_id,
             sample_rate,
             channels,
-            packet_ms
+            packet_ms,
+            bitrate
         );
         *out_metadata = result.metadata;
         return copy_to_c_buffer(result.data, out_file);
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
-int tji_sc_decode_hadp_pcm16(
-    const uint8_t *hadp,
-    size_t hadp_size,
-    TjiScBuffer *out_pcm16le
-) {
-    if (out_pcm16le == nullptr) return TJI_SC_INVALID_ARGUMENT;
-    try {
-        return copy_to_c_buffer(tji::speaker::decode_hadp_pcm16(hadp, hadp_size), out_pcm16le);
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
-int tji_sc_packetize_adpcm_legacy(
-    const uint8_t *pcm16le,
-    size_t pcm16le_size,
-    uint32_t sequence,
-    uint32_t timestamp_samples,
-    TjiScBuffer *out_packet
-) {
-    if (out_packet == nullptr) return TJI_SC_INVALID_ARGUMENT;
-    try {
-        return copy_to_c_buffer(
-            tji::speaker::packetize_adpcm_legacy(pcm16le, pcm16le_size, sequence, timestamp_samples),
-            out_packet
-        );
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
-int tji_sc_packetize_adpcm_v2(
-    const uint8_t *pcm16le,
-    size_t pcm16le_size,
-    uint32_t sequence,
-    uint32_t timestamp_ms,
-    const char *device_id,
-    const char *task_id,
-    const char *talk_id,
-    int stream_type,
-    int is_last_packet,
-    TjiScBuffer *out_packet
-) {
-    if (out_packet == nullptr || device_id == nullptr || task_id == nullptr || talk_id == nullptr) {
-        return TJI_SC_INVALID_ARGUMENT;
-    }
-    try {
-        return copy_to_c_buffer(
-            tji::speaker::packetize_adpcm_v2(
-                pcm16le,
-                pcm16le_size,
-                sequence,
-                timestamp_ms,
-                device_id,
-                task_id,
-                talk_id,
-                stream_type,
-                is_last_packet != 0
-            ),
-            out_packet
-        );
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
-int tji_sc_adpcm_packetizer_create(TjiScAdpcmPacketizer **out_packetizer) {
-    if (out_packetizer == nullptr) return TJI_SC_INVALID_ARGUMENT;
-    try {
-        *out_packetizer = new TjiScAdpcmPacketizer();
-        return TJI_SC_OK;
-    } catch (...) {
-        *out_packetizer = nullptr;
-        return translate_exception();
-    }
-}
-
-void tji_sc_adpcm_packetizer_free(TjiScAdpcmPacketizer *packetizer) {
-    delete packetizer;
-}
-
-void tji_sc_adpcm_packetizer_reset(TjiScAdpcmPacketizer *packetizer) {
-    if (packetizer != nullptr) {
-        packetizer->step_index = 0;
-    }
-}
-
-int tji_sc_adpcm_packetizer_packetize_legacy(
-    TjiScAdpcmPacketizer *packetizer,
-    const uint8_t *pcm16le,
-    size_t pcm16le_size,
-    uint32_t sequence,
-    uint32_t timestamp_samples,
-    TjiScBuffer *out_packet
-) {
-    if (packetizer == nullptr || out_packet == nullptr) return TJI_SC_INVALID_ARGUMENT;
-    try {
-        auto result = tji::speaker::packetize_adpcm_legacy(
-            pcm16le,
-            pcm16le_size,
-            sequence,
-            timestamp_samples,
-            packetizer->step_index
-        );
-        packetizer->step_index = result.next_step_index;
-        return copy_to_c_buffer(result.packet, out_packet);
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
-int tji_sc_adpcm_packetizer_packetize_v2(
-    TjiScAdpcmPacketizer *packetizer,
-    const uint8_t *pcm16le,
-    size_t pcm16le_size,
-    uint32_t sequence,
-    uint32_t timestamp_ms,
-    const char *device_id,
-    const char *task_id,
-    const char *talk_id,
-    int stream_type,
-    int is_last_packet,
-    TjiScBuffer *out_packet
-) {
-    if (
-        packetizer == nullptr ||
-        out_packet == nullptr ||
-        device_id == nullptr ||
-        task_id == nullptr ||
-        talk_id == nullptr
-    ) {
-        return TJI_SC_INVALID_ARGUMENT;
-    }
-    try {
-        auto result = tji::speaker::packetize_adpcm_v2(
-            pcm16le,
-            pcm16le_size,
-            sequence,
-            timestamp_ms,
-            device_id,
-            task_id,
-            talk_id,
-            stream_type,
-            is_last_packet != 0,
-            packetizer->step_index
-        );
-        packetizer->step_index = result.next_step_index;
-        return copy_to_c_buffer(result.packet, out_packet);
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
-int tji_sc_process_voice(
-    const uint8_t *pcm16le,
-    size_t pcm16le_size,
-    int profile,
-    int sample_rate,
-    float bass_db,
-    float treble_db,
-    TjiScBuffer *out_pcm16le
-) {
-    if (out_pcm16le == nullptr) return TJI_SC_INVALID_ARGUMENT;
-    try {
-        return copy_to_c_buffer(
-            tji::speaker::process_voice(
-                pcm16le,
-                pcm16le_size,
-                profile,
-                sample_rate,
-                tji::speaker::VoiceToneSettings{bass_db, treble_db}
-            ),
-            out_pcm16le
-        );
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
-int tji_sc_voice_processor_create(TjiScVoiceProcessor **out_processor) {
-    if (out_processor == nullptr) return TJI_SC_INVALID_ARGUMENT;
-    try {
-        *out_processor = new TjiScVoiceProcessor();
-        return TJI_SC_OK;
-    } catch (...) {
-        *out_processor = nullptr;
-        return translate_exception();
-    }
-}
-
-void tji_sc_voice_processor_free(TjiScVoiceProcessor *processor) {
-    delete processor;
-}
-
-void tji_sc_voice_processor_reset(TjiScVoiceProcessor *processor) {
-    if (processor != nullptr) {
-        processor->processor.reset();
-    }
-}
-
-int tji_sc_voice_processor_process_frame(
-    TjiScVoiceProcessor *processor,
-    const uint8_t *pcm16le,
-    size_t pcm16le_size,
-    float bass_db,
-    float treble_db,
-    TjiScBuffer *out_pcm16le
-) {
-    if (processor == nullptr || out_pcm16le == nullptr) return TJI_SC_INVALID_ARGUMENT;
-    try {
-        return copy_to_c_buffer(
-            processor->processor.process_frame(
-                pcm16le,
-                pcm16le_size,
-                tji::speaker::VoiceToneSettings{bass_db, treble_db}
-            ),
-            out_pcm16le
-        );
     } catch (...) {
         return translate_exception();
     }
@@ -328,84 +97,6 @@ int tji_sc_build_standard_command_json(
                 timestamp_ms,
                 params_json == nullptr ? "" : params_json,
                 extra_json == nullptr ? "" : extra_json
-            ),
-            out_json
-        );
-    } catch (...) {
-        return translate_exception();
-    }
-}
-
-int tji_sc_build_record_download_command_json(
-    const char *device_id,
-    const char *msg_id,
-    const char *record_id,
-    const char *store_task_id,
-    const char *created_at,
-    const char *name,
-    const char *download_url,
-    int64_t file_size,
-    const char *crc32,
-    int duration_ms,
-    const char *codec,
-    int sample_rate,
-    int channels,
-    int packet_ms,
-    int frame_bytes,
-    int samples_per_frame,
-    int verify_only,
-    const char *verify_kind,
-    const char *expected_audio_crc32,
-    const char *expected_first_samples_json,
-    int temporary,
-    int visible,
-    int auto_play,
-    int playback_volume,
-    int has_playback_volume,
-    TjiScBuffer *out_json
-) {
-    if (
-        out_json == nullptr ||
-        device_id == nullptr ||
-        msg_id == nullptr ||
-        record_id == nullptr ||
-        store_task_id == nullptr ||
-        created_at == nullptr ||
-        name == nullptr ||
-        download_url == nullptr ||
-        crc32 == nullptr ||
-        codec == nullptr
-    ) {
-        return TJI_SC_INVALID_ARGUMENT;
-    }
-    try {
-        return copy_to_c_buffer(
-            tji::speaker::build_record_download_command_json(
-                device_id,
-                msg_id,
-                record_id,
-                store_task_id,
-                created_at,
-                name,
-                download_url,
-                file_size,
-                crc32,
-                duration_ms,
-                codec,
-                sample_rate,
-                channels,
-                packet_ms,
-                frame_bytes,
-                samples_per_frame,
-                verify_only != 0,
-                verify_kind == nullptr ? "" : verify_kind,
-                expected_audio_crc32 == nullptr ? "" : expected_audio_crc32,
-                expected_first_samples_json == nullptr ? "[]" : expected_first_samples_json,
-                temporary != 0,
-                visible != 0,
-                auto_play != 0,
-                playback_volume,
-                has_playback_volume != 0
             ),
             out_json
         );

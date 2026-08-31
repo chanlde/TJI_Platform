@@ -31,7 +31,7 @@ class SpeakerUserVisibleErrorTest {
     fun deviceProtocolDetailIsNotExposedToUi() {
         assertEquals(
             "语音文件处理失败，请重试",
-            "HADP CRC mismatch at frame 12".toSpeakerDeviceMessage()
+            "Ogg Opus CRC mismatch".toSpeakerDeviceMessage()
         )
     }
 }

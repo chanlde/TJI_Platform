@@ -8,22 +8,25 @@
 ## MCU 必须负责
 
 - 接收并执行播放 / 保存命令。
-- 通过下载 URL 获取 `.hadp` 文件。
+- 接收 48 kHz raw Opus 直接喊话分块，按顺序提交、ACK 并边收边播。
+- 通过下载 URL 获取 `.opus` 文件。
 - 上报播放、保存、录音列表和存储状态。
 - 返回命令 ACK。
 - 上报失败原因，避免 App 只能显示超时。
 
 ## 音频职责边界
 
-- App 负责本地 TTS、录音处理、ADPCM / HADP 封装和上传。
-- Qt 上位机后续复用同一 HADP 协议和 `speaker-core`，生成物必须与 App 一致。
-- MCU 负责下载、播放、保存和设备侧状态。
+- App 负责本地 TTS、录音处理和 Opus 编码；直接喊话由 App 可靠 UDP
+  直传，TTS/保存录音继续上传 Ogg/Opus。
+- MCU 的直接喊话负责 ACK/背压和 raw Opus 解码；文件链路负责边下载、
+  边解析 Ogg、边解码 Opus、边播放，以及持久化和设备侧状态。
 - 临时传输服务只负责文件中转，不做 TTS 合成。
-- HADP 字节布局、codec、CRC 和多音质参数见 [hadp-file-format.md](hadp-file-format.md)。
+- Ogg/Opus 受控参数和校验规则见 [ogg-opus-profile.md](ogg-opus-profile.md)。
 
 ## 联调清单
 
-- 文字转语音生成 `.hadp` 后，MCU 能下载并播放。
+- 文字转语音生成 `.opus` 后，MCU 能下载并播放。
+- 松手喊话无需 HTTP 文件，丢包、重复包、乱序和断网后能可靠恢复。
 - 保存录音后，MCU 能在录音列表返回新记录。
 - 删除或改名后，录音库刷新结果正确。
 - 存储空间不足时，MCU 返回可诊断状态。

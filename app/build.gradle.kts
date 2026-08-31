@@ -4,7 +4,23 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.detekt)
 
+}
+
+detekt {
+    buildUponDefaultConfig = false
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    baseline = rootProject.file("config/detekt/app-baseline.xml")
+    source.setFrom(files("src/main/java", "src/test/java"))
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+        sarif.required.set(true)
+    }
 }
 val APP_VERSION_CODE: String  by project
 val APP_VERSION_NAME: String by project
@@ -20,8 +36,49 @@ val amapApiKey: String = providers.gradleProperty("AMAP_API_KEY")
 
 fun configString(name: String, defaultValue: String): String =
     providers.gradleProperty(name)
+        .orElse(providers.environmentVariable(name))
         .orElse(localProperties.getProperty(name, defaultValue))
         .get()
+
+fun optionalConfigString(name: String): String? =
+    providers.gradleProperty(name)
+        .orElse(providers.environmentVariable(name))
+        .orElse(localProperties.getProperty(name, ""))
+        .get()
+        .trim()
+        .takeIf(String::isNotEmpty)
+
+val releaseStoreFilePath = optionalConfigString("TJI_RELEASE_STORE_FILE")
+val releasePasswordFilePath = optionalConfigString("TJI_RELEASE_PASSWORD_FILE")
+val releaseKeyAlias = optionalConfigString("TJI_RELEASE_KEY_ALIAS")
+val requireReleaseSigning = optionalConfigString("TJI_REQUIRE_RELEASE_SIGNING")
+    ?.equals("true", ignoreCase = true) == true
+val releaseSigningFields = listOf(
+    "TJI_RELEASE_STORE_FILE" to releaseStoreFilePath,
+    "TJI_RELEASE_PASSWORD_FILE" to releasePasswordFilePath,
+    "TJI_RELEASE_KEY_ALIAS" to releaseKeyAlias
+)
+val configuredReleaseSigningFields = releaseSigningFields.filter { it.second != null }
+if (configuredReleaseSigningFields.isNotEmpty() && configuredReleaseSigningFields.size != releaseSigningFields.size) {
+    val missing = releaseSigningFields.filter { it.second == null }.joinToString { it.first }
+    throw GradleException("Incomplete release signing configuration. Missing: $missing")
+}
+val releaseSigningConfigured = configuredReleaseSigningFields.size == releaseSigningFields.size
+if (requireReleaseSigning && !releaseSigningConfigured) {
+    throw GradleException(
+        "Release signing is required. Configure TJI_RELEASE_STORE_FILE, " +
+            "TJI_RELEASE_PASSWORD_FILE and TJI_RELEASE_KEY_ALIAS."
+    )
+}
+val releaseSigningPassword: String? = if (releaseSigningConfigured) {
+    val passwordFile = file(requireNotNull(releasePasswordFilePath))
+    require(passwordFile.isFile) { "Release signing password file does not exist: $passwordFile" }
+    passwordFile.readText().trim().also {
+        require(it.isNotEmpty()) { "Release signing password file is empty: $passwordFile" }
+    }
+} else {
+    null
+}
 
 android {
     namespace = "com.tji.device"
@@ -48,6 +105,17 @@ android {
         versionCode = APP_VERSION_CODE.toInt()
         versionName = APP_VERSION_NAME
 
+        buildConfigField(
+            "String",
+            "TJI_RELEASE_SIGNER_SHA256",
+            "\"${configString("TJI_RELEASE_SIGNER_SHA256", "0cfc0338819ac62f216737e20634c50bf702fdeb748d9a1a5f3713e22fb76567")}\""
+        )
+        buildConfigField(
+            "int",
+            "TJI_APP_UPDATE_PRODUCT_ID",
+            configString("TJI_APP_UPDATE_PRODUCT_ID", "-1")
+        )
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey
         ndk {
@@ -72,13 +140,33 @@ android {
         buildConfigField(
             "String",
             "TJI_SPEAKER_RELAY_TOKEN",
-            "\"${configString("TJI_SPEAKER_RELAY_TOKEN", "hydrolink")}\""
+            "\"${configString("TJI_SPEAKER_RELAY_TOKEN", "")}\""
         )
         buildConfigField(
             "String",
             "TJI_SPEAKER_REMOTE_BASE_URL",
             "\"${configString("TJI_SPEAKER_REMOTE_BASE_URL", "http://146.56.250.203:8008")}\""
         )
+        buildConfigField(
+            "int",
+            "TJI_DIRECT_LINK_PORT",
+            configString("TJI_DIRECT_LINK_PORT", "19010")
+        )
+    }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStoreFilePath))
+                storePassword = requireNotNull(releaseSigningPassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = releaseSigningPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -87,6 +175,9 @@ android {
             buildConfigField("boolean", "TJI_ENABLE_LOCAL_DEMO_DEVICES", "false")
         }
         release {
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             buildConfigField("boolean", "TJI_ENABLE_OTA_TEST_ENTRY", "false")
@@ -130,7 +221,8 @@ android {
                     .get()
                     .replace(Regex("[<>:\"/\\\\|?*]"), "_")
 
-                output.outputFileName = "TJI_Platform_${safeVersionName}.apk"
+                output.outputFileName =
+                    "TJI_Platform_${variant.name}_${safeVersionName}_${output.versionCode.get()}.apk"
             }
         }
     }
@@ -184,6 +276,7 @@ dependencies {
     implementation(libs.androidx.compose.animation)
     testImplementation(libs.junit)
     testImplementation(libs.json)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

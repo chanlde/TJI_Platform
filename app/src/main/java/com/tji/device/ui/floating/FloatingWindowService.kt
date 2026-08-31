@@ -90,7 +90,9 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
             this, FloatingWindowViewModelFactory(
                 productRuntimeRegistry = AppContainer.productRuntimeRegistry,
                 floatingQuickControlFor = AppContainer::floatingQuickControlFor,
-                sessionStore = AppContainer.appSessionStore
+                sessionStore = AppContainer.appSessionStore,
+                directFireBucketStateStore = AppContainer.directFireBucketState,
+                connectionModeStore = AppContainer.fireBucketConnectionMode
             )
         ).get(FloatingWindowViewModel::class.java)
     }
@@ -172,7 +174,7 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
                 ProductType.DropperSixStage -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
                 ProductType.RadioDetection -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
                 ProductType.Speaker -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
-                ProductType.BreakWindowProjectile -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
+                ProductType.BreakWindowProjectile -> WindowSize(width = dpToPx(360), height = dpToPx(520))
                 ProductType.Searchlight -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
             }
         }

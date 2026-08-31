@@ -1,10 +1,5 @@
 package com.tji.device.product.speaker.core
 
-import com.tji.device.product.speaker.audio.SpeakerAdpcmPacketizer
-import com.tji.device.product.speaker.audio.SpeakerHadpCodec
-import com.tji.device.product.speaker.audio.SpeakerToneSettings
-import com.tji.device.product.speaker.audio.SpeakerUdpStreamType
-
 object SpeakerCoreNative {
     private const val LIBRARY_NAME = "tji_speaker_core_jni"
 
@@ -19,95 +14,33 @@ object SpeakerCoreNative {
         return loaded
     }
 
-    fun encodeHadpOrNull(
+    fun encodeOggOpusOrNull(
         pcm16le: ByteArray,
         recordId: String,
-        codec: SpeakerHadpCodec,
-        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE,
-        channels: Int = SpeakerAdpcmPacketizer.CHANNELS,
-        packetMs: Int = SpeakerAdpcmPacketizer.PACKET_MS
+        sampleRate: Int,
+        channels: Int,
+        packetMs: Int,
+        bitrate: Int
     ): ByteArray? =
         runNative {
-            nativeEncodeHadp(
+            nativeEncodeOggOpus(
                 pcm16le,
                 recordId,
-                codec.id,
                 sampleRate,
                 channels,
-                packetMs
+                packetMs,
+                bitrate
             )
         }
 
-    fun packetizeLegacyOrNull(
-        pcm16le: ByteArray,
-        sequence: Int,
-        timestampSamples: Int
-    ): ByteArray? =
-        runNative {
-            nativePacketizeLegacy(pcm16le, sequence, timestampSamples)
-        }
-
-    fun decodeHadpPcm16OrNull(hadp: ByteArray): ByteArray? =
-        runNative {
-            nativeDecodeHadpPcm16(hadp)
-        }
-
-    fun packetizeV2OrNull(
-        pcm16le: ByteArray,
-        sequence: Int,
-        timestampMs: Int,
-        deviceId: String,
-        taskId: String,
-        talkId: String,
-        streamType: SpeakerUdpStreamType,
-        isLastPacket: Boolean
-    ): ByteArray? =
-        runNative {
-            nativePacketizeV2(
-                pcm16le,
-                sequence,
-                timestampMs,
-                deviceId,
-                taskId,
-                talkId,
-                streamType.code,
-                isLastPacket
-            )
-        }
-
-    fun createAdpcmPacketizerOrNull(): AdpcmPacketizer? {
-        val handle = runNativeValue { nativeCreatePacketizer() } ?: return null
-        if (handle == 0L) return null
-        return AdpcmPacketizer(handle)
-    }
-
-    fun processPushToTalkOrNull(
-        pcm16le: ByteArray,
-        toneSettings: SpeakerToneSettings
-    ): ByteArray? =
-        processVoiceOrNull(
-            pcm16le = pcm16le,
-            profile = VOICE_PROFILE_PUSH_TO_TALK,
-            sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE,
-            toneSettings = toneSettings
-        )
-
-    fun processPlaybackOrNull(
-        pcm16le: ByteArray,
-        toneSettings: SpeakerToneSettings,
-        sampleRate: Int
-    ): ByteArray? =
-        processVoiceOrNull(
-            pcm16le = pcm16le,
-            profile = VOICE_PROFILE_PLAYBACK,
-            sampleRate = sampleRate,
-            toneSettings = toneSettings
-        )
-
-    fun createVoiceProcessorOrNull(): VoiceProcessor? {
-        val handle = runNativeValue { nativeCreateVoiceProcessor() } ?: return null
-        if (handle == 0L) return null
-        return VoiceProcessor(handle)
+    fun createRealtimeOpusDecoderOrNull(
+        sampleRate: Int,
+        packetMs: Int
+    ): RealtimeOpusDecoder? {
+        val handle = runNativeValue {
+            nativeCreateRealtimeOpusDecoder(sampleRate, packetMs)
+        } ?: return null
+        return handle.takeIf { it != 0L }?.let(::RealtimeOpusDecoder)
     }
 
     fun buildStandardCommandJsonOrNull(
@@ -128,63 +61,6 @@ object SpeakerCoreNative {
                 timestampMs,
                 paramsJson,
                 extraJson
-            ).toString(Charsets.UTF_8)
-        }
-
-    fun buildRecordDownloadCommandJsonOrNull(
-        deviceId: String,
-        msgId: String,
-        recordId: String,
-        storeTaskId: String,
-        createdAt: String,
-        name: String,
-        downloadUrl: String,
-        fileSize: Long,
-        crc32: String,
-        durationMs: Int,
-        codec: String,
-        sampleRate: Int,
-        channels: Int,
-        packetMs: Int,
-        frameBytes: Int,
-        samplesPerFrame: Int,
-        verifyOnly: Boolean,
-        verifyKind: String,
-        expectedAudioCrc32: String,
-        expectedFirstSamplesJson: String,
-        temporary: Boolean,
-        visible: Boolean,
-        autoPlay: Boolean,
-        playbackVolume: Int,
-        hasPlaybackVolume: Boolean
-    ): String? =
-        runNativeValue {
-            nativeBuildRecordDownloadCommandJson(
-                deviceId,
-                msgId,
-                recordId,
-                storeTaskId,
-                createdAt,
-                name,
-                downloadUrl,
-                fileSize,
-                crc32,
-                durationMs,
-                codec,
-                sampleRate,
-                channels,
-                packetMs,
-                frameBytes,
-                samplesPerFrame,
-                verifyOnly,
-                verifyKind,
-                expectedAudioCrc32,
-                expectedFirstSamplesJson,
-                temporary,
-                visible,
-                autoPlay,
-                playbackVolume,
-                hasPlaybackVolume
             ).toString(Charsets.UTF_8)
         }
 
@@ -229,14 +105,6 @@ object SpeakerCoreNative {
             nativePrependSilencePcm16(pcm16le, durationMs, sampleRate)
         }
 
-    fun padPcm16ToFrameOrNull(
-        pcm16le: ByteArray,
-        frameBytes: Int
-    ): ByteArray? =
-        runNative {
-            nativePadPcm16ToFrame(pcm16le, frameBytes)
-        }
-
     fun decodeWavPcm16MonoOrNull(
         wav: ByteArray,
         targetSampleRate: Int
@@ -274,25 +142,6 @@ object SpeakerCoreNative {
             nativeParseMqttRecordEventJson(eventType, payloadJson).toString(Charsets.UTF_8)
         }
 
-    private fun processVoiceOrNull(
-        pcm16le: ByteArray,
-        profile: Int,
-        sampleRate: Int,
-        toneSettings: SpeakerToneSettings
-    ): ByteArray? {
-        val normalized = toneSettings.normalized()
-        if (normalized.requiresKotlinProcessor) return null
-        return runNative {
-            nativeProcessVoice(
-                pcm16le,
-                profile,
-                sampleRate,
-                normalized.bassDb,
-                normalized.trebleDb
-            )
-        }
-    }
-
     private inline fun runNative(block: () -> ByteArray): ByteArray? {
         if (!isAvailable()) return null
         return runCatching(block).getOrNull()
@@ -312,168 +161,46 @@ object SpeakerCoreNative {
         }.isSuccess
     }
 
-    class AdpcmPacketizer internal constructor(
+    class RealtimeOpusDecoder internal constructor(
         private var handle: Long
     ) {
-        fun reset() {
-            val current = currentHandle() ?: return
-            runCatching { nativeResetPacketizer(current) }
-        }
-
-        fun packetizeLegacyOrNull(
-            pcm16le: ByteArray,
-            sequence: Int,
-            timestampSamples: Int
-        ): ByteArray? {
-            val current = currentHandle() ?: return null
-            return runNative {
-                nativePacketizerPacketizeLegacy(current, pcm16le, sequence, timestampSamples)
+        fun decodeOrNull(payload: ByteArray): ByteArray? =
+            currentHandle()?.let { current ->
+                runNative { nativeDecodeRealtimeOpus(current, payload, false) }
             }
-        }
 
-        fun packetizeV2OrNull(
-            pcm16le: ByteArray,
-            sequence: Int,
-            timestampMs: Int,
-            deviceId: String,
-            taskId: String,
-            talkId: String,
-            streamType: SpeakerUdpStreamType,
-            isLastPacket: Boolean
-        ): ByteArray? {
-            val current = currentHandle() ?: return null
-            return runNative {
-                nativePacketizerPacketizeV2(
-                    current,
-                    pcm16le,
-                    sequence,
-                    timestampMs,
-                    deviceId,
-                    taskId,
-                    talkId,
-                    streamType.code,
-                    isLastPacket
-                )
+        fun concealOrNull(): ByteArray? =
+            currentHandle()?.let { current ->
+                runNative { nativeDecodeRealtimeOpus(current, ByteArray(0), true) }
             }
-        }
 
         fun close() {
-            val current = currentHandle() ?: return
-            runCatching { nativeFreePacketizer(current) }
-            handle = 0
-        }
-
-        private fun currentHandle(): Long? =
-            handle.takeIf { it != 0L }
-    }
-
-    class VoiceProcessor internal constructor(
-        private var handle: Long
-    ) {
-        fun reset() {
-            val current = currentHandle() ?: return
-            runCatching { nativeResetVoiceProcessor(current) }
-        }
-
-        fun processFrameOrNull(
-            pcm16le: ByteArray,
-            toneSettings: SpeakerToneSettings
-        ): ByteArray? {
-            val current = currentHandle() ?: return null
-            val normalized = toneSettings.normalized()
-            if (normalized.requiresKotlinProcessor) return null
-            return runNative {
-                nativeVoiceProcessorProcessFrame(
-                    current,
-                    pcm16le,
-                    normalized.bassDb,
-                    normalized.trebleDb
-                )
+            currentHandle()?.let { current ->
+                runCatching { nativeFreeRealtimeOpusDecoder(current) }
             }
+            handle = 0L
         }
 
-        fun close() {
-            val current = currentHandle() ?: return
-            runCatching { nativeFreeVoiceProcessor(current) }
-            handle = 0
-        }
-
-        private fun currentHandle(): Long? =
-            handle.takeIf { it != 0L }
+        private fun currentHandle(): Long? = handle.takeIf { it != 0L }
     }
 
-    private external fun nativeEncodeHadp(
+    private external fun nativeEncodeOggOpus(
         pcm16le: ByteArray,
         recordId: String,
-        codecId: Int,
         sampleRate: Int,
         channels: Int,
-        packetMs: Int
+        packetMs: Int,
+        bitrate: Int
     ): ByteArray
 
-    private external fun nativePacketizeLegacy(
-        pcm16le: ByteArray,
-        sequence: Int,
-        timestampSamples: Int
-    ): ByteArray
+    private external fun nativeCreateRealtimeOpusDecoder(sampleRate: Int, packetMs: Int): Long
 
-    private external fun nativeDecodeHadpPcm16(hadp: ByteArray): ByteArray
+    private external fun nativeFreeRealtimeOpusDecoder(handle: Long)
 
-    private external fun nativePacketizeV2(
-        pcm16le: ByteArray,
-        sequence: Int,
-        timestampMs: Int,
-        deviceId: String,
-        taskId: String,
-        talkId: String,
-        streamType: Int,
-        isLastPacket: Boolean
-    ): ByteArray
-
-    private external fun nativeCreatePacketizer(): Long
-
-    private external fun nativeFreePacketizer(handle: Long)
-
-    private external fun nativeResetPacketizer(handle: Long)
-
-    private external fun nativePacketizerPacketizeLegacy(
+    private external fun nativeDecodeRealtimeOpus(
         handle: Long,
-        pcm16le: ByteArray,
-        sequence: Int,
-        timestampSamples: Int
-    ): ByteArray
-
-    private external fun nativePacketizerPacketizeV2(
-        handle: Long,
-        pcm16le: ByteArray,
-        sequence: Int,
-        timestampMs: Int,
-        deviceId: String,
-        taskId: String,
-        talkId: String,
-        streamType: Int,
-        isLastPacket: Boolean
-    ): ByteArray
-
-    private external fun nativeProcessVoice(
-        pcm16le: ByteArray,
-        profile: Int,
-        sampleRate: Int,
-        bassDb: Float,
-        trebleDb: Float
-    ): ByteArray
-
-    private external fun nativeCreateVoiceProcessor(): Long
-
-    private external fun nativeFreeVoiceProcessor(handle: Long)
-
-    private external fun nativeResetVoiceProcessor(handle: Long)
-
-    private external fun nativeVoiceProcessorProcessFrame(
-        handle: Long,
-        pcm16le: ByteArray,
-        bassDb: Float,
-        trebleDb: Float
+        payload: ByteArray,
+        packetLost: Boolean
     ): ByteArray
 
     private external fun nativeBuildStandardCommandJson(
@@ -484,34 +211,6 @@ object SpeakerCoreNative {
         timestampMs: Long,
         paramsJson: String,
         extraJson: String
-    ): ByteArray
-
-    private external fun nativeBuildRecordDownloadCommandJson(
-        deviceId: String,
-        msgId: String,
-        recordId: String,
-        storeTaskId: String,
-        createdAt: String,
-        name: String,
-        downloadUrl: String,
-        fileSize: Long,
-        crc32: String,
-        durationMs: Int,
-        codec: String,
-        sampleRate: Int,
-        channels: Int,
-        packetMs: Int,
-        frameBytes: Int,
-        samplesPerFrame: Int,
-        verifyOnly: Boolean,
-        verifyKind: String,
-        expectedAudioCrc32: String,
-        expectedFirstSamplesJson: String,
-        temporary: Boolean,
-        visible: Boolean,
-        autoPlay: Boolean,
-        playbackVolume: Int,
-        hasPlaybackVolume: Boolean
     ): ByteArray
 
     private external fun nativeResamplePcm16(
@@ -533,11 +232,6 @@ object SpeakerCoreNative {
         pcm16le: ByteArray,
         durationMs: Int,
         sampleRate: Int
-    ): ByteArray
-
-    private external fun nativePadPcm16ToFrame(
-        pcm16le: ByteArray,
-        frameBytes: Int
     ): ByteArray
 
     private external fun nativeDecodeWavPcm16Mono(
@@ -562,7 +256,4 @@ object SpeakerCoreNative {
         payloadJson: String
     ): ByteArray
 
-    private const val VOICE_PROFILE_LIVE = 0
-    private const val VOICE_PROFILE_PUSH_TO_TALK = 1
-    private const val VOICE_PROFILE_PLAYBACK = 2
 }

@@ -15,7 +15,7 @@ class NetworkAuthRepository : AuthRepository {
         return TjiApiGateway.login(
             account = account,
             password = password,
-            productIds = ProductCatalog.definitions.map { it.productId }
+            productIds = ProductCatalog.enabledDefinitions.map { it.productId }
         ).also { response ->
             TjiApiGateway.authToken = response.data?.token?.takeIf { it.isNotBlank() }
         }

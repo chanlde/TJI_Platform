@@ -1,13 +1,11 @@
 package com.tji.device.product.speaker.viewmodel
 
-import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.common.runCatchingPreservingCancellation
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerLocalAudioPlayer
-import com.tji.device.product.speaker.audio.SpeakerToneSettings
-import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
+import com.tji.device.product.speaker.audio.SpeakerTtsEngine
 import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
-import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +18,7 @@ import kotlinx.coroutines.launch
  */
 internal class SpeakerTtsCoordinator(
     scope: CoroutineScope,
-    private val synthesizer: SpeakerTtsSynthesizer
+    private val synthesizer: SpeakerTtsEngine
 ) {
     private val voicePresetState = MutableStateFlow(SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET)
     val voicePreset: StateFlow<SpeakerTtsVoicePreset> = voicePresetState.asStateFlow()
@@ -47,7 +45,7 @@ internal class SpeakerTtsCoordinator(
                     voicePresetState.value = SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET
                 }
             }.onFailure { throwable ->
-                Log.w(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "TTS voice inspect failed", throwable)
+                SpeakerLogger.warn(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "TTS voice inspect failed", throwable)
                 availableVoicePresetsState.value =
                     listOf(SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET)
                 voicePresetState.value = SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET
@@ -75,13 +73,11 @@ internal class SpeakerTtsCoordinator(
 
     suspend fun preview(
         text: String,
-        sampleRate: Int,
-        toneSettings: SpeakerToneSettings
+        sampleRate: Int
     ) {
         val pcm = synthesize(text, sampleRate)
         require(pcm.isNotEmpty()) { "文字语音合成音频为空" }
-        val processed = SpeakerCoreAudioEngine.applyPlaybackTone(pcm, toneSettings, sampleRate)
-        audioPlayer.playPcm16le(processed, sampleRate)
+        audioPlayer.playPcm16le(pcm, sampleRate)
     }
 
     fun stopPreview() {

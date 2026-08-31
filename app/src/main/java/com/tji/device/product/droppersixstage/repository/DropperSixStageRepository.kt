@@ -4,7 +4,6 @@ import android.util.Log
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.droppersixstage.model.DropperSixStageAck
 import com.tji.device.product.droppersixstage.model.DropperSixStageCommand
-import com.tji.device.product.droppersixstage.model.DropperSixStageCommandCode
 import com.tji.device.product.droppersixstage.model.DropperSixStageState
 import com.tji.device.product.common.isOlderDeviceTimestamp
 import com.tji.device.product.droppersixstage.model.DropperStageState
@@ -149,44 +148,28 @@ class DropperSixStageControlRepo : DropperSixStageControlRepository {
 /**
  * 六段抛投控制协议。
  *
- * `cmd/cmdName/stage/open` 是当前产品协议；`module/action/hook/state` 暂时保留，
- * 兼容已经按早期联调字段实现的固件。
+ * FC100 FireDrop-6 MQTT V1 控制协议。
+ *
+ * 控制消息只包含协议定义的字段，不携带旧版联调使用的
+ * `cmd/cmdName/stage/open/ts/durationMs` 扩展字段。
  */
-internal fun DropperSixStageCommand.toDropperControlJson(
-    timestampMillis: Long = System.currentTimeMillis()
-): JSONObject = JSONObject().apply {
+internal fun DropperSixStageCommand.toDropperControlJson(): JSONObject = JSONObject().apply {
     put("v", 1)
     put("msgId", msgId)
-    put("ts", timestampMillis)
     put("module", "firedrop")
     when (this@toDropperControlJson) {
-        is DropperSixStageCommand.Ping -> {
-            put("cmd", DropperSixStageCommandCode.PING)
-            put("cmdName", "PING")
-            put("action", "query")
-        }
+        is DropperSixStageCommand.Ping -> put("action", "query")
+        is DropperSixStageCommand.Arm -> put("action", "arm")
+        is DropperSixStageCommand.Disarm -> put("action", "disarm")
         is DropperSixStageCommand.StageSwitch -> {
-            put("cmd", DropperSixStageCommandCode.SET_STAGE_SWITCH)
-            put("cmdName", "SET_STAGE_SWITCH")
-            put("stage", stage)
-            put("open", open)
             put("action", "set_hook")
             put("hook", stage)
             put("state", if (open) "open" else "close")
-            durationMs?.let {
-                put("durationMs", it)
-                put("duration", it)
-            }
+            if (open) durationMs?.let { put("duration", it) }
         }
         is DropperSixStageCommand.AllStages -> {
-            put("cmd", DropperSixStageCommandCode.SET_ALL_STAGES)
-            put("cmdName", "SET_ALL_STAGES")
-            put("open", open)
             put("action", if (open) "open_all" else "close_all")
-            durationMs?.let {
-                put("durationMs", it)
-                put("duration", it)
-            }
+            if (open) durationMs?.let { put("duration", it) }
         }
     }
 }

@@ -22,7 +22,7 @@ class SpeakerMqttInboundTest {
                 {
                   "name": "喊话器 01",
                   "playing": true,
-                  "currentFile": "welcome.hadp",
+                  "currentFile": "welcome.opus",
                   "volume": 124,
                   "servoAngle": -15,
                   "servo": {
@@ -41,6 +41,25 @@ class SpeakerMqttInboundTest {
                   },
                   "network": "wifi",
                   "lastError": "低电量",
+                  "feedback": {
+                    "active": true,
+                    "packetMs": 20,
+                    "aecActive": true,
+                    "aecFrames": 123,
+                    "aecReferenceMisses": 2,
+                    "aecReferenceBuilt": 126,
+                    "aecReferenceRead": 123,
+                    "aecReferenceDrops": 1,
+                    "aecReferenceQueued": 3,
+                    "aecInputLevelQ15": 2400,
+                    "aecOutputLevelQ15": 360,
+                    "aecReferenceLevelQ15": 5000,
+                    "aecResidualPermille": 150,
+                    "aecLastUs": 3100,
+                    "aecMaxUs": 4200,
+                    "aecDeadlineMisses": 0,
+                    "taskStackFreeWords": 912
+                  },
                   "ts": 1710000000000
                 }
                 """.trimIndent()
@@ -52,7 +71,7 @@ class SpeakerMqttInboundTest {
         assertEquals("喊话器 01", state.name)
         assertEquals(true, state.isOnline)
         assertEquals(true, state.playing)
-        assertEquals("welcome.hadp", state.currentFile)
+        assertEquals("welcome.opus", state.currentFile)
         assertEquals(100, state.volume)
         assertEquals(-15, state.servoAngle)
         assertEquals(45, state.servo?.currentAngle)
@@ -69,6 +88,22 @@ class SpeakerMqttInboundTest {
         assertEquals(false, state.servo?.infinite)
         assertEquals("wifi", state.network)
         assertEquals("低电量", state.lastError)
+        assertEquals(true, state.mcuFeedback?.aecActive)
+        assertEquals(20, state.mcuFeedback?.packetMs)
+        assertEquals(123L, state.mcuFeedback?.aecFrames)
+        assertEquals(2L, state.mcuFeedback?.aecReferenceMisses)
+        assertEquals(126L, state.mcuFeedback?.aecReferenceBuilt)
+        assertEquals(123L, state.mcuFeedback?.aecReferenceRead)
+        assertEquals(1L, state.mcuFeedback?.aecReferenceDrops)
+        assertEquals(3, state.mcuFeedback?.aecReferenceQueued)
+        assertEquals(2_400, state.mcuFeedback?.aecInputLevelQ15)
+        assertEquals(360, state.mcuFeedback?.aecOutputLevelQ15)
+        assertEquals(5_000, state.mcuFeedback?.aecReferenceLevelQ15)
+        assertEquals(150, state.mcuFeedback?.aecResidualPermille)
+        assertEquals(3_100L, state.mcuFeedback?.aecLastUs)
+        assertEquals(4_200L, state.mcuFeedback?.aecMaxUs)
+        assertEquals(0L, state.mcuFeedback?.aecDeadlineMisses)
+        assertEquals(912, state.mcuFeedback?.taskStackFreeWords)
         assertEquals(1710000000000L, state.timestamp)
 
         inbound.cleanup()
@@ -82,7 +117,7 @@ class SpeakerMqttInboundTest {
             serialNumber = SERIAL,
             eventType = "state",
             json = JSONObject(
-                """{"playing":true,"talking":true,"currentTalkId":"talk-1","currentFile":"alarm.hadp","volume":72,"servoAngle":45,"network":"wifi","ts":100}"""
+                """{"playing":true,"talking":true,"currentTalkId":"talk-1","currentFile":"alarm.opus","volume":72,"servoAngle":45,"network":"wifi","ts":100}"""
             )
         )
 
@@ -96,7 +131,7 @@ class SpeakerMqttInboundTest {
         assertEquals(true, state.playing)
         assertEquals(true, state.talking)
         assertEquals("talk-1", state.currentTalkId)
-        assertEquals("alarm.hadp", state.currentFile)
+        assertEquals("alarm.opus", state.currentFile)
         assertEquals(72, state.volume)
         assertEquals(45, state.servoAngle)
         assertEquals("wifi", state.network)
@@ -276,6 +311,7 @@ class SpeakerMqttInboundTest {
                   ],
                   "offset": -2,
                   "limit": 99,
+                  "nextOffset": 1,
                   "hasMore": true,
                   "ts": 1710000000100
                 }
@@ -289,6 +325,7 @@ class SpeakerMqttInboundTest {
         assertEquals("rec-2", state.records[1].name)
         assertEquals(-2, state.recordOffset)
         assertEquals(8, state.recordLimit)
+        assertEquals(1, state.recordNextOffset)
         assertEquals(2, state.recordTotal)
         assertEquals(true, state.recordHasMore)
         assertEquals(1710000000100L, state.timestamp)

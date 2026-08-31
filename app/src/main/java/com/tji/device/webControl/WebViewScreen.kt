@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import android.webkit.ValueCallback
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -33,6 +35,12 @@ fun WebViewScreen(
     onBack: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val allowedInitialUrl = remember(url) {
+        require(DeveloperWebAccessPolicy.isAllowed(url)) {
+            "Developer WebView URL is outside the LAN allowlist"
+        }
+        url
+    }
 
     // 文件选择回调变量
     var filePathCallback by remember { mutableStateOf<ValueCallback<Uri>?>(null) }
@@ -84,18 +92,35 @@ fun WebViewScreen(
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.allowFileAccess = true
-            settings.allowContentAccess = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.setSupportMultipleWindows(false)
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
             webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): Boolean = !DeveloperWebAccessPolicy.isAllowed(request.url.toString())
+
+                @Suppress("DEPRECATION")
+                override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean =
+                    !DeveloperWebAccessPolicy.isAllowed(url)
+
                 override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                    if (!DeveloperWebAccessPolicy.isAllowed(url)) {
+                        view.stopLoading()
+                        Log.w("WebView", "Blocked navigation outside LAN allowlist")
+                        return
+                    }
                     super.onPageStarted(view, url, favicon)
-                    Log.d("WebView", "Loading started: $url")
+                    Log.d("WebView", "Loading started: host=${DeveloperWebAccessPolicy.hostForLog(url)}")
                 }
 
                 override fun onPageFinished(view: WebView, url: String?) {
                     super.onPageFinished(view, url)
-                    Log.d("WebView", "Loading finished: $url")
+                    Log.d("WebView", "Loading finished: host=${DeveloperWebAccessPolicy.hostForLog(url)}")
                 }
             }
 
@@ -148,8 +173,8 @@ fun WebViewScreen(
             factory = { webView },
             modifier = Modifier.fillMaxSize()
         ) { view ->
-            if (view.url != url) {
-                view.loadUrl(url)
+            if (view.url != allowedInitialUrl) {
+                view.loadUrl(allowedInitialUrl)
             }
         }
 

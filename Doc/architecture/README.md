@@ -7,7 +7,10 @@
 1. [platform-architecture.md](platform-architecture.md)：平台模块边界、运行时、MQTT 和依赖装配。
 2. [product-line-onboarding.md](product-line-onboarding.md)：新增产品线的接入规则和检查清单。
 3. [class-responsibility-guide.md](class-responsibility-guide.md)：核心类职责和调用关系。
-4. [2026-06-docs-reorganization/](2026-06-docs-reorganization/README.md)：本轮文档架构优化记录。
+4. [adr-002-session-and-mqtt-state-ownership.md](adr-002-session-and-mqtt-state-ownership.md)：会话状态与 MQTT 真值归属。
+5. [adr-003-standalone-speaker-relay-credential.md](adr-003-standalone-speaker-relay-credential.md)：独立喊话 Relay 的部署期凭证。
+6. [adr-004-product-control-state-machine-and-lifecycle.md](adr-004-product-control-state-machine-and-lifecycle.md)：产品控制状态机与页面任务生命周期。
+7. [2026-06-docs-reorganization/](2026-06-docs-reorganization/README.md)：本轮文档架构优化记录。
 
 ## 写作规则
 

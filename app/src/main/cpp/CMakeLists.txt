@@ -17,6 +17,7 @@ add_library(tji_speaker_core_jni SHARED
 target_link_libraries(tji_speaker_core_jni
     PRIVATE
         tji_speaker_core
+        Opus::opus
         log
 )
 

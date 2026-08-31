@@ -77,7 +77,7 @@ fun SwitchItem(
                     )
                     StatusChip(switch.isOnline)
                     BatteryIndicator(
-                        voltage = switch.inputVoltage,
+                        percentage = switch.batteryPercentage,
                         iconSize = 20.dp
                     )
                 }

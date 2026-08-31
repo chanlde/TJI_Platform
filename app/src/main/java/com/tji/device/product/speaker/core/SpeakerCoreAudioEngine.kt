@@ -1,17 +1,12 @@
 package com.tji.device.product.speaker.core
 
-import android.util.Log
-import com.tji.device.product.speaker.audio.SpeakerAdpcmPacketizer
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
-import com.tji.device.product.speaker.audio.SpeakerHadpCodec
-import com.tji.device.product.speaker.audio.SpeakerHadpEncoder
-import com.tji.device.product.speaker.audio.SpeakerHadpFile
-import com.tji.device.product.speaker.audio.SpeakerToneSettings
-import com.tji.device.product.speaker.audio.SpeakerVoiceProcessor
+import com.tji.device.product.speaker.audio.SpeakerFeedbackProtocol
+import com.tji.device.product.speaker.audio.SpeakerOpusFile
+import com.tji.device.product.speaker.audio.SpeakerPttProcessor
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
-import java.util.zip.CRC32
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -24,91 +19,48 @@ import kotlin.math.sin
  * 自动回退到原 Kotlin 实现。
  */
 object SpeakerCoreAudioEngine {
+    /** 松手后对完整手机麦克风录音执行噪声估计、软门限和防爆音处理。 */
+    fun processPushToTalk(pcm16le: ByteArray, sampleRate: Int): ByteArray {
+        val processed = SpeakerPttProcessor.process(pcm16le, sampleRate)
+        return processed
+    }
+
+    fun hasPushToTalkSpeech(pcm16le: ByteArray, sampleRate: Int): Boolean =
+        SpeakerPttProcessor.analyze(pcm16le, sampleRate).hasSpeech
+
     /**
-     * 将 PCM16 语音编码成 HADP 文件。
+     * 将 PCM16 语音编码成标准 Ogg Opus 文件。
      *
      * @param pcm 单声道小端 PCM16 字节。
-     * @param recordId 写入 HADP 文件头/元数据的稳定 id。
-     * @param codec HADP 音频负载编码；文件播放/存储通常使用 PCM16。
+     * @param recordId 写入 OpusTags 的稳定 id。
      * @param sampleRate PCM 采样率，单位 Hz。
      * @param channels 声道数；当前喊话器链路期望单声道。
-     * @param packetMs 写入 HADP 元数据的逻辑帧时长。
+     * @param packetMs Opus 包时长，正式链路固定为 20 ms。
      */
-    fun encodeHadp(
+    fun encodeOggOpus(
         pcm: ByteArray,
         recordId: String,
-        codec: SpeakerHadpCodec = SpeakerAudioConfig.Codec.DEFAULT_HADP_CODEC,
-        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE,
-        channels: Int = SpeakerAdpcmPacketizer.CHANNELS,
-        packetMs: Int = SpeakerAdpcmPacketizer.PACKET_MS
-    ): SpeakerHadpFile {
-        SpeakerCoreNative.encodeHadpOrNull(
+        sampleRate: Int,
+        channels: Int = 1,
+        packetMs: Int = SpeakerOpusFile.DEFAULT_PACKET_MS,
+        bitrate: Int = SpeakerOpusFile.DEFAULT_BITRATE
+    ): SpeakerOpusFile {
+        val data = SpeakerCoreNative.encodeOggOpusOrNull(
             pcm16le = pcm,
             recordId = recordId,
-            codec = codec,
             sampleRate = sampleRate,
             channels = channels,
-            packetMs = packetMs
-        )?.let { data ->
-            logNative("hadp", "native recordId=$recordId codec=${codec.wireName} bytes=${data.size}")
-            return data.toHadpFile(codec)
-        }
-        logFallback("hadp", "recordId=$recordId codec=${codec.wireName}")
-        return SpeakerHadpEncoder.encode(
-            pcm = pcm,
-            recordId = recordId,
-            codec = codec,
+            packetMs = packetMs,
+            bitrate = bitrate
+        ) ?: error("当前版本必须加载 speaker-core/libopus，无法生成 Ogg Opus")
+        return SpeakerOpusFile.fromEncoded(
+            data = data,
+            pcmBytes = pcm.size - pcm.size % 2,
             sampleRate = sampleRate,
             channels = channels,
-            packetMs = packetMs
+            packetMs = packetMs,
+            bitrate = bitrate
         )
-    }
-
-    /**
-     * 在 HADP 编码前处理完整的按住说话录音。
-     *
-     * 会应用面向整段录音的清理：松手尾部保护、可选噪声门、清晰度增强/均衡、
-     * 自动增益/压缩、限幅、尾部淡出和尾部静音。
-     *
-     * @param pcm16le 从 AudioRecord 录到的单声道小端 PCM16。
-     * @param toneSettings 用户低频/高频 EQ 设置。
-     */
-    fun processPushToTalk(
-        pcm16le: ByteArray,
-        toneSettings: SpeakerToneSettings = SpeakerToneSettings(),
-        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE
-    ): ByteArray {
-        if (sampleRate == SpeakerAdpcmPacketizer.SAMPLE_RATE) {
-            SpeakerCoreNative.processPushToTalkOrNull(pcm16le, toneSettings)?.let { processed ->
-                logNative("voice-ptt", "sampleRate=$sampleRate in=${pcm16le.size} out=${processed.size}")
-                return processed
-            }
-        }
-        logFallback("voice-ptt", "sampleRate=$sampleRate bytes=${pcm16le.size}")
-        return SpeakerVoiceProcessor.processPushToTalk(pcm16le, toneSettings, sampleRate)
-    }
-
-    /**
-     * 在编码或发送前处理合成音/文件播放 PCM。
-     *
-     * 播放路径会跳过麦克风清理，但会应用用户 EQ、TTS 低通、响度归一、
-     * 限幅、尾部淡出和尾部静音。
-     *
-     * @param pcm16le 单声道小端 PCM16 播放音频。
-     * @param toneSettings 用户低频/高频 EQ 设置。
-     * @param sampleRate PCM 采样率，单位 Hz。
-     */
-    fun applyPlaybackTone(
-        pcm16le: ByteArray,
-        toneSettings: SpeakerToneSettings = SpeakerToneSettings(),
-        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE
-    ): ByteArray {
-        SpeakerCoreNative.processPlaybackOrNull(pcm16le, toneSettings, sampleRate)?.let { processed ->
-            logNative("voice-playback", "sampleRate=$sampleRate in=${pcm16le.size} out=${processed.size}")
-            return processed
-        }
-        logFallback("voice-playback", "sampleRate=$sampleRate bytes=${pcm16le.size}")
-        return SpeakerVoiceProcessor.applyPlaybackTone(pcm16le, toneSettings, sampleRate)
     }
 
     /**
@@ -123,10 +75,8 @@ object SpeakerCoreAudioEngine {
     ): ByteArray {
         if (sourceSampleRate == targetSampleRate) return pcm16le
         SpeakerCoreNative.resamplePcm16OrNull(pcm16le, sourceSampleRate, targetSampleRate)?.let { resampled ->
-            logNative("resample", "$sourceSampleRate->$targetSampleRate in=${pcm16le.size} out=${resampled.size}")
             return resampled
         }
-        logFallback("resample", "$sourceSampleRate->$targetSampleRate bytes=${pcm16le.size}")
         return pcm16le.resamplePcm16Fallback(sourceSampleRate, targetSampleRate)
     }
 
@@ -144,8 +94,8 @@ object SpeakerCoreAudioEngine {
         frequencyHz: Int,
         durationMs: Int,
         amplitude: Float,
-        sampleRate: Int = SpeakerAdpcmPacketizer.SAMPLE_RATE,
-        minDurationMs: Int = SpeakerAdpcmPacketizer.PACKET_MS,
+        sampleRate: Int = SpeakerFeedbackProtocol.SAMPLE_RATE,
+        minDurationMs: Int = SpeakerFeedbackProtocol.PACKET_MS,
         fadeMs: Int = SpeakerAudioConfig.Tone.FADE_MS
     ): ByteArray {
         SpeakerCoreNative.generateTonePcm16OrNull(
@@ -156,10 +106,8 @@ object SpeakerCoreAudioEngine {
             fadeMs = fadeMs,
             amplitude = amplitude
         )?.let { tone ->
-            logNative("tone", "frequencyHz=$frequencyHz durationMs=$durationMs bytes=${tone.size}")
             return tone
         }
-        logFallback("tone", "frequencyHz=$frequencyHz durationMs=$durationMs")
         return generateTonePcm16Fallback(frequencyHz, durationMs, amplitude, sampleRate, minDurationMs, fadeMs)
     }
 
@@ -174,10 +122,8 @@ object SpeakerCoreAudioEngine {
         sampleRate: Int
     ): ByteArray {
         SpeakerCoreNative.prependSilencePcm16OrNull(pcm16le, durationMs, sampleRate)?.let { padded ->
-            logNative("prepend-silence", "durationMs=$durationMs sampleRate=$sampleRate in=${pcm16le.size} out=${padded.size}")
             return padded
         }
-        logFallback("prepend-silence", "durationMs=$durationMs sampleRate=$sampleRate bytes=${pcm16le.size}")
         val silenceBytes = sampleRate.coerceAtLeast(1) *
             durationMs.coerceAtLeast(0) /
             MILLIS_PER_SECOND *
@@ -185,28 +131,6 @@ object SpeakerCoreAudioEngine {
         val alignedSize = pcm16le.size - (pcm16le.size % BYTES_PER_PCM16_SAMPLE)
         val alignedInput = if (alignedSize == pcm16le.size) pcm16le else pcm16le.copyOf(alignedSize)
         return if (silenceBytes <= 0) alignedInput else ByteArray(silenceBytes) + alignedInput
-    }
-
-    /**
-     * 用静音补齐 PCM16，直到字节数成为 [frameBytes] 的整数倍。
-     *
-     * 这样可以保持 UDP/HADP 分帧对齐，避免最后出现半帧 ADPCM。
-     */
-    fun padPcm16ToFrame(
-        pcm16le: ByteArray,
-        frameBytes: Int
-    ): ByteArray {
-        SpeakerCoreNative.padPcm16ToFrameOrNull(pcm16le, frameBytes)?.let { padded ->
-            logNative("pad-frame", "frameBytes=$frameBytes in=${pcm16le.size} out=${padded.size}")
-            return padded
-        }
-        logFallback("pad-frame", "frameBytes=$frameBytes bytes=${pcm16le.size}")
-        val safeFrameBytes = frameBytes.coerceAtLeast(BYTES_PER_PCM16_SAMPLE)
-        val alignedSize = pcm16le.size - (pcm16le.size % BYTES_PER_PCM16_SAMPLE)
-        val remainder = alignedSize % safeFrameBytes
-        if (remainder == 0 && alignedSize == pcm16le.size) return pcm16le
-        val outputSize = alignedSize + if (remainder == 0) 0 else safeFrameBytes - remainder
-        return pcm16le.copyOf(outputSize)
     }
 
     /**
@@ -219,67 +143,14 @@ object SpeakerCoreAudioEngine {
         targetSampleRate: Int
     ): ByteArray {
         SpeakerCoreNative.decodeWavPcm16MonoOrNull(wav, targetSampleRate)?.let { pcm ->
-            logNative("wav-pcm16-mono", "targetSampleRate=$targetSampleRate in=${wav.size} out=${pcm.size}")
             return pcm
         }
-        logFallback("wav-pcm16-mono", "targetSampleRate=$targetSampleRate bytes=${wav.size}")
         return wav.decodeWavPcm16MonoFallback(targetSampleRate)
     }
 
-    private fun ByteArray.toHadpFile(defaultCodec: SpeakerHadpCodec): SpeakerHadpFile {
-        require(size >= HADP_HEADER_BYTES) { "HADP 文件头不完整" }
-        require(copyOfRange(0, 4).contentEquals(HADP_MAGIC)) { "HADP magic 无效" }
-        val header = ByteBuffer.wrap(this, 0, HADP_HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
-        header.position(8)
-        val codecId = header.short.toInt() and 0xFFFF
-        header.position(12)
-        val sampleRate = header.int
-        val channels = header.short.toInt() and 0xFFFF
-        val packetMs = header.short.toInt() and 0xFFFF
-        val frameBytes = header.short.toInt() and 0xFFFF
-        val samplesPerFrame = header.short.toInt() and 0xFFFF
-        val frameCount = header.int
-        val audioBytes = header.int
-        val durationMs = header.int
-        val audioCrc32 = header.int.toLong() and UINT32_MASK
-        val codec = SpeakerHadpCodec.entries.firstOrNull { it.id == codecId } ?: defaultCodec
-        return SpeakerHadpFile(
-            data = this,
-            codec = codec,
-            sampleRate = sampleRate,
-            channels = channels,
-            packetMs = packetMs,
-            frameBytes = frameBytes,
-            samplesPerFrame = samplesPerFrame,
-            fileSize = size,
-            crc32 = formatCrc32(crc32()),
-            durationMs = durationMs,
-            frameCount = frameCount,
-            audioBytes = audioBytes,
-            audioCrc32 = formatCrc32(audioCrc32)
-        )
-    }
-
-    private fun ByteArray.crc32(): Long =
-        CRC32().apply { update(this@crc32) }.value
-
-    private fun formatCrc32(value: Long): String =
-        "0x%08X".format(Locale.US, value)
-
-    private fun logNative(path: String, detail: String) {
-        Log.d(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=native path=$path $detail")
-    }
-
-    private fun logFallback(path: String, detail: String) {
-        Log.d(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=fallback path=$path $detail")
-    }
-
-    private const val HADP_HEADER_BYTES = 128
     private const val BYTES_PER_PCM16_SAMPLE = 2
     private const val MILLIS_PER_SECOND = 1_000
     private const val TWO_PI = 2.0 * PI
-    private const val UINT32_MASK = 0xFFFF_FFFFL
-    private val HADP_MAGIC = byteArrayOf('H'.code.toByte(), 'A'.code.toByte(), 'D'.code.toByte(), 'P'.code.toByte())
 
     private fun ByteArray.resamplePcm16Fallback(sourceSampleRate: Int, targetSampleRate: Int): ByteArray {
         require(sourceSampleRate > 0 && targetSampleRate > 0) { "录音重采样参数无效" }
@@ -345,7 +216,7 @@ object SpeakerCoreAudioEngine {
         require(String(this, 8, 4, Charsets.US_ASCII) == "WAVE") { "TTS 音频格式不是 WAVE" }
 
         var channels = 1
-        var sampleRate = SpeakerAdpcmPacketizer.SAMPLE_RATE
+        var sampleRate = SpeakerFeedbackProtocol.SAMPLE_RATE
         var bitsPerSample = 16
         var dataOffset = -1
         var dataSize = 0

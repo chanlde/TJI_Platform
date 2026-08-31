@@ -15,6 +15,7 @@ if __package__:
         parse_formal_v2_route,
         parse_target_device_id,
         route_feedback_packet,
+        route_playback_packet,
         serve,
     )
 else:
@@ -28,6 +29,7 @@ else:
         parse_formal_v2_route,
         parse_target_device_id,
         route_feedback_packet,
+        route_playback_packet,
         serve,
     )
 
@@ -40,24 +42,27 @@ class UdpRelayServerTest(unittest.TestCase):
         session_id: bytes = b"FEEDBACK_TEWNHZDBK_1",
         talk_id: bytes = b"LISTEN_TEWNHZDBK_1",
         sample_rate: int = 16000,
+        packet_ms: int = 20,
         flags: int = AUDIO_STREAM_FLAG_FEEDBACK,
+        codec: int = 2,
     ) -> bytes:
-        payload = b"\x00" * 324
+        sample_count = sample_rate * packet_ms // 1000
+        payload = b"\x00" * 40
         header_len = 28 + len(device_id) + len(session_id) + len(talk_id)
         header = struct.pack(
             "<HBBHHIIHBBHHBBBB",
             0xA55A,
             2,
-            1,
+            codec,
             header_len,
             flags,
             7,
-            640,
+            sample_count,
             sample_rate,
             1,
-            40,
+            packet_ms,
             len(payload),
-            640 if sample_rate == 16000 else 320,
+            sample_count,
             len(device_id),
             len(session_id),
             len(talk_id),
@@ -65,24 +70,24 @@ class UdpRelayServerTest(unittest.TestCase):
         )
         return header + device_id + session_id + talk_id + payload
 
-    def test_parse_formal_v2_record_store_header(self):
+    def test_parse_formal_v2_opus_header(self):
         device_id = b"TEWNHZDBK"
         session_id = b"STORE_TEWNHZDBK_1"
         talk_id = b"REC_TEWNHZDBK_1"
-        payload = b"\x00" * 164
+        payload = b"\x00" * 40
         header_len = 28 + len(device_id) + len(session_id) + len(talk_id)
         header = struct.pack(
             "<HBBHHIIHBBHHBBBB",
             0xA55A,
             2,
-            1,
+            2,
             header_len,
             0x03,
             0,
             0,
-            8000,
+            16000,
             1,
-            40,
+            20,
             len(payload),
             320,
             len(device_id),
@@ -101,15 +106,15 @@ class UdpRelayServerTest(unittest.TestCase):
         talk_id = b"REC_TEWNHZDBK_1"
         packet = bytearray()
         packet += b"\x5a\xa5"
-        packet += bytes([2, 1])
+        packet += bytes([2, 2])
         packet += (0).to_bytes(4, "little")
         packet += (0).to_bytes(4, "little")
-        packet += (8000).to_bytes(2, "little")
-        packet += bytes([1, 1])
-        packet += (164).to_bytes(2, "little")
+        packet += (16000).to_bytes(2, "little")
+        packet += bytes([1, 20])
+        packet += (40).to_bytes(2, "little")
         packet += (320).to_bytes(2, "little")
         packet += bytes([1, len(device_id), len(session_id), len(talk_id), 0])
-        packet += device_id + session_id + talk_id + b"\x00" * 164
+        packet += device_id + session_id + talk_id + b"\x00" * 40
 
         self.assertEqual(parse_target_device_id(bytes(packet)), "TEWNHZDBK")
 
@@ -119,6 +124,44 @@ class UdpRelayServerTest(unittest.TestCase):
         self.assertEqual(route.device_id, "TEWNHZDBK")
         self.assertEqual(route.sample_rate, 16000)
         self.assertTrue(route.is_feedback)
+
+    def test_removed_codec_is_rejected_by_formal_and_routing_parsers(self):
+        packet = self.formal_packet(codec=1)
+        self.assertIsNone(parse_formal_v2_route(packet))
+        self.assertIsNone(parse_target_device_id(packet))
+
+    def test_parse_24khz_20ms_playback_route(self):
+        route = parse_formal_v2_route(
+            self.formal_packet(sample_rate=24000, packet_ms=20, flags=0x0004)
+        )
+        self.assertIsNotNone(route)
+        self.assertEqual(route.sample_rate, 24000)
+
+    def test_parse_48khz_opus_media_route(self):
+        route = parse_formal_v2_route(
+            self.formal_packet(sample_rate=48000, packet_ms=20, flags=0x0014)
+        )
+        self.assertIsNotNone(route)
+        self.assertEqual(route.sample_rate, 48000)
+        self.assertFalse(route.is_feedback)
+
+    def test_media_transfer_golden_vector_matches_app_and_mcu_contract(self):
+        packet = bytes.fromhex(
+            "5aa50202370015000000000000000000803e011459000000090a0800"
+            "5435544e42464d345153544f52455f544553545245435f54455354"
+            "4d54523101025000000001001d0000004331bf5c28000000c05d0000"
+            "4331bf5c0414010054657374323032362d30372d33305430303a3030"
+            "3a30305a4f6767530000000000000000000000000000000000000000"
+            "0000010111"
+        )
+        route = parse_formal_v2_route(packet)
+        self.assertIsNotNone(route)
+        self.assertEqual(route.device_id, "T5TNBFM4Q")
+        self.assertEqual(route.session_id, "STORE_TEST")
+        self.assertEqual(route.talk_id, "REC_TEST")
+        self.assertEqual(route.flags, 0x0015)
+        self.assertEqual(route.sample_rate, 16000)
+        self.assertEqual(route.packet_ms, 20)
 
     def test_parse_app_listener_registration(self):
         command = parse_app_listener_command(
@@ -212,6 +255,57 @@ class UdpRelayServerTest(unittest.TestCase):
             )
         )
 
+    def test_playback_routes_only_from_registered_app_endpoint(self):
+        class FakeSocket:
+            def __init__(self):
+                self.sent = []
+
+            def sendto(self, packet, addr):
+                self.sent.append((packet, addr))
+
+        now = 100.0
+        device_addr = ("10.0.0.2", 5000)
+        app_addr = ("10.0.0.3", 40000)
+        attacker_addr = ("10.0.0.99", 40001)
+        packet = self.formal_packet(
+            session_id=b"PLAY_TEWNHZDBK_1",
+            talk_id=b"PTT_TEWNHZDBK_1",
+            sample_rate=48000,
+            flags=0x0014,
+        )
+        route = parse_formal_v2_route(packet)
+        devices = {
+            "TEWNHZDBK": DeviceState(
+                addr=device_addr,
+                device_id="TEWNHZDBK",
+                last_seen=now,
+            )
+        }
+        key = listener_key("TEWNHZDBK", "PLAY_TEWNHZDBK_1", "PTT_TEWNHZDBK_1")
+        listeners = {
+            key: ListenerState(
+                addr=app_addr,
+                device_id=key[0],
+                session_id=key[1],
+                talk_id=key[2],
+                last_seen=now,
+            )
+        }
+        sock = FakeSocket()
+
+        self.assertFalse(
+            route_playback_packet(
+                sock, packet, attacker_addr, route, devices, listeners, now, 30.0, 0.0
+            )
+        )
+        self.assertEqual(sock.sent, [])
+        self.assertTrue(
+            route_playback_packet(
+                sock, packet, app_addr, route, devices, listeners, now, 30.0, 0.0
+            )
+        )
+        self.assertEqual(sock.sent, [(packet, device_addr)])
+
     def test_real_udp_socket_routes_playback_and_feedback_both_directions(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as reservation:
             reservation.bind(("127.0.0.1", 0))
@@ -266,7 +360,18 @@ class UdpRelayServerTest(unittest.TestCase):
                     session_id=b"PLAY_TEWNHZDBK_1",
                     talk_id=b"PTT_TEWNHZDBK_1",
                     sample_rate=8000,
+                    packet_ms=40,
                     flags=0x0004,
+                )
+                app.sendto(
+                    b"HLAPP1 hydrolink TEWNHZDBK PLAY_TEWNHZDBK_1 PTT_TEWNHZDBK_1",
+                    relay_addr,
+                )
+                ack, _ = app.recvfrom(4096)
+                self.assertEqual(
+                    ack,
+                    b"HLAPPACK1 REGISTERED TEWNHZDBK "
+                    b"PLAY_TEWNHZDBK_1 PTT_TEWNHZDBK_1",
                 )
                 app.sendto(playback_packet, relay_addr)
                 forwarded_playback, _ = device.recvfrom(4096)

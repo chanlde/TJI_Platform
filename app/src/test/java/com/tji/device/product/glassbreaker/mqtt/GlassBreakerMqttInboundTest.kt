@@ -41,7 +41,7 @@ class GlassBreakerMqttInboundTest {
 
         val state = repo.devices.value.single()
         assertEquals("T0000001", state.serialNumber)
-        assertEquals(false, state.isOnline)
+        assertEquals(true, state.isOnline)
         assertEquals(GlassBreakerLockState.Unlocked, state.lockState)
         assertEquals(2, state.selectedChannel)
         assertEquals(true, state.laserEnabled)
@@ -53,7 +53,7 @@ class GlassBreakerMqttInboundTest {
     }
 
     @Test
-    fun statusDoesNotMarkDeviceOnline() = runBlocking {
+    fun liveStatusMarksDeviceOnline() = runBlocking {
         val repo = GlassBreakerRepo()
         val inbound = GlassBreakerMqttInbound(repo)
 
@@ -64,7 +64,7 @@ class GlassBreakerMqttInboundTest {
         )
 
         val state = repo.devices.value.single()
-        assertEquals(false, state.isOnline)
+        assertEquals(true, state.isOnline)
         assertEquals(GlassBreakerLockState.Unlocked, state.lockState)
         assertEquals(1, state.selectedChannel)
     }
@@ -92,7 +92,7 @@ class GlassBreakerMqttInboundTest {
     }
 
     @Test
-    fun retainedLifecycleOnlineCannotReviveOfflineDevice() = runBlocking {
+    fun retainedLifecycleOnlineRestoresCurrentBrokerState() = runBlocking {
         val repo = GlassBreakerRepo()
         val inbound = GlassBreakerMqttInbound(repo)
 
@@ -109,8 +109,48 @@ class GlassBreakerMqttInboundTest {
         )
 
         val state = repo.devices.value.single()
+        assertEquals(true, state.isOnline)
+        assertEquals(12345L, state.timestamp)
+    }
+
+    @Test
+    fun staleRetainedLifecycleOnlineCannotOverrideNewerOffline() = runBlocking {
+        val repo = GlassBreakerRepo()
+        val inbound = GlassBreakerMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "offline",
+            json = JSONObject("""{"type":"offline","deviceId":"T0000001","ts":12000}""")
+        )
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "online",
+            json = JSONObject("""{"type":"online","deviceId":"T0000001","ts":11000}"""),
+            isRetained = true
+        )
+
+        val state = repo.devices.value.single()
         assertEquals(false, state.isOnline)
         assertEquals(12000L, state.timestamp)
+    }
+
+    @Test
+    fun retainedStatusRestoresTelemetryWithoutInventingOnlineState() = runBlocking {
+        val repo = GlassBreakerRepo()
+        val inbound = GlassBreakerMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"online":true,"lockState":"unlocked","selectedChannel":1}"""),
+            isRetained = true
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(GlassBreakerLockState.Unlocked, state.lockState)
+        assertEquals(1, state.selectedChannel)
     }
 
     @Test

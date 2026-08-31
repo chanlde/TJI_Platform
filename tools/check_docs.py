@@ -68,8 +68,13 @@ ALLOWED_DOC_TOP_LEVEL_DIRECTORIES = {
 }
 
 NON_PRODUCT_CODE_DIRS = {
+    "common",
     "ota",
     "runtime",
+}
+
+PRODUCT_TYPE_DIRECTORY_ALIASES = {
+    "breakwindowprojectile": "glassbreaker",
 }
 
 OLD_DOC_REFERENCES = (
@@ -390,8 +395,9 @@ def check_product_line_docs(context: DocCheckContext = DEFAULT_CONTEXT) -> list[
 
     for product_type, product_code, display_name in parse_product_catalog_definitions(context.product_catalog):
         expected_dir_name = product_type.lower()
-        doc_dir = product_root / expected_dir_name
-        app_dir = app_product_root / expected_dir_name
+        actual_dir_name = PRODUCT_TYPE_DIRECTORY_ALIASES.get(expected_dir_name, expected_dir_name)
+        doc_dir = product_root / actual_dir_name
+        app_dir = app_product_root / actual_dir_name
         if doc_dir.exists() or app_dir.exists():
             continue
 

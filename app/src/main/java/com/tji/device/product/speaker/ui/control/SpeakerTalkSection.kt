@@ -23,6 +23,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,14 +41,8 @@ import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedback
 import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedbackStatus
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophonePhase
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophoneState
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_CYCLES
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_HOLD_MS
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_INTERVAL_MS
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_ANGLE
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_SPEED_DPS
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_CYCLES
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_HOLD_MS
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_INTERVAL_MS
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_ANGLE
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_SPEED_DPS
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
@@ -187,8 +182,10 @@ internal fun PushToTalkCard(
 @Composable
 internal fun McuMicrophoneMonitorCard(
     state: SpeakerMcuMicrophoneState,
+    volumeGain: Float,
     enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit
+    onEnabledChange: (Boolean) -> Unit,
+    onVolumeGainChange: (Float) -> Unit
 ) {
     SpeakerCard(title = "设备麦克风监听") {
         Row(
@@ -196,51 +193,79 @@ internal fun McuMicrophoneMonitorCard(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+            Text(
+                text = "开启监听",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SpeakerFg,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = when (state.phase) {
-                        SpeakerMcuMicrophonePhase.Idle -> "未监听"
-                        SpeakerMcuMicrophonePhase.Connecting -> "正在连接设备"
-                        SpeakerMcuMicrophonePhase.Listening -> "正在监听现场声音"
-                        SpeakerMcuMicrophonePhase.Stopping -> "正在停止"
-                        SpeakerMcuMicrophonePhase.Failed -> "监听失败"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (state.phase == SpeakerMcuMicrophonePhase.Failed) {
-                        SpeakerDanger
-                    } else {
-                        SpeakerFg
-                    },
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "声音来自 MCU 板载 PDM 麦克风，不会调用手机麦克风",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = SpeakerMuted
-                )
-            }
+            )
             TjiMiniSwitch(
                 checked = state.enabled,
                 enabled = enabled && state.phase != SpeakerMcuMicrophonePhase.Stopping,
                 onCheckedChange = onEnabledChange
             )
         }
-        if (state.phase == SpeakerMcuMicrophonePhase.Listening) {
-            val impairedPackets = state.packetsConcealed + state.packetsRejected
-            SpeakerSoftRow(
-                label = "监听质量",
-                value = if (impairedPackets == 0L) "良好" else "网络有波动",
-                valueColor = if (impairedPackets == 0L) SpeakerSuccess else SpeakerWarning
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "监听音量",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SpeakerMuted
+            )
+            Text(
+                text = "${(volumeGain.coerceIn(0f, 1f) * 100f).roundToInt()}%",
+                style = MaterialTheme.typography.bodyMedium,
+                color = SpeakerFg,
+                fontWeight = FontWeight.SemiBold
             )
         }
+        TjiControlSlider(
+            value = volumeGain.coerceIn(0f, 1f),
+            onValueChange = onVolumeGainChange,
+            valueRange = 0f..1f,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth()
+        )
         state.error?.let {
             Text(
                 text = it,
                 style = MaterialTheme.typography.labelMedium,
                 color = SpeakerDanger
+            )
+        }
+    }
+}
+
+@Composable
+internal fun McuMicrophoneCaptureCard(
+    isCapturing: Boolean,
+    enabled: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
+    SpeakerCard(title = "回传录音分析") {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            SpeakerActionButton(
+                text = "开始录音",
+                enabled = enabled && !isCapturing,
+                color = SpeakerAccent,
+                onClick = onStart,
+                modifier = Modifier.weight(1f)
+            )
+            SpeakerActionButton(
+                text = "停止录音",
+                enabled = enabled && isCapturing,
+                color = SpeakerDanger,
+                soft = !isCapturing,
+                onClick = onStop,
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -322,27 +347,12 @@ internal fun OutputVolumeCard(
 internal fun SpeakerServoAngleCard(
     angle: Float,
     speedDps: Float,
-    minAngle: Float,
-    maxAngle: Float,
-    cycles: Float,
-    holdMs: Float,
-    stepAngle: Float,
-    intervalMs: Float,
     reportedAngle: Int?,
     servoState: SpeakerServoState?,
     enabled: Boolean,
     onAngleChange: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
-    onMinAngleChange: (Float) -> Unit,
-    onMaxAngleChange: (Float) -> Unit,
-    onCyclesChange: (Float) -> Unit,
-    onHoldMsChange: (Float) -> Unit,
-    onStepAngleChange: (Float) -> Unit,
-    onIntervalMsChange: (Float) -> Unit,
-    onApply: () -> Unit,
-    onTest: () -> Unit,
-    onSweepTest: () -> Unit,
-    onStepTest: () -> Unit
+    onApply: () -> Unit
 ) {
     var sliderAngle by remember { mutableFloatStateOf(angle.coerceIn(SPEAKER_SERVO_MIN_ANGLE.toFloat(), SPEAKER_SERVO_MAX_ANGLE.toFloat())) }
     var sliderSpeed by remember { mutableFloatStateOf(speedDps.coerceIn(SPEAKER_SERVO_MIN_SPEED_DPS.toFloat(), SPEAKER_SERVO_MAX_SPEED_DPS.toFloat())) }
@@ -439,110 +449,18 @@ internal fun SpeakerServoAngleCard(
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SpeakerActionButton(
-                text = "应用设置",
-                enabled = enabled,
-                color = SpeakerAccent,
-                onClick = onApply,
-                modifier = Modifier.weight(1f)
-            )
-            SpeakerActionButton(
-                text = "测试舵机",
-                enabled = enabled,
-                color = SpeakerWarning,
-                onClick = onTest,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        SpeakerServoRangeControls(
-            minAngle = minAngle,
-            maxAngle = maxAngle,
-            cycles = cycles,
-            holdMs = holdMs,
-            stepAngle = stepAngle,
-            intervalMs = intervalMs,
+        SpeakerActionButton(
+            text = "应用设置",
             enabled = enabled,
-            onMinAngleChange = onMinAngleChange,
-            onMaxAngleChange = onMaxAngleChange,
-            onCyclesChange = onCyclesChange,
-            onHoldMsChange = onHoldMsChange,
-            onStepAngleChange = onStepAngleChange,
-            onIntervalMsChange = onIntervalMsChange
+            color = SpeakerAccent,
+            onClick = onApply,
+            modifier = Modifier.fillMaxWidth()
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SpeakerActionButton(
-                text = "往返测试",
-                enabled = enabled,
-                color = SpeakerWarning,
-                soft = true,
-                onClick = onSweepTest,
-                modifier = Modifier.weight(1f)
-            )
-            SpeakerActionButton(
-                text = "分段测试",
-                enabled = enabled,
-                color = SpeakerWarning,
-                soft = true,
-                onClick = onStepTest,
-                modifier = Modifier.weight(1f)
-            )
-        }
         SpeakerSoftRow(
             label = "设备上报",
             value = servoStatusText(reportedAngle, servoState)
         )
     }
-}
-
-@Composable
-private fun SpeakerServoRangeControls(
-    minAngle: Float,
-    maxAngle: Float,
-    cycles: Float,
-    holdMs: Float,
-    stepAngle: Float,
-    intervalMs: Float,
-    enabled: Boolean,
-    onMinAngleChange: (Float) -> Unit,
-    onMaxAngleChange: (Float) -> Unit,
-    onCyclesChange: (Float) -> Unit,
-    onHoldMsChange: (Float) -> Unit,
-    onStepAngleChange: (Float) -> Unit,
-    onIntervalMsChange: (Float) -> Unit
-) {
-    SpeakerServoMiniSlider("最小角度", "${minAngle.roundToInt()}°", minAngle, SPEAKER_SERVO_MIN_ANGLE.toFloat()..SPEAKER_SERVO_MAX_ANGLE.toFloat(), enabled, onMinAngleChange)
-    SpeakerServoMiniSlider("最大角度", "${maxAngle.roundToInt()}°", maxAngle, SPEAKER_SERVO_MIN_ANGLE.toFloat()..SPEAKER_SERVO_MAX_ANGLE.toFloat(), enabled, onMaxAngleChange)
-    SpeakerServoMiniSlider("往返次数", if (cycles.roundToInt() == 0) "连续" else "${cycles.roundToInt()}次", cycles, SPEAKER_SERVO_MIN_CYCLES.toFloat()..SPEAKER_SERVO_MAX_CYCLES.toFloat(), enabled, onCyclesChange)
-    SpeakerServoMiniSlider("端点停留", "${holdMs.roundToInt()}ms", holdMs, SPEAKER_SERVO_MIN_HOLD_MS.toFloat()..SPEAKER_SERVO_MAX_HOLD_MS.toFloat(), enabled, onHoldMsChange)
-    SpeakerServoMiniSlider("步进角度", "${stepAngle.roundToInt()}°", stepAngle, 1f..SPEAKER_SERVO_MAX_ANGLE.toFloat(), enabled, onStepAngleChange)
-    SpeakerServoMiniSlider("步进间隔", "${intervalMs.roundToInt()}ms", intervalMs, SPEAKER_SERVO_MIN_INTERVAL_MS.toFloat()..SPEAKER_SERVO_MAX_INTERVAL_MS.toFloat(), enabled, onIntervalMsChange)
-}
-
-@Composable
-private fun SpeakerServoMiniSlider(
-    label: String,
-    valueText: String,
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    enabled: Boolean,
-    onValueChange: (Float) -> Unit
-) {
-    Row(
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(text = label, style = MaterialTheme.typography.bodySmall, color = SpeakerMuted)
-        Text(text = valueText, style = MaterialTheme.typography.bodySmall, color = SpeakerFg, fontWeight = FontWeight.Bold)
-    }
-    TjiControlSlider(
-        value = value.coerceIn(valueRange.start, valueRange.endInclusive),
-        onValueChange = { onValueChange(it.coerceIn(valueRange.start, valueRange.endInclusive)) },
-        valueRange = valueRange,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth()
-    )
 }
 
 private fun servoStatusText(reportedAngle: Int?, servoState: SpeakerServoState?): String {
@@ -621,6 +539,12 @@ internal fun PushToTalkButton(
     onCancel: () -> Unit
 ) {
     val active = mode in activeModes
+    val latestEnabled by rememberUpdatedState(enabled)
+    val latestHasMicPermission by rememberUpdatedState(hasMicPermission)
+    val latestRequestPermission by rememberUpdatedState(requestPermission)
+    val latestOnPress by rememberUpdatedState(onPress)
+    val latestOnRelease by rememberUpdatedState(onRelease)
+    val latestOnCancel by rememberUpdatedState(onCancel)
     val buttonSize = if (compact) 112.dp else 184.dp
     val stageHeight = if (compact) 176.dp else 275.dp
     val scale by animateFloatAsState(
@@ -646,23 +570,25 @@ internal fun PushToTalkButton(
                 .clip(CircleShape)
                 .background(if (active) SpeakerDanger else SpeakerAccent)
                 .border(1.dp, if (active) SpeakerDanger else SpeakerAccent, CircleShape)
-                .pointerInput(enabled, hasMicPermission) {
+                // 录音开始后 mode 会变为 Recording，父级随即把 enabled 改为 false。
+                // 手势监听不能以这些动态状态作为 key，否则重组会取消正在等待松手的 onPress。
+                .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = {
-                            if (!enabled) return@detectTapGestures
-                            if (!hasMicPermission) {
-                                requestPermission()
+                            if (!latestEnabled) return@detectTapGestures
+                            if (!latestHasMicPermission) {
+                                latestRequestPermission()
                                 return@detectTapGestures
                             }
                             var releaseHandled = false
-                            onPress()
+                            latestOnPress()
                             try {
                                 val released = tryAwaitRelease()
                                 releaseHandled = true
-                                if (released) onRelease() else onCancel()
+                                if (released) latestOnRelease() else latestOnCancel()
                             } finally {
                                 if (!releaseHandled) {
-                                    onCancel()
+                                    latestOnCancel()
                                 }
                             }
                         }

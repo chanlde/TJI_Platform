@@ -9,6 +9,8 @@ header with deviceId, and are routed only to the matching online device.
 from __future__ import annotations
 
 import argparse
+import logging
+import os
 import socket
 import struct
 import time
@@ -23,7 +25,8 @@ APP_ACK_PREFIX = "HLAPPACK1"
 STATUS_PREFIX = b"HLSTAT1 "
 SPEAKER_AUDIO_MAGIC_LE = b"\x5a\xa5"
 SPEAKER_AUDIO_V2 = 2
-SPEAKER_AUDIO_CODEC_IMA_ADPCM = 1
+SPEAKER_AUDIO_CODEC_PCM16LE = 0
+SPEAKER_AUDIO_CODEC_OPUS = 2
 SPEAKER_AUDIO_V2_FORMAL_FIXED_HEADER = 28
 SPEAKER_AUDIO_V2_LEGACY_ROUTING_HEADER = 24
 SPEAKER_AUDIO_V2_TALK_ROUTING_HEADER = 25
@@ -31,6 +34,7 @@ DEFAULT_LISTEN_HOST = "0.0.0.0"
 DEFAULT_LISTEN_PORT = 7000
 DEFAULT_TIMEOUT_S = 30.0
 AUDIO_STREAM_FLAG_FEEDBACK = 0x0008
+LOGGER = logging.getLogger("speaker_relay")
 
 
 @dataclass
@@ -179,6 +183,11 @@ def parse_target_device_id(packet: bytes) -> str | None:
         return None
     if packet[0:2] != SPEAKER_AUDIO_MAGIC_LE or packet[2] != SPEAKER_AUDIO_V2:
         return None
+    if packet[3] not in {
+        SPEAKER_AUDIO_CODEC_PCM16LE,
+        SPEAKER_AUDIO_CODEC_OPUS,
+    }:
+        return None
 
     formal_header_len = struct.unpack_from("<H", packet, 4)[0]
     if (
@@ -219,9 +228,12 @@ def parse_formal_v2_route(packet: bytes) -> AudioRoute | None:
         _reserved,
     ) = struct.unpack_from("<HBBHHIIHBBHHBBBB", packet, 0)
 
-    if version != SPEAKER_AUDIO_V2 or codec != SPEAKER_AUDIO_CODEC_IMA_ADPCM:
+    if version != SPEAKER_AUDIO_V2 or codec not in {
+        SPEAKER_AUDIO_CODEC_PCM16LE,
+        SPEAKER_AUDIO_CODEC_OPUS,
+    }:
         return None
-    if sample_rate not in {8000, 16000} or channels != 1 or packet_ms != 40:
+    if sample_rate not in {8000, 12000, 16000, 24000, 48000} or channels != 1 or packet_ms not in {20, 40}:
         return None
     if device_len <= 0:
         return None
@@ -324,7 +336,12 @@ def route_feedback_packet(
 ) -> bool:
     device = devices.get(route.device_id)
     if device is None or not device.online(now, timeout_s) or device.addr != addr:
-        print(f"drop feedback packet: invalid device source id={route.device_id} addr={addr[0]}:{addr[1]}")
+        LOGGER.warning(
+            "drop feedback packet: invalid device source id=%s addr=%s:%d",
+            route.device_id,
+            addr[0],
+            addr[1],
+        )
         return False
     key = listener_key(route.device_id, route.session_id, route.talk_id)
     listener = listeners.get(key)
@@ -334,6 +351,44 @@ def route_feedback_packet(
         return False
     sock.sendto(packet, listener.addr)
     listener.forwarded_packets += 1
+    return True
+
+
+def route_playback_packet(
+    sock: socket.socket,
+    packet: bytes,
+    addr: tuple[str, int],
+    route: AudioRoute,
+    devices: dict[str, DeviceState],
+    listeners: dict[tuple[str, str, str], ListenerState],
+    now: float,
+    timeout_s: float,
+    started: float,
+) -> bool:
+    """Route App playback only from the endpoint that registered this route."""
+    key = listener_key(route.device_id, route.session_id, route.talk_id)
+    listener = listeners.get(key)
+    if (
+        listener is None
+        or not listener.online(now, timeout_s)
+        or listener.addr != addr
+    ):
+        if listener is not None and not listener.online(now, timeout_s):
+            listeners.pop(key, None)
+        LOGGER.warning(
+            "drop playback packet: unregistered source id=%s addr=%s:%d",
+            route.device_id,
+            addr[0],
+            addr[1],
+        )
+        return False
+    state = devices.get(route.device_id)
+    if state is None or not state.online(now, timeout_s):
+        if state is not None:
+            state.dropped_packets += 1
+        return False
+    listener.last_seen = now
+    forward_packet(sock, packet, state, now, started)
     return True
 
 
@@ -350,17 +405,15 @@ def forward_packet(
     if (state.forwarded_packets % 100) == 0:
         age = now - state.last_seen
         uptime = now - started
-        print(
-            "routed forwarded=%d dropped=%d id=%s device=%s:%d age=%.1fs uptime=%.0fs"
-            % (
-                state.forwarded_packets,
-                state.dropped_packets,
-                state.device_id,
-                state.addr[0],
-                state.addr[1],
-                age,
-                uptime,
-            )
+        LOGGER.info(
+            "routed forwarded=%d dropped=%d id=%s device=%s:%d age=%.1fs uptime=%.0fs",
+            state.forwarded_packets,
+            state.dropped_packets,
+            state.device_id,
+            state.addr[0],
+            state.addr[1],
+            age,
+            uptime,
         )
 
 
@@ -384,8 +437,8 @@ def serve(
             sock.settimeout(0.1)
         if ready_event is not None:
             ready_event.set()
-        print(f"UDP relay listening on {listen_host}:{listen_port}")
-        print('Device heartbeat format: "HLDEV1 <token> <device_id>"')
+        LOGGER.info("UDP relay listening on %s:%d", listen_host, listen_port)
+        LOGGER.info('device heartbeat format: "HLDEV1 <token> <device_id>"')
 
         while stop_event is None or not stop_event.is_set():
             try:
@@ -432,7 +485,12 @@ def serve(
                 state.rx_heartbeats += 1
                 latest_device_id = device_id
                 if (state.rx_heartbeats % 10) == 1:
-                    print(f"device online id={device_id} addr={addr[0]}:{addr[1]}")
+                    LOGGER.info(
+                        "device online id=%s addr=%s:%d",
+                        device_id,
+                        addr[0],
+                        addr[1],
+                    )
                 continue
 
             formal_route = parse_formal_v2_route(packet)
@@ -449,16 +507,18 @@ def serve(
                 )
                 continue
 
-            target_device_id = parse_target_device_id(packet)
-            if target_device_id:
-                state = devices.get(target_device_id)
-                if state is not None and state.online(now, timeout_s):
-                    forward_packet(sock, packet, state, now, started)
-                else:
-                    if state is not None:
-                        state.dropped_packets += 1
-                    if state is None or (state.dropped_packets % 50) == 1:
-                        print(f"drop routed packet: target offline id={target_device_id}")
+            if formal_route is not None:
+                route_playback_packet(
+                    sock=sock,
+                    packet=packet,
+                    addr=addr,
+                    route=formal_route,
+                    devices=devices,
+                    listeners=listeners,
+                    now=now,
+                    timeout_s=timeout_s,
+                    started=started,
+                )
                 continue
 
             if latest_device_id and latest_device_id in devices:
@@ -467,16 +527,29 @@ def serve(
             else:
                 dropped = 1
             if (dropped % 50) == 1:
-                print("drop packet: missing or invalid target deviceId")
+                LOGGER.warning("drop packet: missing or invalid target deviceId")
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--listen", default=DEFAULT_LISTEN_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_LISTEN_PORT)
-    parser.add_argument("--token", default="hydrolink")
+    parser.add_argument(
+        "--token",
+        default=os.environ.get("TJI_SPEAKER_RELAY_TOKEN", ""),
+        help="shared relay token (or set TJI_SPEAKER_RELAY_TOKEN)",
+    )
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     args = parser.parse_args()
+    if not args.token or any(character.isspace() for character in args.token):
+        parser.error(
+            "--token or TJI_SPEAKER_RELAY_TOKEN must provide a nonblank token "
+            "without whitespace"
+        )
 
     serve(args.listen, args.port, args.token, args.timeout)
 

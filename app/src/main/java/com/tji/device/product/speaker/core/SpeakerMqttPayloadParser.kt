@@ -3,6 +3,7 @@ package com.tji.device.product.speaker.core
 import com.tji.device.product.speaker.model.SpeakerAck
 import com.tji.device.product.speaker.model.SpeakerAudioDiagnostics
 import com.tji.device.product.speaker.model.SpeakerDeviceState
+import com.tji.device.product.speaker.model.SpeakerMcuFeedbackDiagnostics
 import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.model.SpeakerRecordEvent
 import com.tji.device.product.speaker.model.SpeakerServoState
@@ -58,6 +59,7 @@ object SpeakerMqttPayloadParser {
             network = optString("network").ifBlank { null },
             outputQuality = optString("outputQuality").ifBlank { null },
             audio = parseAudioDiagnostics(),
+            mcuFeedback = parseMcuFeedbackDiagnostics(),
             timestamp = optNullableLong("timestamp")
         )
 
@@ -72,15 +74,19 @@ object SpeakerMqttPayloadParser {
             timestamp = optNullableLong("timestamp")
         )
 
-    private fun JSONObject.toRecordList(): ParsedRecordList =
-        ParsedRecordList(
-            records = parseRecords(optJSONArray("records")),
-            offset = optInt("offset", 0),
+    private fun JSONObject.toRecordList(): ParsedRecordList {
+        val records = parseRecords(optJSONArray("records"))
+        val offset = optInt("offset", 0)
+        return ParsedRecordList(
+            records = records,
+            offset = offset,
             limit = optInt("limit", 8).coerceIn(1, 8),
-            total = optInt("total", optJSONArray("records")?.length() ?: 0),
+            total = optInt("total", records.size),
+            nextOffset = optInt("nextOffset", offset + records.size),
             hasMore = optBoolean("hasMore", false),
             timestamp = optNullableLong("timestamp")
         )
+    }
 
     private fun JSONObject.toStorageStatus(): SpeakerStorageStatus =
         SpeakerStorageStatus(
@@ -156,6 +162,11 @@ object SpeakerMqttPayloadParser {
                 fallback = current?.outputQuality
             ),
             audio = if (json.has("audio")) json.parseAudioDiagnostics() else current?.audio,
+            mcuFeedback = if (json.has("feedback")) {
+                json.parseMcuFeedbackDiagnostics()
+            } else {
+                current?.mcuFeedback
+            },
             timestamp = json.optNullableLong("ts")
         )
 
@@ -193,6 +204,29 @@ object SpeakerMqttPayloadParser {
         )
     }
 
+    private fun JSONObject.parseMcuFeedbackDiagnostics(): SpeakerMcuFeedbackDiagnostics? {
+        val feedback = optJSONObject("feedback") ?: return null
+        return SpeakerMcuFeedbackDiagnostics(
+            active = feedback.optBoolean("active", false),
+            packetMs = feedback.optInt("packetMs", 0),
+            aecActive = feedback.optBoolean("aecActive", false),
+            aecFrames = feedback.optLong("aecFrames", 0L),
+            aecReferenceMisses = feedback.optLong("aecReferenceMisses", 0L),
+            aecReferenceBuilt = feedback.optLong("aecReferenceBuilt", 0L),
+            aecReferenceRead = feedback.optLong("aecReferenceRead", 0L),
+            aecReferenceDrops = feedback.optLong("aecReferenceDrops", 0L),
+            aecReferenceQueued = feedback.optInt("aecReferenceQueued", 0),
+            aecInputLevelQ15 = feedback.optInt("aecInputLevelQ15", 0),
+            aecOutputLevelQ15 = feedback.optInt("aecOutputLevelQ15", 0),
+            aecReferenceLevelQ15 = feedback.optInt("aecReferenceLevelQ15", 0),
+            aecResidualPermille = feedback.optInt("aecResidualPermille", 0),
+            aecLastUs = feedback.optLong("aecLastUs", 0L),
+            aecMaxUs = feedback.optLong("aecMaxUs", 0L),
+            aecDeadlineMisses = feedback.optLong("aecDeadlineMisses", 0L),
+            taskStackFreeWords = feedback.optInt("taskStackFreeWords", 0)
+        )
+    }
+
     private fun JSONObject.toServoState(): SpeakerServoState =
         SpeakerServoState(
             currentAngle = optNullableInt("currentAngle"),
@@ -227,6 +261,7 @@ object SpeakerMqttPayloadParser {
             offset = json.optInt("offset", 0),
             limit = json.optInt("limit", 8).coerceIn(1, 8),
             total = json.optInt("total", json.optInt("count", records.size)),
+            nextOffset = json.optInt("nextOffset", json.optInt("offset", 0) + records.size),
             hasMore = json.optBoolean("hasMore", false),
             timestamp = json.optNullableLong("ts")
         )
@@ -291,10 +326,10 @@ object SpeakerMqttPayloadParser {
                         name = item.optString("name").ifBlank { recordId },
                         fileSize = item.optLong("fileSize", 0L),
                         durationMs = item.optLong("durationMs", 0L),
-                        codec = item.optString("codec").ifBlank { "ima_adpcm" },
-                        sampleRate = item.optInt("sampleRate", 8_000),
+                        codec = item.optString("codec").ifBlank { "opus" },
+                        sampleRate = item.optInt("sampleRate", 16_000),
                         channels = item.optInt("channels", 1),
-                        packetMs = item.optInt("packetMs", 40),
+                        packetMs = item.optInt("packetMs", 20),
                         crc32 = item.optString("crc32").ifBlank { null },
                         createdAt = item.optString("createdAt").ifBlank { null },
                         createdMs = item.optNullableLong("createdMs"),
@@ -311,6 +346,7 @@ data class ParsedRecordList(
     val offset: Int,
     val limit: Int,
     val total: Int,
+    val nextOffset: Int,
     val hasMore: Boolean,
     val timestamp: Long?
 )

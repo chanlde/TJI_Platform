@@ -139,7 +139,7 @@ class ProductOtaFormattersTest {
                 latestVersion = "V1.0.1",
                 downloadUrl = "https://example.com/fw.bin",
                 fileSize = 1024,
-                sha256 = "abc123"
+                sha256 = VALID_SHA256
             ).isStartable()
         )
         assertFalse(
@@ -147,7 +147,7 @@ class ProductOtaFormattersTest {
                 latestVersion = "",
                 downloadUrl = "https://example.com/fw.bin",
                 fileSize = 1024,
-                sha256 = "abc123"
+                sha256 = VALID_SHA256
             ).isStartable()
         )
         assertFalse(
@@ -155,7 +155,7 @@ class ProductOtaFormattersTest {
                 latestVersion = "V1.0.1",
                 downloadUrl = "",
                 fileSize = 1024,
-                sha256 = "abc123"
+                sha256 = VALID_SHA256
             ).isStartable()
         )
         assertFalse(
@@ -163,7 +163,7 @@ class ProductOtaFormattersTest {
                 latestVersion = "V1.0.1",
                 downloadUrl = "https://example.com/fw.bin",
                 fileSize = null,
-                sha256 = "abc123"
+                sha256 = VALID_SHA256
             ).isStartable()
         )
         assertFalse(
@@ -182,17 +182,18 @@ class ProductOtaFormattersTest {
 
         assertNull(resolveProductOtaDownloadUrl(null, baseUrl))
         assertNull(resolveProductOtaDownloadUrl("  ", baseUrl))
+        assertNull(resolveProductOtaDownloadUrl(" https://cdn.example.com/fw.bin ", baseUrl))
         assertEquals(
-            "https://cdn.example.com/fw.bin",
-            resolveProductOtaDownloadUrl(" https://cdn.example.com/fw.bin ", baseUrl)
-        )
-        assertEquals(
-            "https://ota.example.com/releases/fw.bin",
+            "https://ota.example.com/fw.bin",
             resolveProductOtaDownloadUrl("/fw.bin", baseUrl)
         )
         assertEquals(
             "https://ota.example.com/releases/fw.bin",
             resolveProductOtaDownloadUrl("fw.bin", baseUrl)
         )
+    }
+
+    private companion object {
+        const val VALID_SHA256 = "f51563a1db560764eda95a6f2f0c4fddfbcf7870efc6bcd5457025ee157b3509"
     }
 }

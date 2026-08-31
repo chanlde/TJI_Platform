@@ -4,6 +4,22 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.detekt)
+}
+
+detekt {
+    buildUponDefaultConfig = false
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    baseline = rootProject.file("config/detekt/network-baseline.xml")
+    source.setFrom(files("src/main/java", "src/test/java"))
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+        sarif.required.set(true)
+    }
 }
 
 val localProperties = Properties().apply {
@@ -40,11 +56,6 @@ android {
         )
         buildConfigField(
             "String",
-            "TJI_UPDATE_URL",
-            "\"${configString("TJI_UPDATE_URL", "http://api.tjinnovations.cloud:81/apks/TJI_Platform.apk")}\""
-        )
-        buildConfigField(
-            "String",
             "TJI_MQTT_BROKER_HOST",
             "\"${configString("TJI_MQTT_BROKER_HOST", "129.211.180.25")}\""
         )
@@ -52,6 +63,11 @@ android {
             "int",
             "TJI_MQTT_BROKER_PORT",
             configString("TJI_MQTT_BROKER_PORT", "1883")
+        )
+        buildConfigField(
+            "boolean",
+            "TJI_MQTT_TLS_ENABLED",
+            configString("TJI_MQTT_TLS_ENABLED", "false")
         )
         buildConfigField(
             "String",
@@ -62,6 +78,11 @@ android {
             "int",
             "TJI_RADIO_LEGACY_MQTT_PORT",
             configString("TJI_RADIO_LEGACY_MQTT_PORT", "1883")
+        )
+        buildConfigField(
+            "boolean",
+            "TJI_RADIO_LEGACY_MQTT_TLS_ENABLED",
+            configString("TJI_RADIO_LEGACY_MQTT_TLS_ENABLED", "false")
         )
         buildConfigField(
             "String",

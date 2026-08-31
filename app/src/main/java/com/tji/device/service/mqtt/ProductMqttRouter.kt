@@ -16,8 +16,7 @@ object ProductMqttRouter {
     ) {
         Log.w(
             TAG,
-            "TJI_MQTT_DIAG resetForAccount account=$account " +
-                "platformClientId=$platformClientId radioDetectionClientId=$radioDetectionClientId"
+            "TJI_MQTT_DIAG reset MQTT profiles for authenticated account"
         )
         MqttManager.reset(
             profileKey = MqttProfiles.PLATFORM,

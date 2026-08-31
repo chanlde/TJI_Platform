@@ -1,5 +1,6 @@
 package com.tji.device.ui.main
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.BuildConfig
+import com.tji.device.diagnostics.AppDiagnostics
+import com.tji.device.product.firebucket.transport.FireBucketConnectionMode
 import com.tji.device.ui.components.TjiControlSlider
 import com.tji.device.ui.floating.FloatingWindowAppearance
 import com.tji.device.ui.theme.PayloadColors
@@ -38,13 +44,17 @@ import com.tji.device.ui.theme.PayloadDimens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongParameterList")
 fun PlatformSettingsSheet(
-    account: String,
+    account: String?,
     deviceCount: Int,
     isFloatingWindowEnabled: Boolean,
     hasFloatingWindowPermission: Boolean,
+    connectionMode: FireBucketConnectionMode,
+    onConnectionModeChange: (FireBucketConnectionMode) -> Unit,
     onFloatingWindowEnabledChange: (Boolean) -> Unit,
     onOpenFloatingWindowPermission: () -> Unit,
+    onLogout: (() -> Unit)?,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -60,82 +70,210 @@ fun PlatformSettingsSheet(
         containerColor = PayloadColors.Surface,
         shape = RoundedCornerShape(topStart = PayloadDimens.CardRadius, topEnd = PayloadDimens.CardRadius)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 640.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "设置",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = PayloadColors.TextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "管理悬浮窗、权限和当前应用信息",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = PayloadColors.TextSecondary
-                )
-            }
+        PlatformSettingsContent(
+            account = account,
+            deviceCount = deviceCount,
+            isFloatingWindowEnabled = isFloatingWindowEnabled,
+            hasFloatingWindowPermission = hasFloatingWindowPermission,
+            onFloatingWindowEnabledChange = onFloatingWindowEnabledChange,
+            onOpenFloatingWindowPermission = onOpenFloatingWindowPermission,
+            floatingWindowBackgroundAlpha = floatingWindowBackgroundAlpha,
+            connectionMode = connectionMode,
+            onConnectionModeChange = onConnectionModeChange,
+            onLogout = onLogout
+        )
+    }
+}
 
-            SettingsGroup {
-                SettingSwitchRow(
-                    title = "悬浮窗",
-                    description = if (hasFloatingWindowPermission) {
-                        "开启后可在其他页面快速查看当前产品控制面板"
-                    } else {
-                        "需要先授予悬浮窗权限"
-                    },
-                    checked = isFloatingWindowEnabled,
-                    onCheckedChange = { enabled ->
-                        onFloatingWindowEnabledChange(enabled)
-                        if (enabled && !hasFloatingWindowPermission) {
-                            onOpenFloatingWindowPermission()
-                        }
-                    }
-                )
-                HorizontalDivider(color = PayloadColors.Border)
-                SettingActionRow(
-                    title = "悬浮窗权限",
-                    value = if (hasFloatingWindowPermission) "已授权" else "未授权",
-                    actionText = if (hasFloatingWindowPermission) null else "去授权",
-                    onAction = onOpenFloatingWindowPermission
-                )
-                HorizontalDivider(color = PayloadColors.Border)
-                FloatingWindowOpacityRow(
-                    alpha = floatingWindowBackgroundAlpha,
-                    onAlphaChange = { alpha ->
-                        FloatingWindowAppearance.setBackgroundAlpha(context, alpha)
-                    }
-                )
-            }
+@Composable
+@Suppress("LongParameterList")
+private fun PlatformSettingsContent(
+    account: String?,
+    deviceCount: Int,
+    isFloatingWindowEnabled: Boolean,
+    hasFloatingWindowPermission: Boolean,
+    onFloatingWindowEnabledChange: (Boolean) -> Unit,
+    onOpenFloatingWindowPermission: () -> Unit,
+    floatingWindowBackgroundAlpha: Float,
+    connectionMode: FireBucketConnectionMode,
+    onConnectionModeChange: (FireBucketConnectionMode) -> Unit,
+    onLogout: (() -> Unit)?
+) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 640.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .navigationBarsPadding()
+            .padding(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        SettingsSheetHeader()
+        SettingsGroup {
+            ConnectionModeRow(mode = connectionMode, onModeChange = onConnectionModeChange)
+        }
+        FloatingWindowSettingsGroup(
+            isEnabled = isFloatingWindowEnabled,
+            hasPermission = hasFloatingWindowPermission,
+            alpha = floatingWindowBackgroundAlpha,
+            onEnabledChange = onFloatingWindowEnabledChange,
+            onOpenPermission = onOpenFloatingWindowPermission,
+            onAlphaChange = { FloatingWindowAppearance.setBackgroundAlpha(context, it) }
+        )
+        AccountSettingsGroup(account = account, deviceCount = deviceCount)
+        LogoutSettingsGroup(onLogout)
+        DiagnosticsSettingsGroup(context)
+    }
+}
 
-            SettingsGroup {
-                SettingInfoRow(
-                    title = "当前账号",
-                    value = account.ifBlank { "未获取" }
-                )
-                HorizontalDivider(color = PayloadColors.Border)
-                SettingInfoRow(
-                    title = "绑定设备",
-                    value = "$deviceCount 台"
-                )
-            }
+@Composable
+private fun SettingsSheetHeader() {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "设置",
+            style = MaterialTheme.typography.headlineSmall,
+            color = PayloadColors.TextPrimary,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "管理控制链路、悬浮窗和当前应用信息",
+            style = MaterialTheme.typography.bodyMedium,
+            color = PayloadColors.TextSecondary
+        )
+    }
+}
 
-            SettingsGroup {
-                SettingInfoRow(
-                    title = "当前版本",
-                    value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
-                )
+@Composable
+private fun FloatingWindowSettingsGroup(
+    isEnabled: Boolean,
+    hasPermission: Boolean,
+    alpha: Float,
+    onEnabledChange: (Boolean) -> Unit,
+    onOpenPermission: () -> Unit,
+    onAlphaChange: (Float) -> Unit
+) {
+    SettingsGroup {
+        SettingSwitchRow(
+            title = "悬浮窗",
+            description = if (hasPermission) {
+                "开启后可在其他页面快速查看当前产品控制面板"
+            } else {
+                "需要先授予悬浮窗权限"
+            },
+            checked = isEnabled,
+            onCheckedChange = { enabled ->
+                onEnabledChange(enabled)
+                if (enabled && !hasPermission) onOpenPermission()
+            }
+        )
+        HorizontalDivider(color = PayloadColors.Border)
+        SettingActionRow(
+            title = "悬浮窗权限",
+            value = if (hasPermission) "已授权" else "未授权",
+            actionText = if (hasPermission) null else "去授权",
+            onAction = onOpenPermission
+        )
+        HorizontalDivider(color = PayloadColors.Border)
+        FloatingWindowOpacityRow(alpha = alpha, onAlphaChange = onAlphaChange)
+    }
+}
+
+@Composable
+private fun AccountSettingsGroup(account: String?, deviceCount: Int) {
+    if (account == null) return
+    SettingsGroup {
+        SettingInfoRow(title = "当前账号", value = account.ifBlank { "未获取" })
+        HorizontalDivider(color = PayloadColors.Border)
+        SettingInfoRow(title = "绑定设备", value = "$deviceCount 台")
+    }
+}
+
+@Composable
+private fun LogoutSettingsGroup(onLogout: (() -> Unit)?) {
+    if (onLogout == null) return
+    SettingsGroup {
+        SettingActionRow(
+            title = "退出当前账号",
+            value = "清理设备会话并返回登录页",
+            actionText = "退出",
+            onAction = onLogout
+        )
+    }
+}
+
+@Composable
+private fun ConnectionModeRow(
+    mode: FireBucketConnectionMode,
+    onModeChange: (FireBucketConnectionMode) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "控制链路",
+            style = MaterialTheme.typography.titleMedium,
+            color = PayloadColors.TextPrimary,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = if (mode == FireBucketConnectionMode.CLOUD) {
+                "通过 4G 云端发送控制命令"
+            } else {
+                "通过当前 Wi-Fi 连接的数传设备发送控制命令"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = PayloadColors.TextSecondary
+        )
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            listOf(
+                FireBucketConnectionMode.CLOUD to "4G",
+                FireBucketConnectionMode.DIRECT_LINK to "数传"
+            ).forEachIndexed { index, (itemMode, label) ->
+                SegmentedButton(
+                    selected = mode == itemMode,
+                    onClick = { onModeChange(itemMode) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 2)
+                ) {
+                    Text(label)
+                }
             }
         }
     }
+}
+
+@Composable
+private fun DiagnosticsSettingsGroup(context: android.content.Context) {
+    SettingsGroup {
+        SettingInfoRow(
+            title = "当前版本",
+            value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · ${BuildConfig.FLAVOR}"
+        )
+        HorizontalDivider(color = PayloadColors.Border)
+        SettingActionRow(
+            title = "导出诊断包",
+            value = "脱敏的崩溃、连接和升级记录",
+            actionText = "导出",
+            onAction = { shareDiagnosticExport(context) }
+        )
+    }
+}
+
+private fun shareDiagnosticExport(context: android.content.Context) {
+    val uri = AppDiagnostics.export(context)
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "application/x-ndjson"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(
+        Intent.createChooser(sendIntent, "导出 TJI 诊断包")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    )
 }
 
 @Composable

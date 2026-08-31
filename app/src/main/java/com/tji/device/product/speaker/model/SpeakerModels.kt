@@ -19,6 +19,7 @@ data class SpeakerDeviceState(
     val records: List<SpeakerRecord> = emptyList(),
     val recordOffset: Int = 0,
     val recordLimit: Int = 8,
+    val recordNextOffset: Int = 0,
     val recordTotal: Int = 0,
     val recordHasMore: Boolean = false,
     val recordListTimestamp: Long? = null,
@@ -26,6 +27,7 @@ data class SpeakerDeviceState(
     val lastRecordEvent: SpeakerRecordEvent? = null,
     val outputQuality: String? = null,
     val audio: SpeakerAudioDiagnostics? = null,
+    val mcuFeedback: SpeakerMcuFeedbackDiagnostics? = null,
     val timestamp: Long? = null
 ) : ProductRuntimePayload
 
@@ -62,6 +64,26 @@ data class SpeakerAudioDiagnostics(
     val rmsQ15: Int = 0,
     val clipCount: Long = 0L,
     val limiterCount: Long = 0L
+)
+
+data class SpeakerMcuFeedbackDiagnostics(
+    val active: Boolean = false,
+    val packetMs: Int = 0,
+    val aecActive: Boolean = false,
+    val aecFrames: Long = 0L,
+    val aecReferenceMisses: Long = 0L,
+    val aecReferenceBuilt: Long = 0L,
+    val aecReferenceRead: Long = 0L,
+    val aecReferenceDrops: Long = 0L,
+    val aecReferenceQueued: Int = 0,
+    val aecInputLevelQ15: Int = 0,
+    val aecOutputLevelQ15: Int = 0,
+    val aecReferenceLevelQ15: Int = 0,
+    val aecResidualPermille: Int = 0,
+    val aecLastUs: Long = 0L,
+    val aecMaxUs: Long = 0L,
+    val aecDeadlineMisses: Long = 0L,
+    val taskStackFreeWords: Int = 0
 )
 
 data class SpeakerAck(
@@ -120,24 +142,6 @@ sealed class SpeakerCommand(
         val speedDps: Int = 60
     ) : SpeakerCommand(msgId, 107, "SET_SERVO_ANGLE")
 
-    class ServoSweepTest(
-        msgId: String,
-        val minAngle: Int,
-        val maxAngle: Int,
-        val speedDps: Int = 60,
-        val cycles: Int = 1,
-        val durationMs: Int = 300
-    ) : SpeakerCommand(msgId, 125, "SERVO_SWEEP_TEST")
-
-    class ServoStepTest(
-        msgId: String,
-        val minAngle: Int,
-        val maxAngle: Int,
-        val stepAngle: Int = 10,
-        val speedDps: Int = 30,
-        val intervalMs: Int = 2_000
-    ) : SpeakerCommand(msgId, 126, "SERVO_STEP_TEST")
-
     /**
      * 开关 MCU 板载麦克风回传。与手机麦克风录音/喊话无关。
      */
@@ -146,48 +150,12 @@ sealed class SpeakerCommand(
         val enabled: Boolean,
         val sessionId: String = "",
         val talkId: String = "",
-        val codec: String = "ima_adpcm",
+        val codec: String = "opus",
         val sampleRate: Int = 16_000,
         val channels: Int = 1,
-        val packetMs: Int = 40,
+        val packetMs: Int = 20,
         val ttlMs: Long = 30_000L
     ) : SpeakerCommand(msgId, 116, "SET_PLAYBACK_FEEDBACK")
-
-    class StartRecordStore(
-        msgId: String,
-        val recordId: String,
-        val storeTaskId: String,
-        val createdAt: String,
-        val name: String,
-        val expectedDurationMs: Int? = null,
-        val expectedFileSize: Int? = null
-    ) : SpeakerCommand(msgId, 114, "START_RECORD_STORE")
-
-    class RecordDownload(
-        msgId: String,
-        val recordId: String,
-        val storeTaskId: String,
-        val createdAt: String,
-        val name: String,
-        val downloadUrl: String,
-        val fileSize: Long,
-        val crc32: String,
-        val durationMs: Int,
-        val codec: String = "pcm16",
-        val sampleRate: Int = 8_000,
-        val channels: Int = 1,
-        val packetMs: Int = 40,
-        val frameBytes: Int = 640,
-        val samplesPerFrame: Int = 320,
-        val verifyOnly: Boolean = false,
-        val verifyKind: String? = null,
-        val expectedAudioCrc32: String? = null,
-        val expectedFirstSamples: List<Int> = emptyList(),
-        val temporary: Boolean = false,
-        val visible: Boolean = true,
-        val autoPlay: Boolean = false,
-        val playbackVolume: Int? = null
-    ) : SpeakerCommand(msgId, 114, "RECORD_DOWNLOAD")
 
     class PlayRecord(
         msgId: String,
@@ -223,10 +191,10 @@ data class SpeakerRecord(
     val name: String,
     val fileSize: Long = 0L,
     val durationMs: Long = 0L,
-    val codec: String = "ima_adpcm",
-    val sampleRate: Int = 8_000,
+    val codec: String = "opus",
+    val sampleRate: Int = 24_000,
     val channels: Int = 1,
-    val packetMs: Int = 40,
+    val packetMs: Int = 20,
     val crc32: String? = null,
     val createdAt: String? = null,
     val createdMs: Long? = null,
@@ -265,10 +233,10 @@ data class SpeakerRecordEvent(
     val name: String? = null,
     val fileSize: Long = 0L,
     val durationMs: Long = 0L,
-    val codec: String = "pcm16",
-    val sampleRate: Int = 8_000,
+    val codec: String = "opus",
+    val sampleRate: Int = 24_000,
     val channels: Int = 1,
-    val packetMs: Int = 40,
+    val packetMs: Int = 20,
     val crc32: String? = null,
     val createdAt: String? = null,
     val path: String? = null,

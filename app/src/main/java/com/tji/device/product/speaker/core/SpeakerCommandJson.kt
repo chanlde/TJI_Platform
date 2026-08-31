@@ -1,7 +1,6 @@
 package com.tji.device.product.speaker.core
 
 import com.tji.device.product.speaker.model.SpeakerCommand
-import org.json.JSONArray
 import org.json.JSONObject
 
 object SpeakerCommandJson {
@@ -9,42 +8,7 @@ object SpeakerCommandJson {
         command: SpeakerCommand,
         deviceId: String,
         timestampMs: Long = System.currentTimeMillis()
-    ): JSONObject =
-        when (command) {
-            is SpeakerCommand.RecordDownload -> encodeRecordDownload(command, deviceId)
-            else -> encodeStandard(command, deviceId, timestampMs)
-        }
-
-    private fun encodeRecordDownload(command: SpeakerCommand.RecordDownload, deviceId: String): JSONObject {
-        val native = SpeakerCoreNative.buildRecordDownloadCommandJsonOrNull(
-            deviceId = deviceId,
-            msgId = command.msgId,
-            recordId = command.recordId,
-            storeTaskId = command.storeTaskId,
-            createdAt = command.createdAt,
-            name = command.name,
-            downloadUrl = command.downloadUrl,
-            fileSize = command.fileSize,
-            crc32 = command.crc32,
-            durationMs = command.durationMs,
-            codec = command.codec,
-            sampleRate = command.sampleRate,
-            channels = command.channels,
-            packetMs = command.packetMs,
-            frameBytes = command.frameBytes,
-            samplesPerFrame = command.samplesPerFrame,
-            verifyOnly = command.verifyOnly,
-            verifyKind = command.verifyKind.orEmpty(),
-            expectedAudioCrc32 = command.expectedAudioCrc32.orEmpty(),
-            expectedFirstSamplesJson = JSONArray(command.expectedFirstSamples).toString(),
-            temporary = command.temporary,
-            visible = command.visible,
-            autoPlay = command.autoPlay,
-            playbackVolume = command.playbackVolume ?: 0,
-            hasPlaybackVolume = command.playbackVolume != null
-        )
-        return native?.let(::JSONObject) ?: command.toRecordDownloadJson(deviceId)
-    }
+    ): JSONObject = encodeStandard(command, deviceId, timestampMs)
 
     private fun encodeStandard(command: SpeakerCommand, deviceId: String, timestampMs: Long): JSONObject {
         val native = SpeakerCoreNative.buildStandardCommandJsonOrNull(
@@ -58,40 +22,6 @@ object SpeakerCommandJson {
         )
         return native?.let(::JSONObject) ?: command.toStandardJson(deviceId, timestampMs)
     }
-
-    private fun SpeakerCommand.RecordDownload.toRecordDownloadJson(deviceId: String): JSONObject =
-        JSONObject().apply {
-            put("v", 1)
-            put("deviceId", deviceId)
-            put("cmdId", msgId)
-            put("cmdName", commandName)
-            put("recordId", recordId)
-            put("storeTaskId", storeTaskId)
-            put("createdAt", createdAt)
-            put("name", name)
-            put("downloadUrl", downloadUrl)
-            put("fileSize", fileSize)
-            put("crc32", crc32)
-            put("durationMs", durationMs)
-            put("codec", codec)
-            put("sampleRate", sampleRate)
-            put("channels", channels)
-            put("packetMs", packetMs)
-            put("frameBytes", frameBytes)
-            put("samplesPerFrame", samplesPerFrame)
-            if (temporary) {
-                put("temporary", true)
-                put("visible", visible)
-                put("autoPlay", autoPlay)
-                playbackVolume?.let { put("playbackVolume", it.coerceIn(0, 100)) }
-            }
-            if (verifyOnly) {
-                put("verifyOnly", true)
-                verifyKind?.let { put("verifyKind", it) }
-                expectedAudioCrc32?.let { put("expectedAudioCrc32", it) }
-                put("expectedFirstSamples", JSONArray(expectedFirstSamples))
-            }
-        }
 
     private fun SpeakerCommand.toStandardJson(deviceId: String, timestampMs: Long): JSONObject =
         JSONObject().apply {
@@ -137,24 +67,6 @@ object SpeakerCommandJson {
                 put("angle", angle.coerceIn(0, 180))
                 put("speedDps", speedDps.coerceIn(1, 360))
             }
-            is SpeakerCommand.ServoSweepTest -> JSONObject().apply {
-                val min = minAngle.coerceIn(0, 180)
-                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1)
-                put("minAngle", min)
-                put("maxAngle", max.coerceAtMost(180))
-                put("speedDps", speedDps.coerceIn(1, 360))
-                put("cycles", cycles.coerceIn(0, 100))
-                put("durationMs", durationMs.coerceIn(0, 5_000))
-            }
-            is SpeakerCommand.ServoStepTest -> JSONObject().apply {
-                val min = minAngle.coerceIn(0, 180)
-                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
-                put("minAngle", min)
-                put("maxAngle", max)
-                put("stepAngle", stepAngle.coerceIn(1, max - min))
-                put("speedDps", speedDps.coerceIn(1, 360))
-                put("intervalMs", intervalMs.coerceIn(20, 60_000))
-            }
             is SpeakerCommand.SetMcuMicrophoneFeedback -> JSONObject().apply {
                 put("enabled", if (enabled) 1 else 0)
                 if (enabled) {
@@ -166,18 +78,6 @@ object SpeakerCommandJson {
                     put("packetMs", packetMs)
                     put("ttlMs", ttlMs.coerceIn(1_000L, 300_000L))
                 }
-            }
-            is SpeakerCommand.StartRecordStore -> JSONObject().apply {
-                put("recordId", recordId)
-                put("storeTaskId", storeTaskId)
-                put("createdAt", createdAt)
-                put("name", name)
-                put("codec", "ima_adpcm")
-                put("sampleRate", 8_000)
-                put("channels", 1)
-                put("packetMs", 40)
-                expectedDurationMs?.let { put("expectedDurationMs", it) }
-                expectedFileSize?.let { put("expectedFileSize", it) }
             }
             is SpeakerCommand.PlayRecord -> JSONObject().apply {
                 put("recordId", recordId)
@@ -193,7 +93,6 @@ object SpeakerCommandJson {
             is SpeakerCommand.GetStatus,
             is SpeakerCommand.GetStorageStatus,
             is SpeakerCommand.ListRecords,
-            is SpeakerCommand.RecordDownload,
             is SpeakerCommand.Stop -> null
         }
 
@@ -215,18 +114,6 @@ object SpeakerCommandJson {
                 "frameBytes" to frameBytes,
                 "samplesPerFrame" to samplesPerFrame
             )
-            is SpeakerCommand.StartRecordStore -> buildMap {
-                put("recordId", recordId)
-                put("storeTaskId", storeTaskId)
-                put("createdAt", createdAt)
-                put("name", name)
-                put("codec", "ima_adpcm")
-                put("sampleRate", 8_000)
-                put("channels", 1)
-                put("packetMs", 40)
-                expectedDurationMs?.let { put("expectedDurationMs", it) }
-                expectedFileSize?.let { put("expectedFileSize", it) }
-            }
             is SpeakerCommand.SetMcuMicrophoneFeedback -> buildMap {
                 put("enabled", if (enabled) 1 else 0)
                 if (enabled) {
@@ -254,24 +141,6 @@ object SpeakerCommandJson {
                 "angle" to angle.coerceIn(0, 180),
                 "speedDps" to speedDps.coerceIn(1, 360)
             )
-            is SpeakerCommand.ServoSweepTest -> buildMap {
-                val min = minAngle.coerceIn(0, 180)
-                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
-                put("minAngle", min)
-                put("maxAngle", max)
-                put("speedDps", speedDps.coerceIn(1, 360))
-                put("cycles", cycles.coerceIn(0, 100))
-                put("durationMs", durationMs.coerceIn(0, 5_000))
-            }
-            is SpeakerCommand.ServoStepTest -> buildMap {
-                val min = minAngle.coerceIn(0, 180)
-                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
-                put("minAngle", min)
-                put("maxAngle", max)
-                put("stepAngle", stepAngle.coerceIn(1, max - min))
-                put("speedDps", speedDps.coerceIn(1, 360))
-                put("intervalMs", intervalMs.coerceIn(20, 60_000))
-            }
             else -> emptyMap()
         }
 

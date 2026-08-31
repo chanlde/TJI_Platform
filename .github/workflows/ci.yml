@@ -27,18 +27,46 @@ jobs:
         run: ./gradlew checkDocs
 
       - name: Run debug unit tests
-        run: ./gradlew :app:testDebugUnitTest
+        run: >-
+          ./gradlew
+          :app:testMapDebugUnitTest
+          :app:testNoMapDebugUnitTest
+          :NetWork:testDebugUnitTest
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug
+      - name: Run release lint
+        run: ./gradlew :app:lintMapRelease :app:lintNoMapRelease :NetWork:lintRelease
+
+      - name: Run Kotlin static analysis
+        run: ./gradlew :app:detekt :NetWork:detekt
+
+      - name: Assemble debug and release variants
+        run: >-
+          ./gradlew
+          :app:assembleMapDebug
+          :app:assembleNoMapDebug
+          :app:assembleMapRelease
+          :app:assembleNoMapRelease
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: TJI_Platform-debug-apk
+          name: TJI_Platform-debug-apks
           path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/debug/output-metadata.json
+            app/build/outputs/apk/map/debug/*.apk
+            app/build/outputs/apk/map/debug/output-metadata.json
+            app/build/outputs/apk/noMap/debug/*.apk
+            app/build/outputs/apk/noMap/debug/output-metadata.json
+          if-no-files-found: error
+
+      - name: Upload release deobfuscation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: TJI_Platform-release-symbols-${{ github.sha }}
+          path: |
+            app/build/outputs/mapping/mapRelease/mapping.txt
+            app/build/outputs/mapping/noMapRelease/mapping.txt
+            app/build/outputs/native-debug-symbols/mapRelease/native-debug-symbols.zip
+            app/build/outputs/native-debug-symbols/noMapRelease/native-debug-symbols.zip
           if-no-files-found: error
 
   speaker-core:

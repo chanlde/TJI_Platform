@@ -32,7 +32,7 @@ ViewModel (MainViewModel, LoginViewModel, 各产品自己的 ViewModel / Runtime
     ↓
 Repository (AuthRepository, 各产品侧仓库)
     ↓
-Data（`data.model`：BoundAccountDevice、Product、Login；产品运行时模型在 `product/<name>/model`）+  系统服务 (MqttService, MqttSubscriptionManager)
+Data（`data.model`：BoundAccountDevice、Product、Login；产品运行时模型在 `product/<name>/model`）+ MQTT 会话协调（MqttSubscriptionManager）
 ```
 
 - **UI**：`MainScreen` 用「首页选产品线 → 产品下选设备（以登录 `boundDeviceRows` / `bucketsns` 解析的 `BoundAccountDevice` 为主 + 产品自己的 MQTT 运行时态补充在线信息）→ 产品控制台」的导航；**不**在登录页做全局强选设备。

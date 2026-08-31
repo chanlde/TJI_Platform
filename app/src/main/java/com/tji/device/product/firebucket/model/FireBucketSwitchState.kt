@@ -13,6 +13,7 @@ data class FireBucketSwitchState(
     val servoMinAngle: Double,    // 舵机最小角度
     val servoMaxAngle: Double,    // 舵机最大角度
     val uptime: Int,              // 运行时间（秒）
+    val batteryPercentage: Double = 0.0,
     val productType: ProductType = ProductType.FireBucket
 )
 

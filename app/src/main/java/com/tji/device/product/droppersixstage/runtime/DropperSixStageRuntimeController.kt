@@ -20,7 +20,8 @@ class DropperSixStageRuntimeController(
                     name = state.name ?: state.serialNumber,
                     productType = ProductType.DropperSixStage,
                     isOnline = state.isOnline,
-                    childCount = state.stages.size,
+                    // 六路是同一台抛投设备内部的控制通道，不是六台子设备。
+                    childCount = null,
                     payload = state
                 )
             }

@@ -1,9 +1,28 @@
 package com.tji.device.data.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProductCatalogTest {
+
+    @Test
+    fun enablesOnlyProductsWithCompleteProductionModules() {
+        assertEquals(
+            setOf(
+                ProductType.FireBucket,
+                ProductType.SolarClean,
+                ProductType.DropperSixStage,
+                ProductType.RadioDetection,
+                ProductType.Speaker,
+                ProductType.BreakWindowProjectile
+            ),
+            ProductCatalog.enabledTypes
+        )
+        assertTrue(ProductCatalog.enabledDefinitions.all { it.enabled })
+        assertFalse(ProductCatalog.isEnabled(ProductType.Searchlight))
+    }
 
     @Test
     fun mapsKnownBackendProductIdsBeforeNameFallback() {

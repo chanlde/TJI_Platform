@@ -4,6 +4,8 @@ import com.tji.device.data.model.ProductType
 import com.tji.network.MqttClientGateway
 import com.tji.network.MqttConnectionConfig
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -13,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,6 +50,29 @@ class MqttSubscriptionManagerTest {
         manager.subscribeToDevices(listOf(SERIAL), ProductType.Speaker)
 
         assertEquals(listOf(1, 1), gateway.subscribedQos)
+        manager.cleanup()
+    }
+
+    @Test
+    fun fireDropSubscribesToActualAndCompatibilityTopicPrefixes() = runBlocking {
+        val gateway = RecordingMqttGateway()
+        val manager = MqttSubscriptionManager(
+            mqttEventHandler = RecordingMessageHandler(),
+            clientFor = { gateway }
+        )
+
+        manager.subscribeToDevices(listOf("D29D5405F"), ProductType.DropperSixStage)
+
+        assertEquals(
+            listOf(
+                "FC100_FireDrop/devices/D29D5405F/lifecycle",
+                "SixStageDropper/devices/D29D5405F/lifecycle",
+                "FC100_FireDrop/devices/D29D5405F/status",
+                "SixStageDropper/devices/D29D5405F/status"
+            ),
+            gateway.subscribedTopics
+        )
+        assertEquals(listOf(1, 1, 1, 1), gateway.subscribedQos)
         manager.cleanup()
     }
 
@@ -198,6 +224,28 @@ class MqttSubscriptionManagerTest {
         }
         assertEquals(listOf("first", "second"), handler.messages.map { it.payload })
         assertEquals(listOf(false, true), handler.messages.map { it.isRetained })
+        manager.cleanup()
+    }
+
+    @Test
+    fun clearCancelsAndJoinsStartedHandlerBeforeReturning() = runBlocking {
+        val handler = CancellationCommitHandler()
+        val gateway = RecordingMqttGateway()
+        val manager = MqttSubscriptionManager(
+            mqttEventHandler = handler,
+            clientFor = { gateway }
+        )
+        manager.subscribeToDevices(listOf(SERIAL), ProductType.Speaker)
+        gateway.deliver(gateway.subscribedTopics.last(), "old-session", false)
+        handler.started.await()
+
+        manager.clearAllSubscriptions()
+
+        assertTrue(handler.finished.isCompleted)
+        assertEquals(listOf("old-session"), handler.finalCommits)
+        val commitsAtReturn = handler.finalCommits.toList()
+        delay(20L)
+        assertEquals(commitsAtReturn, handler.finalCommits)
         manager.cleanup()
     }
 
@@ -457,6 +505,31 @@ class MqttSubscriptionManagerTest {
             }
             if (message == "reliable-ack") {
                 reliableAckReceived.complete(Unit)
+            }
+        }
+
+        override fun cleanup() = Unit
+    }
+
+    private class CancellationCommitHandler : MqttMessageHandler {
+        val started = CompletableDeferred<Unit>()
+        val finished = CompletableDeferred<Unit>()
+        val finalCommits = mutableListOf<String>()
+
+        override suspend fun handleMessage(
+            serialNumber: String,
+            productType: ProductType,
+            message: String,
+            isRetained: Boolean
+        ) {
+            started.complete(Unit)
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) {
+                    finalCommits += message
+                    finished.complete(Unit)
+                }
             }
         }
 

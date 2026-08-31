@@ -93,7 +93,7 @@ fun FireBucketFloatingPanel(
             )
             Spacer(modifier = Modifier.width(8.dp))
             BatteryIndicator(
-                voltage = switch.inputVoltage,
+                percentage = switch.batteryPercentage,
                 iconSize = 16.dp
             )
         }

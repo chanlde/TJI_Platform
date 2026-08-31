@@ -10,7 +10,6 @@ import com.tji.device.data.repository.AuthRepository
 import com.tji.device.data.session.AppSessionStore
 import com.tji.device.data.session.DeviceKey
 import com.tji.device.data.session.deviceKey
-import com.tji.device.data.viewmodel.LoginViewModel.Companion.TAG
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.product.runtime.ProductRuntimeRegistry
 import com.tji.device.product.ota.ProductOtaRuntimeRepository
@@ -20,7 +19,10 @@ import com.tji.device.error.toUserVisibleServerMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CancellationException
@@ -31,12 +33,12 @@ import kotlinx.coroutines.launch
  * 主视图模型：协调设备列表、登录与按产品订阅 MQTT；产品线专属控制（如 FireBucket 开关）由各产品 UI 侧 ViewModel 承担。
  */
 class MainViewModel(
-    val loginViewModel: LoginViewModel,
     private val authRepository: AuthRepository,
     val sessionStore: AppSessionStore,
     productRuntimeRegistryProvider: () -> ProductRuntimeRegistry,
     mqttSubscriptionManagerProvider: () -> MqttSubscriptionManager,
-    productOtaRuntimeRepositoryProvider: () -> ProductOtaRuntimeRepository
+    productOtaRuntimeRepositoryProvider: () -> ProductOtaRuntimeRepository,
+    private val clearRadioDetectionReplay: () -> Unit
 ) : ViewModel() {
     private val productRuntimeRegistry by lazy(
         LazyThreadSafetyMode.SYNCHRONIZED,
@@ -70,16 +72,15 @@ class MainViewModel(
 
     init {
         viewModelScope.launch {
-            var isInitialAccountValue = true
-            // 监听账号变化，清理设备列表
-            loginViewModel.account.collect {
-                if (isInitialAccountValue) {
-                    isInitialAccountValue = false
-                    return@collect
-                }
+            sessionStore.state
+                .map { it.account }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
                 cancelAccountScopedRequests()
                 productRuntimeRegistry.clearAll()
                 productOtaRuntimeRepository.clearAll()
+                clearRadioDetectionReplay()
             }
         }
         
@@ -88,20 +89,7 @@ class MainViewModel(
         // 运行时列表必须保留所有已订阅 Link 及其桶列表，否则悬浮窗会丢失可切换的桶。
     }
 
-    val isLoading: StateFlow<Boolean> = combine(
-        loginViewModel.uiState.map { it.isLoading },
-        productSubscriptionLoading
-    ) { loginLoading, productLoading ->
-        loginLoading || productLoading
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = false
-    )
-
-    fun login(account: String, password: String, rememberMe: Boolean, callback: (Boolean, String?) -> Unit) {
-        loginViewModel.login(account, password, rememberMe, callback)
-    }
+    val isLoading: StateFlow<Boolean> = productSubscriptionLoading.asStateFlow()
 
     fun updateDeviceName(
         device: BoundAccountDevice,
@@ -137,7 +125,7 @@ class MainViewModel(
                 throw cancellation
             } catch (e: Exception) {
                 if (!isCurrentRename(deviceKey, requestId, sessionGeneration)) return@launch
-                Log.e(TAG, "修改设备名异常: ${device.serialNumber}", e)
+                Log.e(LoginViewModel.TAG, "修改设备名异常", e)
                 callback(false, "修改设备名失败，请稍后重试")
             } finally {
                 if (renameRequests.isLatest(deviceKey, requestId)) {
@@ -181,7 +169,7 @@ class MainViewModel(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (e: Exception) {
-                Log.e(TAG, "打开产品失败: $productType", e)
+                Log.e(LoginViewModel.TAG, "打开产品失败: $productType", e)
                 if (isCurrentNavigation(requestId, sessionGeneration)) {
                     callback(false, "连接设备失败，请检查网络后重试")
                 }
@@ -219,7 +207,7 @@ class MainViewModel(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (e: Exception) {
-                Log.e(TAG, "打开设备失败: ${device.serialNumber} product=${device.productType}", e)
+                Log.e(LoginViewModel.TAG, "打开设备失败: product=${device.productType}", e)
                 if (isCurrentNavigation(requestId, sessionGeneration)) {
                     callback(false, "连接设备失败，请检查网络后重试")
                 }

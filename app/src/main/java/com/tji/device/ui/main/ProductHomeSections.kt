@@ -55,7 +55,14 @@ internal fun ProductHome(
     boundAccountDevices: List<BoundAccountDevice>,
     runtimeDevices: List<ProductDeviceRuntimeSnapshot>,
     onSettingsClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    homeTitle: String = "设备平台首页",
+    homeDescription: String? = null,
+    deviceMetricTitle: String = "绑定设备",
+    totalDeviceCountOverride: Int? = null,
+    onlineDeviceCountOverride: Int? = null,
+    emptyTitle: String = "暂无绑定设备",
+    emptyDescription: String = "当前账号下没有可显示的设备"
 ) {
     val onlineDeviceKeys = remember(runtimeDevices) {
         runtimeDevices.asSequence()
@@ -83,10 +90,17 @@ internal fun ProductHome(
     ) {
         item {
             PlatformHomeHeader(
-                totalDeviceCount = boundAccountDevices.size,
-                onlineDeviceCount = onlineCount,
+                totalDeviceCount = totalDeviceCountOverride ?: boundAccountDevices.size,
+                onlineDeviceCount = onlineDeviceCountOverride ?: onlineCount,
                 productCount = accountProductTypes.size,
-                onSettingsClick = onSettingsClick
+                onSettingsClick = onSettingsClick,
+                title = homeTitle,
+                description = homeDescription ?: when {
+                    boundAccountDevices.isNotEmpty() ->
+                        "统一查看账号下各产品设备，并按设备进入对应控制台。"
+                    else -> "暂无绑定设备，请先添加或联系管理员开通。"
+                },
+                deviceMetricTitle = deviceMetricTitle
             )
         }
         item {
@@ -137,14 +151,20 @@ internal fun ProductHome(
         }
         if (accountProductTypes.isEmpty()) {
             item {
-                EmptyProductHomeCard()
+                EmptyProductHomeCard(
+                    title = emptyTitle,
+                    description = emptyDescription
+                )
             }
         }
     }
 }
 
 @Composable
-private fun EmptyProductHomeCard() {
+private fun EmptyProductHomeCard(
+    title: String,
+    description: String
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(PayloadDimens.CardRadius),
@@ -159,13 +179,13 @@ private fun EmptyProductHomeCard() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "暂无绑定设备",
+                text = title,
                 style = MaterialTheme.typography.titleMedium,
                 color = PlatformInk,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "当前账号下没有可显示的设备",
+                text = description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = PlatformMuted
             )

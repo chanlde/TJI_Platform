@@ -32,6 +32,7 @@ class FireBucketMqttInbound(
     private val heartbeatJobs = mutableMapOf<String, Job>()
     private val realtimeStatusLock = Any()
     private val realtimeLinkStatus = mutableMapOf<String, Boolean>()
+    private val reportedSubDeviceStatus = mutableMapOf<String, MutableMap<String, Boolean>>()
 
     /**
      * 处理本产品线在 `lifecycle` / `status` 上约定的 [event_type]（见 when 分支）。
@@ -64,6 +65,12 @@ class FireBucketMqttInbound(
                 recordRealtimeLinkStatus(serialNumber, it)
             }
         }
+        val reportedSubDevices = parseSubDevices(json.getJSONArray("subDevices"))
+        recordReportedSubDevices(
+            linkSn = serialNumber,
+            switches = reportedSubDevices,
+            preserveExisting = isRetained && realtimeStatus != null
+        )
         val linkDevice = FireBucketLinkDevice(
             event_type = json.getString("event_type"),
             serial_number = serialNumber,
@@ -76,10 +83,9 @@ class FireBucketMqttInbound(
             swVersion = json.getString("swVersion"),
             uptime = json.getInt("uptime"),
             deviceConfig = json.getString("deviceConfig"),
-            subDevices = parseSubDevices(
-                array = json.getJSONArray("subDevices"),
-                allowRealtimeOnline = !isRetained
-            ),
+            subDevices = reportedSubDevices.map { switch ->
+                switch.copy(isOnline = realtimeStatus == true && switch.isOnline)
+            },
             timestamp = json.getString("timestamp"),
             productType = ProductType.FireBucket
         )
@@ -104,7 +110,7 @@ class FireBucketMqttInbound(
         }
         val isOnline = json.getBoolean("isOnline")
         recordRealtimeLinkStatus(serialNumber, isOnline)
-        linkDeviceRepo.updateLinkDeviceStatus(serialNumber, isOnline)
+        updateLinkAvailability(serialNumber, isOnline)
         if (isOnline) {
             resetHeartbeatTimer(serialNumber)
         } else {
@@ -122,9 +128,9 @@ class FireBucketMqttInbound(
                     heartbeatJobs[serialNumber] === timeoutJob
                 }
                 if (!stillCurrent) return@launch
-                Log.w(TAG, "心跳超时，设备离线: $serialNumber")
+                Log.w(TAG, "心跳超时，设备离线")
                 recordRealtimeLinkStatus(serialNumber, false)
-                linkDeviceRepo.updateLinkDeviceStatus(serialNumber, false)
+                updateLinkAvailability(serialNumber, false)
                 synchronized(heartbeatLock) {
                     heartbeatJobs.remove(serialNumber, timeoutJob)
                 }
@@ -138,7 +144,7 @@ class FireBucketMqttInbound(
         debugLog { "LinkDeviceOffline, LinkSN: $serialNumber" }
         recordRealtimeLinkStatus(serialNumber, false)
         cancelHeartbeatTimer(serialNumber)
-        linkDeviceRepo.updateLinkDeviceStatus(serialNumber, false)
+        updateLinkAvailability(serialNumber, false)
     }
 
     private fun cancelHeartbeatTimer(serialNumber: String) {
@@ -160,12 +166,20 @@ class FireBucketMqttInbound(
 
     private suspend fun handleSubDeviceAdded(linkSn: String, json: JSONObject) {
         val switch = json.toSwitch()
+        recordReportedSubDevice(linkSn, switch.serialNumber, switch.isOnline)
         debugLog { "SubDevice 数据: $switch" }
-        linkDeviceRepo.addSubDevice(linkSn, switch)
+        val linkOnline = linkDeviceRepo.links.value
+            .firstOrNull { it.serial_number == linkSn }
+            ?.isOnline == true
+        linkDeviceRepo.addSubDevice(
+            linkSn,
+            switch.copy(isOnline = linkOnline && switch.isOnline)
+        )
     }
 
     private suspend fun handleSubDeviceRemoved(linkSn: String, json: JSONObject) {
         val switchSn = json.getString("serial_number")
+        removeReportedSubDevice(linkSn, switchSn)
         linkDeviceRepo.removeSubDevice(linkSn, switchSn)
     }
 
@@ -176,10 +190,84 @@ class FireBucketMqttInbound(
             ?.subDevices
             ?.firstOrNull { it.serialNumber == serialNumber }
         if (previous == null) {
-            Log.w(TAG, "忽略未知子设备状态: link=$linkSn switch=$serialNumber")
+            Log.w(TAG, "忽略未知子设备状态")
             return
         }
-        linkDeviceRepo.updateSubDevice(linkSn, json.toSwitch(previous))
+        val lastReportedOnline = reportedSubDeviceOnline(linkSn, serialNumber)
+        val reportedSwitch = json.toSwitch(
+            previous.copy(isOnline = lastReportedOnline ?: previous.isOnline)
+        )
+        recordReportedSubDevice(linkSn, serialNumber, reportedSwitch.isOnline)
+        val linkOnline = linkDeviceRepo.links.value
+            .firstOrNull { it.serial_number == linkSn }
+            ?.isOnline == true
+        linkDeviceRepo.updateSubDevice(
+            linkSn,
+            reportedSwitch.copy(isOnline = linkOnline && reportedSwitch.isOnline)
+        )
+    }
+
+    /**
+     * Link 心跳是旧版吊桶协议唯一持续发送的实时在线证据；子设备在线位只存在于
+     * LinkDeviceStartup 的 subDevices 快照中。保留快照本身不能证明当前在线，但在
+     * 收到新鲜 Link 心跳后，可以恢复快照中最后一次上报的子设备可用性。
+     */
+    private suspend fun updateLinkAvailability(serialNumber: String, isOnline: Boolean) {
+        linkDeviceRepo.updateLinkDeviceStatus(serialNumber, isOnline)
+        val link = linkDeviceRepo.links.value
+            .firstOrNull { it.serial_number == serialNumber }
+            ?: return
+        val reportedStatus = synchronized(realtimeStatusLock) {
+            reportedSubDeviceStatus[serialNumber]?.toMap().orEmpty()
+        }
+        link.subDevices.forEach { switch ->
+            val effectiveOnline = isOnline &&
+                (reportedStatus[switch.serialNumber] ?: switch.isOnline)
+            if (switch.isOnline != effectiveOnline) {
+                linkDeviceRepo.updateSubDevice(
+                    serialNumber,
+                    switch.copy(isOnline = effectiveOnline)
+                )
+            }
+        }
+    }
+
+    private fun recordReportedSubDevices(
+        linkSn: String,
+        switches: List<FireBucketSwitchState>,
+        preserveExisting: Boolean
+    ) {
+        synchronized(realtimeStatusLock) {
+            val status = if (preserveExisting) {
+                reportedSubDeviceStatus.getOrPut(linkSn) { mutableMapOf() }
+            } else {
+                mutableMapOf<String, Boolean>().also { reportedSubDeviceStatus[linkSn] = it }
+            }
+            switches.forEach { switch ->
+                if (preserveExisting) {
+                    status.putIfAbsent(switch.serialNumber, switch.isOnline)
+                } else {
+                    status[switch.serialNumber] = switch.isOnline
+                }
+            }
+        }
+    }
+
+    private fun recordReportedSubDevice(linkSn: String, switchSn: String, isOnline: Boolean) {
+        synchronized(realtimeStatusLock) {
+            reportedSubDeviceStatus.getOrPut(linkSn) { mutableMapOf() }[switchSn] = isOnline
+        }
+    }
+
+    private fun reportedSubDeviceOnline(linkSn: String, switchSn: String): Boolean? =
+        synchronized(realtimeStatusLock) {
+            reportedSubDeviceStatus[linkSn]?.get(switchSn)
+        }
+
+    private fun removeReportedSubDevice(linkSn: String, switchSn: String) {
+        synchronized(realtimeStatusLock) {
+            reportedSubDeviceStatus[linkSn]?.remove(switchSn)
+        }
     }
 
     fun parseSubDevices(
@@ -216,6 +304,9 @@ class FireBucketMqttInbound(
             inputVoltage = optNullableDouble("inputVoltage")
                 ?: previous?.inputVoltage
                 ?: getDouble("inputVoltage"),
+            batteryPercentage = optNullableDouble("batteryPercentage")
+                ?: previous?.batteryPercentage
+                ?: 0.0,
             servoMinAngle = optNullableDouble("servoMinAngle")
                 ?: previous?.servoMinAngle
                 ?: getDouble("servoMinAngle"),
@@ -257,6 +348,7 @@ class FireBucketMqttInbound(
         }
         synchronized(realtimeStatusLock) {
             realtimeLinkStatus.clear()
+            reportedSubDeviceStatus.clear()
         }
     }
 

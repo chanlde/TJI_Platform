@@ -25,6 +25,8 @@ class DeviceCommandOnlinePolicyTest {
     @Test
     fun physicalControlsRequireAnOnlineDevice() {
         assertTrue(DropperSixStageCommand.AllStages("dropper-all", open = true).dropperRequiresOnline())
+        assertTrue(DropperSixStageCommand.Arm("dropper-arm").dropperRequiresOnline())
+        assertTrue(DropperSixStageCommand.Disarm("dropper-disarm").dropperRequiresOnline())
         assertTrue(GlassBreakerCommand.Unlock("glass-unlock").glassRequiresOnline())
         assertTrue(SolarCleanCommand.PumpSwitch("solar-pump", on = true).solarRequiresOnline())
         assertTrue(SpeakerCommand.SetVolume("speaker-volume", volume = 50).speakerRequiresOnline())

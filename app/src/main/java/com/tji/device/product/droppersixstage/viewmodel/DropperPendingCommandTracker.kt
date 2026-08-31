@@ -13,11 +13,12 @@ internal class DropperPendingCommandTracker {
         msgId: String,
         serialNumber: String,
         resourceKeys: Set<String>,
-        label: String
+        label: String,
+        safetyEffect: DropperSafetyEffect = DropperSafetyEffect.None
     ): Boolean {
         if (resourceKeys.any(activeResourceKeys::contains)) return false
         activeResourceKeys += resourceKeys
-        commandsById[msgId] = PendingDropperCommand(serialNumber, resourceKeys, label)
+        commandsById[msgId] = PendingDropperCommand(serialNumber, resourceKeys, label, safetyEffect)
         return true
     }
 
@@ -33,5 +34,12 @@ internal class DropperPendingCommandTracker {
 internal data class PendingDropperCommand(
     val serialNumber: String,
     val resourceKeys: Set<String>,
-    val label: String
+    val label: String,
+    val safetyEffect: DropperSafetyEffect
 )
+
+internal enum class DropperSafetyEffect {
+    None,
+    Arm,
+    Disarm
+}
