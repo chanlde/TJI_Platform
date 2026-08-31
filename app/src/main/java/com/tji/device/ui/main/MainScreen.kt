@@ -20,23 +20,28 @@ import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.session.DeviceKey
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
+import com.tji.device.product.firebucket.transport.FireBucketConnectionMode
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.ui.AppUiNotifier
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongMethod")
 fun MainScreen(
     onBack: (() -> Unit)? = null,
+    onLogout: () -> Unit = {},
     isFloatingWindowEnabled: Boolean = true,
     hasFloatingWindowPermission: Boolean = true,
+    connectionMode: FireBucketConnectionMode = FireBucketConnectionMode.CLOUD,
+    onConnectionModeChange: (FireBucketConnectionMode) -> Unit = {},
     onFloatingWindowEnabledChange: (Boolean) -> Unit = {},
     onOpenFloatingWindowPermission: () -> Unit = {},
 ) {
     val mainViewModel = LocalMainViewModel.current
     val runtimeDevices by mainViewModel.runtimeDevices.collectAsStateWithLifecycle()
     val isLoading by mainViewModel.isLoading.collectAsStateWithLifecycle()
-    val account by mainViewModel.loginViewModel.account.collectAsStateWithLifecycle()
     val session by mainViewModel.sessionStore.state.collectAsStateWithLifecycle()
+    val account = session.account
     val boundAccountDevices = session.boundDevices
     val selectedDeviceKey = session.selectedDeviceKey
     var activeProductPage by remember { mutableStateOf<ProductType?>(null) }
@@ -137,8 +142,14 @@ fun MainScreen(
             deviceCount = boundAccountDevices.size,
             isFloatingWindowEnabled = isFloatingWindowEnabled,
             hasFloatingWindowPermission = hasFloatingWindowPermission,
+            connectionMode = connectionMode,
+            onConnectionModeChange = onConnectionModeChange,
             onFloatingWindowEnabledChange = onFloatingWindowEnabledChange,
             onOpenFloatingWindowPermission = onOpenFloatingWindowPermission,
+            onLogout = {
+                showSettings = false
+                onLogout()
+            },
             onDismiss = { showSettings = false }
         )
     }

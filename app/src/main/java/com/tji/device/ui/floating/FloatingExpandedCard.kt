@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.Close
 import com.tji.device.product.droppersixstage.ui.floating.DropperSixStageFloatingPanel
 import com.tji.device.product.firebucket.ui.floating.EmptyProductPanel
 import com.tji.device.product.firebucket.ui.floating.FireBucketFloatingPanel
+import com.tji.device.product.glassbreaker.ui.floating.GlassBreakerFloatingPanel
 import com.tji.device.product.solarclean.ui.floating.SolarCleanFloatingPanel
 import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedback
 import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedbackStatus
@@ -122,7 +123,7 @@ fun ExpandedCard(
                 ProductType.DropperSixStage -> DropperSixStageFloatingPanel(link = link)
                 ProductType.RadioDetection -> EmptyProductPanel(message = "无线电检测暂不提供悬浮窗快捷控制")
                 ProductType.Speaker -> EmptyProductPanel(message = "喊话器请在 App 内使用录音喊话和设备监听")
-                ProductType.BreakWindowProjectile -> EmptyProductPanel(message = "破窗弹暂不提供悬浮窗快捷控制")
+                ProductType.BreakWindowProjectile -> GlassBreakerFloatingPanel(link = link)
                 ProductType.Searchlight -> EmptyProductPanel(message = "探照灯暂不提供悬浮窗快捷控制")
             }
         }

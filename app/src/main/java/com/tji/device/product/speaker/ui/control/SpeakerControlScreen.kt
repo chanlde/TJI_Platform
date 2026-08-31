@@ -36,11 +36,7 @@ import com.tji.device.product.speaker.model.SpeakerRecord
 import com.tji.device.product.speaker.viewmodel.SpeakerControlViewModel
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophonePhase
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophoneState
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_CYCLES
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_HOLD_MS
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_INTERVAL_MS
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_SPEED_DPS
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_DEFAULT_STEP_ANGLE
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_ANGLE
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_ANGLE
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
@@ -109,12 +105,6 @@ fun SpeakerControlScreen(
     var servoAngle by remember { mutableFloatStateOf(90f) }
     var servoAngleEdited by remember { mutableStateOf(false) }
     var servoSpeedDps by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_SPEED_DPS.toFloat()) }
-    var servoMinAngle by remember { mutableFloatStateOf(30f) }
-    var servoMaxAngle by remember { mutableFloatStateOf(120f) }
-    var servoCycles by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_CYCLES.toFloat()) }
-    var servoHoldMs by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_HOLD_MS.toFloat()) }
-    var servoStepAngle by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_STEP_ANGLE.toFloat()) }
-    var servoIntervalMs by remember { mutableFloatStateOf(SPEAKER_SERVO_DEFAULT_INTERVAL_MS.toFloat()) }
     val records = state?.records.orEmpty()
     val visibleRecords = remember(records, recordQuery, recordSortOrder) {
         records.filter {
@@ -146,9 +136,9 @@ fun SpeakerControlScreen(
         }
     }
     DisposableEffect(device.serialNumber, viewModel) {
+        viewModel?.bindDevice(device.serialNumber)
         onDispose {
-            viewModel?.cancelPushToTalkRecord(device.serialNumber)
-            viewModel?.setMcuMicrophoneListening(device.serialNumber, enabled = false)
+            viewModel?.unbindDevice(device.serialNumber)
         }
     }
 
@@ -268,12 +258,6 @@ fun SpeakerControlScreen(
                 SpeakerServoAngleCard(
                     angle = servoAngle,
                     speedDps = servoSpeedDps,
-                    minAngle = servoMinAngle,
-                    maxAngle = servoMaxAngle,
-                    cycles = servoCycles,
-                    holdMs = servoHoldMs,
-                    stepAngle = servoStepAngle,
-                    intervalMs = servoIntervalMs,
                     reportedAngle = state?.servoAngle,
                     servoState = state?.servo,
                     enabled = deviceControlsEnabled,
@@ -282,43 +266,11 @@ fun SpeakerControlScreen(
                         servoAngle = it
                     },
                     onSpeedChange = { servoSpeedDps = it },
-                    onMinAngleChange = { servoMinAngle = it },
-                    onMaxAngleChange = { servoMaxAngle = it },
-                    onCyclesChange = { servoCycles = it },
-                    onHoldMsChange = { servoHoldMs = it },
-                    onStepAngleChange = { servoStepAngle = it },
-                    onIntervalMsChange = { servoIntervalMs = it },
                     onApply = {
                         viewModel?.setServoAngle(
                             serialNumber = device.serialNumber,
                             angle = servoAngle.toInt(),
                             speedDps = servoSpeedDps.toInt()
-                        )
-                    },
-                    onTest = {
-                        viewModel?.testServo(
-                            serialNumber = device.serialNumber,
-                            speedDps = servoSpeedDps.toInt()
-                        )
-                    },
-                    onSweepTest = {
-                        viewModel?.sweepServo(
-                            serialNumber = device.serialNumber,
-                            minAngle = servoMinAngle.toInt(),
-                            maxAngle = servoMaxAngle.toInt(),
-                            speedDps = servoSpeedDps.toInt(),
-                            cycles = servoCycles.toInt(),
-                            durationMs = servoHoldMs.toInt()
-                        )
-                    },
-                    onStepTest = {
-                        viewModel?.stepServo(
-                            serialNumber = device.serialNumber,
-                            minAngle = servoMinAngle.toInt(),
-                            maxAngle = servoMaxAngle.toInt(),
-                            stepAngle = servoStepAngle.toInt(),
-                            speedDps = servoSpeedDps.toInt(),
-                            intervalMs = servoIntervalMs.toInt()
                         )
                     }
                 )

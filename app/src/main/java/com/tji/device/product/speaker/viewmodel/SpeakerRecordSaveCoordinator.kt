@@ -3,7 +3,7 @@ package com.tji.device.product.speaker.viewmodel
 import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.common.DeviceCommandId
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
-import com.tji.device.product.speaker.audio.SpeakerAudioRelay
+import com.tji.device.product.speaker.audio.SpeakerAudioTransport
 import com.tji.device.product.speaker.audio.SpeakerMediaTransferClient
 import com.tji.device.product.speaker.audio.SpeakerMediaTransferMode
 import com.tji.device.product.speaker.audio.SpeakerMediaTransferRequest
@@ -32,7 +32,7 @@ internal class SpeakerRecordSaveCoordinator(
     private val scope: CoroutineScope,
     private val stateRepository: SpeakerRepository,
     private val controlRepository: SpeakerControlRepository,
-    private val audioRelay: SpeakerAudioRelay,
+    private val audioRelay: SpeakerAudioTransport,
     private val commands: SpeakerCommandCoordinator,
     private val deviceActions: SpeakerDeviceActions,
     private val devices: StateFlow<List<SpeakerDeviceState>>,
@@ -181,12 +181,6 @@ internal class SpeakerRecordSaveCoordinator(
         val eventKey = listOf(event.type, event.recordId, event.code, event.timestamp).joinToString("|")
         if (eventKey == lastSaveEventKey) return
         lastSaveEventKey = eventKey
-        SpeakerLogger.debug(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "record save device event type=${event.type} ok=${event.ok} code=${event.code} " +
-                "recordId=${event.recordId} elapsedMs=${System.currentTimeMillis() - pending.startedAt} " +
-                "msg=${event.message}"
-        )
         when (event.type) {
             "record_playback" -> {
                 if (event.ok) {
@@ -240,10 +234,6 @@ internal class SpeakerRecordSaveCoordinator(
         ).joinToString("|")
         if (eventKey == lastMutationEventKey) return
         lastMutationEventKey = eventKey
-        SpeakerLogger.debug(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "record mutation refresh type=${event.type} recordId=${event.recordId} sn=$serialNumber"
-        )
         refreshDeviceRecords(serialNumber)
     }
 
@@ -322,10 +312,6 @@ internal class SpeakerRecordSaveCoordinator(
             delay(RECORD_CONFIRM_PAGE_WAIT_MS)
             val state = devices.value.firstOrNull { it.serialNumber == serialNumber }
             if (state?.records.orEmpty().any { it.recordId == recordId }) {
-                SpeakerLogger.debug(
-                    SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-                    "record save confirmed by list recordId=$recordId offset=$offset"
-                )
                 return true
             }
             val total = state?.recordTotal?.takeIf { it > 0 } ?: RECORD_CONFIRM_MAX_RECORDS

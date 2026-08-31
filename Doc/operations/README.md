@@ -7,6 +7,14 @@
 | 主题 | 文档 |
 |------|------|
 | 客户端自动化测试 | [client-automation-checklist.md](client-automation-checklist.md) |
+| 量产优化串行清单 | [production-readiness-checklist.md](production-readiness-checklist.md) |
+| MQTT 量产基线 | [mqtt-production-baseline.md](mqtt-production-baseline.md) |
+| OTA 与 App 更新量产基线 | [ota-production-baseline.md](ota-production-baseline.md) |
+| App 更新模拟器证据 | [app-update-emulator-evidence.md](app-update-emulator-evidence.md) |
+| App 更新 MI 8 真机证据 | [app-update-mi8-device-evidence.md](app-update-mi8-device-evidence.md) |
+| MI 8 App 压力测试证据 | [app-mi8-stress-evidence.md](app-mi8-stress-evidence.md) |
+| 现场诊断与故障处理 | [field-diagnostics-runbook.md](field-diagnostics-runbook.md) |
+| OTA/App 目标设备验收记录 | [ota-device-acceptance-record.md](ota-device-acceptance-record.md) |
 | 文档删除与归档规则 | [document-retirement-policy.md](document-retirement-policy.md) |
 | 服务器接口待办 | [server-api-backlog.md](server-api-backlog.md) |
 | 待人工 Review 问题 | [review-questions.md](review-questions.md) |

@@ -71,44 +71,6 @@ class SpeakerCoreNativeTest {
     }
 
     @Test
-    fun commandJsonFallbackBuildsServoSweepAndStepCommands() {
-        val sweep = SpeakerCommandJson.encode(
-            command = SpeakerCommand.ServoSweepTest(
-                msgId = "speaker-servo-sweep-1",
-                minAngle = 30,
-                maxAngle = 120,
-                speedDps = 60,
-                cycles = 0,
-                durationMs = 300
-            ),
-            deviceId = "T12345678",
-            timestampMs = 123456789L
-        )
-        assertEquals(125, sweep.getInt("cmd"))
-        assertEquals("SERVO_SWEEP_TEST", sweep.getString("cmdName"))
-        assertEquals(30, sweep.getJSONObject("params").getInt("minAngle"))
-        assertEquals(120, sweep.getJSONObject("params").getInt("maxAngle"))
-        assertEquals(0, sweep.getJSONObject("params").getInt("cycles"))
-
-        val step = SpeakerCommandJson.encode(
-            command = SpeakerCommand.ServoStepTest(
-                msgId = "speaker-servo-step-1",
-                minAngle = 0,
-                maxAngle = 180,
-                stepAngle = 10,
-                speedDps = 30,
-                intervalMs = 2_000
-            ),
-            deviceId = "T12345678",
-            timestampMs = 123456789L
-        )
-        assertEquals(126, step.getInt("cmd"))
-        assertEquals("SERVO_STEP_TEST", step.getString("cmdName"))
-        assertEquals(10, step.getJSONObject("params").getInt("stepAngle"))
-        assertEquals(2_000, step.getJSONObject("params").getInt("intervalMs"))
-    }
-
-    @Test
     fun mqttStateParserReadsRealtimeTalkState() {
         val state = SpeakerMqttPayloadParser.parseState(
             serialNumber = "T12345678",

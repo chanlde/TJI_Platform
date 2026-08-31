@@ -67,24 +67,6 @@ object SpeakerCommandJson {
                 put("angle", angle.coerceIn(0, 180))
                 put("speedDps", speedDps.coerceIn(1, 360))
             }
-            is SpeakerCommand.ServoSweepTest -> JSONObject().apply {
-                val min = minAngle.coerceIn(0, 180)
-                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1)
-                put("minAngle", min)
-                put("maxAngle", max.coerceAtMost(180))
-                put("speedDps", speedDps.coerceIn(1, 360))
-                put("cycles", cycles.coerceIn(0, 100))
-                put("durationMs", durationMs.coerceIn(0, 5_000))
-            }
-            is SpeakerCommand.ServoStepTest -> JSONObject().apply {
-                val min = minAngle.coerceIn(0, 180)
-                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
-                put("minAngle", min)
-                put("maxAngle", max)
-                put("stepAngle", stepAngle.coerceIn(1, max - min))
-                put("speedDps", speedDps.coerceIn(1, 360))
-                put("intervalMs", intervalMs.coerceIn(20, 60_000))
-            }
             is SpeakerCommand.SetMcuMicrophoneFeedback -> JSONObject().apply {
                 put("enabled", if (enabled) 1 else 0)
                 if (enabled) {
@@ -159,24 +141,6 @@ object SpeakerCommandJson {
                 "angle" to angle.coerceIn(0, 180),
                 "speedDps" to speedDps.coerceIn(1, 360)
             )
-            is SpeakerCommand.ServoSweepTest -> buildMap {
-                val min = minAngle.coerceIn(0, 180)
-                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
-                put("minAngle", min)
-                put("maxAngle", max)
-                put("speedDps", speedDps.coerceIn(1, 360))
-                put("cycles", cycles.coerceIn(0, 100))
-                put("durationMs", durationMs.coerceIn(0, 5_000))
-            }
-            is SpeakerCommand.ServoStepTest -> buildMap {
-                val min = minAngle.coerceIn(0, 180)
-                val max = maxAngle.coerceIn(0, 180).coerceAtLeast(min + 1).coerceAtMost(180)
-                put("minAngle", min)
-                put("maxAngle", max)
-                put("stepAngle", stepAngle.coerceIn(1, max - min))
-                put("speedDps", speedDps.coerceIn(1, 360))
-                put("intervalMs", intervalMs.coerceIn(20, 60_000))
-            }
             else -> emptyMap()
         }
 

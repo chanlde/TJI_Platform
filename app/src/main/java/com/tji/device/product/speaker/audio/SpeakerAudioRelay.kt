@@ -5,7 +5,6 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import com.tji.device.product.speaker.core.SpeakerLogger
 import androidx.annotation.RequiresPermission
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -22,11 +21,16 @@ data class SpeakerRelayConfig(
  * 正式喊话在松开按键后编码成 48 kHz Opus 并通过可靠 UDP 直传。采集使用
  * 通信音源并绑定系统 AEC，因此 MCU 麦克风监听可以在按住录音期间继续播放。
  */
-class SpeakerAudioRelay {
+interface SpeakerAudioTransport {
+    suspend fun captureMicrophoneFrames(sampleRate: Int, onFrame: suspend (ByteArray) -> Unit)
+    suspend fun sendMedia(request: SpeakerMediaTransferRequest)
+}
+
+class SpeakerAudioRelay : SpeakerAudioTransport {
     private val mediaTransferClient = SpeakerMediaTransferClient()
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    suspend fun captureMicrophoneFrames(
+    override suspend fun captureMicrophoneFrames(
         sampleRate: Int,
         onFrame: suspend (ByteArray) -> Unit
     ) {
@@ -60,12 +64,6 @@ class SpeakerAudioRelay {
         } else {
             null
         }
-        SpeakerLogger.debug(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "phone AEC available=$aecAvailable " +
-                "created=${echoCanceler != null} enabled=${echoCanceler?.enabled == true} " +
-                "session=${recorder.audioSessionId}"
-        )
         val frame = ByteArray(frameBytes)
         var filled = 0
         try {
@@ -88,7 +86,7 @@ class SpeakerAudioRelay {
     }
 
     /** @brief 通过统一可靠通道发送完整 Ogg Opus 文件。 */
-    suspend fun sendMedia(request: SpeakerMediaTransferRequest) {
+    override suspend fun sendMedia(request: SpeakerMediaTransferRequest) {
         mediaTransferClient.send(request)
     }
 }

@@ -1,11 +1,17 @@
 package com.tji.network.data
 
 import com.google.gson.annotations.SerializedName
+import com.google.gson.annotations.JsonAdapter
+import com.google.gson.TypeAdapter
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.JsonWriter
 
 data class AppVersion(
     @SerializedName("version")
     val version: String?,
     @SerializedName("innerVersion")
+    @JsonAdapter(FlexibleIntTypeAdapter::class)
     val innerVersion: Int?,
     @SerializedName("path")
     val path: String? = null,
@@ -14,7 +20,15 @@ data class AppVersion(
     @SerializedName("techDesc")
     val techDesc: String? = null,
     @SerializedName("type")
-    val type: Int? = null
+    val type: Int? = null,
+    @SerializedName(value = "packageName", alternate = ["package_name", "applicationId"])
+    val packageName: String? = null,
+    @SerializedName(value = "signerSha256", alternate = ["signer_sha256", "certificateSha256"])
+    val signerSha256: String? = null,
+    @SerializedName(value = "sha256", alternate = ["sha256Hex"])
+    val sha256: String? = null,
+    @SerializedName(value = "fileSize", alternate = ["file_size", "filesize", "size"])
+    val fileSize: Long? = null
 )
 
 data class OtaLatestResponse(
@@ -43,9 +57,24 @@ data class OtaLatestResponse(
     @SerializedName("productName")
     val productName: String? = null,
     @SerializedName("innerVersion")
+    @JsonAdapter(FlexibleIntTypeAdapter::class)
     val innerVersion: Int? = null,
     @SerializedName("publishDate")
     val publishDate: String? = null,
     @SerializedName("type")
     val type: Int? = null
 )
+
+class FlexibleIntTypeAdapter : TypeAdapter<Int?>() {
+    override fun write(out: JsonWriter, value: Int?) {
+        if (value == null) out.nullValue() else out.value(value)
+    }
+
+    override fun read(reader: JsonReader): Int? {
+        if (reader.peek() == JsonToken.NULL) {
+            reader.nextNull()
+            return null
+        }
+        return reader.nextString().trim().toIntOrNull()
+    }
+}

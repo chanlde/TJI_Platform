@@ -34,7 +34,7 @@ import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.data.local.RememberedLoginStore
 import com.tji.device.ui.AppUiNotifier
-import com.tji.device.ui.main.LocalMainViewModel
+import com.tji.device.ui.main.LocalLoginViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -84,7 +84,7 @@ fun LoginWidget(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     onLogin: (Login) -> Unit = {},
-    onDeveloperModeClick: () -> Unit,
+    onDirectControl: () -> Unit = {},
     onForgotPassword: () -> Unit = {},
     context: Context
 ) {
@@ -102,7 +102,7 @@ fun LoginWidget(
     var passwordVisible by remember { mutableStateOf(false) }
     var accountError by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf("") }
-    val mainViewModel = if (isPreview) null else LocalMainViewModel.current
+    val loginViewModel = if (isPreview) null else LocalLoginViewModel.current
 
     LaunchedEffect(context, isPreview) {
         if (isPreview) return@LaunchedEffect
@@ -127,11 +127,13 @@ fun LoginWidget(
             return
         }
 
-        mainViewModel?.login(account, password, rememberMe) { loginSuccess, errorMsg ->
+        loginViewModel?.login(account, password, rememberMe) { loginSuccess, errorMsg ->
             if (loginSuccess) {
                 // 保存账号和密码
                 if (rememberMe) {
-                    rememberedLoginStore?.save(account, password)
+                    if (rememberedLoginStore?.save(account, password) == false) {
+                        AppUiNotifier.showShortMessage("当前设备无法安全保存密码，本次仍可正常登录")
+                    }
                 } else {
                     rememberedLoginStore?.clear()
                 }
@@ -182,10 +184,8 @@ fun LoginWidget(
                 rememberMe = it
             },
             onLogin = { handleLogin() },
-            onForgotPassword = onForgotPassword,
-            onDeveloperModeClick = {
-                onDeveloperModeClick()
-            }
+            onDirectControl = onDirectControl,
+            onForgotPassword = onForgotPassword
         )
     }
 }
@@ -264,6 +264,7 @@ private fun LoginCard(
 }
 
 @Composable
+@Suppress("LongParameterList")
 private fun BoxScope.LoginLayout(
     account: String,
     password: String,
@@ -277,7 +278,7 @@ private fun BoxScope.LoginLayout(
     onPasswordVisibilityToggle: () -> Unit,
     onRememberMeChange: (Boolean) -> Unit,
     onLogin: () -> Unit,
-    onDeveloperModeClick: () -> Unit,
+    onDirectControl: () -> Unit,
     onForgotPassword: () -> Unit
  ) {
     val configuration = LocalConfiguration.current
@@ -309,9 +310,9 @@ private fun BoxScope.LoginLayout(
                     onPasswordVisibilityToggle = onPasswordVisibilityToggle,
                     onRememberMeChange = onRememberMeChange,
                     onLogin = onLogin,
+                    onDirectControl = onDirectControl,
                     onForgotPassword = onForgotPassword,
-                    isLandscape = true,
-                    onDeveloperModeClick = onDeveloperModeClick
+                    isLandscape = true
                 )
             }
         }
@@ -341,9 +342,9 @@ private fun BoxScope.LoginLayout(
                     onPasswordVisibilityToggle = onPasswordVisibilityToggle,
                     onRememberMeChange = onRememberMeChange,
                     onLogin = onLogin,
+                    onDirectControl = onDirectControl,
                     onForgotPassword = onForgotPassword,
-                    isLandscape = false,
-                    onDeveloperModeClick = onDeveloperModeClick
+                    isLandscape = false
                 )
             }
         }
@@ -351,6 +352,7 @@ private fun BoxScope.LoginLayout(
 }
 
 @Composable
+@Suppress("LongParameterList")
 private fun LoginFormContent(
     account: String,
     password: String,
@@ -364,7 +366,7 @@ private fun LoginFormContent(
     onPasswordVisibilityToggle: () -> Unit,
     onRememberMeChange: (Boolean) -> Unit,
     onLogin: () -> Unit,
-    onDeveloperModeClick: () -> Unit,
+    onDirectControl: () -> Unit,
     onForgotPassword: () -> Unit,
     isLandscape: Boolean
 ) {
@@ -385,9 +387,9 @@ private fun LoginFormContent(
         onPasswordVisibilityToggle = onPasswordVisibilityToggle,
         onRememberMeChange = onRememberMeChange,
         onLogin = onLogin,
+        onDirectControl = onDirectControl,
         onForgotPassword = onForgotPassword,
-        isLandscape = isLandscape,
-        onDeveloperModeClick = onDeveloperModeClick
+        isLandscape = isLandscape
     )
     }
 }
@@ -446,6 +448,7 @@ fun LoginButton(
 }
 
 @Composable
+@Suppress("LongParameterList")
 fun LoginForm(
     account: String,
     password: String,
@@ -459,7 +462,7 @@ fun LoginForm(
     onPasswordVisibilityToggle: () -> Unit,
     onRememberMeChange: (Boolean) -> Unit,
     onLogin: () -> Unit,
-    onDeveloperModeClick: () -> Unit,
+    onDirectControl: () -> Unit,
     onForgotPassword: () -> Unit,
     isLandscape: Boolean = false
 ) {
@@ -488,11 +491,21 @@ fun LoginForm(
 
         LoginButton(isLoading, onLogin, isLandscape)
 
-        TextButton(onClick = onDeveloperModeClick) {
+        HorizontalDivider(color = PayloadColors.Border)
+
+        OutlinedButton(
+            onClick = onDirectControl,
+            enabled = !isLoading,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (isLandscape) 48.dp else 50.dp),
+            border = BorderStroke(1.dp, PayloadColors.Primary),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = PayloadColors.Primary),
+            shape = RoundedCornerShape(PayloadDimens.ControlRadius)
+        ) {
             Text(
-                text = "Wi-Fi 模式",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LoginColors.OnSurfaceVariant
+                text = "本地数传控制（无需登录）",
+                style = MaterialTheme.typography.titleMedium
             )
         }
     }
@@ -525,7 +538,6 @@ fun LoginWidgetPreview() {
     LoginWidget(
         isLoading = false,
         onLogin = { /* Handle login */ },
-        onDeveloperModeClick = { /* Handle developer mode click */ },
         context = LocalContext.current
     )
 }

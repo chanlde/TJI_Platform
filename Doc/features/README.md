@@ -10,7 +10,6 @@
 | App UI/UX 优化 | [app-ui-ux-optimization.md](app-ui-ux-optimization.md) |
 | 悬浮窗 UI 优化 | [floating-window-ui-optimization.md](floating-window-ui-optimization.md) |
 | 喊话器 Payload UI 重做 | [speaker-payload-ui-redesign.md](speaker-payload-ui-redesign.md) |
-| 喊话器 C++ Core 与 Qt 上位机 | [speaker-cpp-core-qt-plan.md](speaker-cpp-core-qt-plan.md) |
 | OTA 专项 | [ota/](ota/README.md) |
 
 ## 写作规则

@@ -156,7 +156,13 @@ fun DropperSixStageControlScreen(
                         text = "全部开钩",
                         enabled = enabled,
                         color = PayloadColors.Primary,
-                        onClick = { viewModel?.toggleAll(device.serialNumber, true) },
+                        onClick = {
+                            viewModel?.toggleAll(
+                                serialNumber = device.serialNumber,
+                                open = true,
+                                durationMs = openDurationMs
+                            )
+                        },
                         modifier = Modifier.weight(1f)
                     )
                     TjiActionButton(

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.tji.device.concurrent.LatestRequestTracker
+import com.tji.device.diagnostics.AppDiagnostics
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.session.DeviceKey
@@ -31,9 +32,28 @@ class ProductOtaViewModel(
     private var checkJob: Job? = null
     private val checkRequests = LatestRequestTracker<DeviceKey>()
     private val otaStartGuard = ProductOtaStartGuard()
+    private var activeSessionGeneration: Long? = null
 
-    fun resetForDevice(serialNumber: String, productType: ProductType) {
+    fun resetForDevice(
+        serialNumber: String,
+        productType: ProductType,
+        sessionGeneration: Long? = null
+    ) {
+        if (sessionGeneration != null && activeSessionGeneration != sessionGeneration) {
+            otaStartGuard.reset()
+            activeSessionGeneration = sessionGeneration
+        }
         activeDeviceKey = DeviceKey(productType, serialNumber)
+        checkJob?.cancel()
+        checkJob = null
+        checkRequests.invalidateAll()
+        _otaCheckState.value = ProductOtaCheckState()
+        _commandFeedback.value = ProductOtaCommandFeedback()
+    }
+
+    fun unbindDevice(serialNumber: String, productType: ProductType) {
+        if (activeDeviceKey != DeviceKey(productType, serialNumber)) return
+        activeDeviceKey = null
         checkJob?.cancel()
         checkJob = null
         checkRequests.invalidateAll()
@@ -46,7 +66,7 @@ class ProductOtaViewModel(
         productType: ProductType,
         status: ProductOtaStatus?
     ) {
-        otaStartGuard.releaseIfRetryAllowed(
+        otaStartGuard.releaseIfTerminal(
             deviceKey = DeviceKey(productType, serialNumber),
             status = status
         )
@@ -115,12 +135,13 @@ class ProductOtaViewModel(
                 ).fold(
                     onSuccess = { latest ->
                         if (!isCurrentCheck(deviceKey, requestId)) return@fold
-                        val hasUpdate = latest.hasUpdate ?: isServerVersionNewer(
+                        val versionIsNewer = isServerVersionNewer(
                             currentInnerVersion = deviceInfo?.firmwareInnerVersion,
                             latestInnerVersion = latest.innerVersion,
                             currentVersion = deviceInfo?.firmwareVersion,
                             latestVersion = latest.latestVersion
                         )
+                        val hasUpdate = latest.hasUpdate != false && versionIsNewer
                         _otaCheckState.value = ProductOtaCheckState(
                             latest = latest,
                             hasUpdate = hasUpdate,
@@ -129,6 +150,14 @@ class ProductOtaViewModel(
                             } else {
                                 null
                             }
+                        )
+                        AppDiagnostics.record(
+                            "ota_check",
+                            mapOf(
+                                "product" to productType.name,
+                                "device" to AppDiagnostics.deviceRef(serialNumber),
+                                "hasUpdate" to hasUpdate
+                            )
                         )
                     },
                     onFailure = { throwable ->
@@ -168,18 +197,20 @@ class ProductOtaViewModel(
             return
         }
         val latest = checkState.latest ?: return
-        val targetVersion = latest.latestVersion ?: return
-        val downloadUrl = resolveProductOtaDownloadUrl(latest.downloadUrl) ?: run {
-            _otaCheckState.value = _otaCheckState.value.copy(errorMessage = "服务器未返回固件下载地址")
-            return
-        }
-        val fileSize = latest.fileSize ?: run {
-            _otaCheckState.value = _otaCheckState.value.copy(errorMessage = "服务器未返回固件文件大小")
-            return
-        }
-        val sha256 = latest.sha256?.takeIf { it.isNotBlank() } ?: run {
-            _otaCheckState.value = _otaCheckState.value.copy(errorMessage = "服务器未返回固件 SHA256")
-            return
+        val packageInfo = when (
+            val validation = validateProductOtaPackage(
+                productType = productType,
+                deviceInfo = deviceInfo,
+                latest = latest,
+                otaBaseUrl = NetworkEndpoints.otaBaseUrl,
+                requireSignature = false
+            )
+        ) {
+            is ProductOtaPackageValidation.Valid -> validation.packageInfo
+            is ProductOtaPackageValidation.Invalid -> {
+                _otaCheckState.value = _otaCheckState.value.copy(errorMessage = validation.message)
+                return
+            }
         }
         val msgId = newMsgId("ota")
         when (val reservation = otaStartGuard.reserve(deviceKey, msgId)) {
@@ -203,15 +234,7 @@ class ProductOtaViewModel(
                 serialNumber = serialNumber,
                 productType = productType,
                 msgId = msgId,
-                packageInfo = ProductOtaPackage(
-                    targetVersion = targetVersion,
-                    downloadUrl = downloadUrl,
-                    fileSize = fileSize,
-                    sha256 = sha256,
-                    targetInnerVersion = latest.innerVersion,
-                    hardwareVersion = latest.hardwareVersion ?: deviceInfo?.hardwareVersion,
-                    signature = latest.signature
-                ),
+                packageInfo = packageInfo,
                 onSuccess = {
                     if (activeDeviceKey != deviceKey ||
                         !otaStartGuard.isActive(deviceKey, msgId) ||
@@ -223,6 +246,13 @@ class ProductOtaViewModel(
                         msgId = msgId,
                         status = ProductOtaCommandFeedbackStatus.Success,
                         text = "升级指令已发送，等待设备响应"
+                    )
+                    AppDiagnostics.record(
+                        "ota_start_published",
+                        mapOf(
+                            "product" to productType.name,
+                            "device" to AppDiagnostics.deviceRef(serialNumber)
+                        )
                     )
                 },
                 onError = { throwable ->
@@ -267,13 +297,7 @@ internal fun resolveProductOtaDownloadUrl(
     rawUrl: String?,
     baseUrl: String = NetworkEndpoints.otaBaseUrl
 ): String? {
-    val value = rawUrl?.trim().orEmpty()
-    if (value.isEmpty()) return null
-    return when {
-        value.startsWith("http://") || value.startsWith("https://") -> value
-        value.startsWith("/") -> baseUrl.trimEnd('/') + value
-        else -> baseUrl.trimEnd('/') + "/" + value.trimStart('/')
-    }
+    return resolveSecureProductOtaDownloadUrl(rawUrl, baseUrl)
 }
 
 class ProductOtaViewModelFactory(

@@ -56,11 +56,27 @@ class CustomerVisibleTextGuardTest {
 
     private fun releaseBuildTypeBlock(): String {
         val buildGradle = repoRoot().resolve("app/build.gradle.kts").readText()
-        return Regex("""release\s*\{([\s\S]*?)\n\s*}""")
-            .find(buildGradle)
-            ?.groupValues
-            ?.get(1)
-            .orEmpty()
+        val buildTypesBlock = extractGradleBlock(buildGradle, "buildTypes")
+        return extractGradleBlock(buildTypesBlock, "release")
+    }
+
+    private fun extractGradleBlock(source: String, blockName: String): String {
+        val match = Regex("""(?m)^\s*$blockName\s*\{""").find(source) ?: return ""
+        val openingBrace = source.indexOf('{', match.range.first)
+        var depth = 0
+        source.forEachIndexed { index, character ->
+            if (index < openingBrace) return@forEachIndexed
+            when (character) {
+                '{' -> depth += 1
+                '}' -> {
+                    depth -= 1
+                    if (depth == 0) {
+                        return source.substring(openingBrace + 1, index)
+                    }
+                }
+            }
+        }
+        return ""
     }
 
     private fun repoRoot(): File {

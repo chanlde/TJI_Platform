@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
-import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.speaker.core.SpeakerCoreAudioEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -16,13 +15,23 @@ import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-class SpeakerTtsSynthesizer(context: Context) {
-    private val appContext = context.applicationContext
-
+interface SpeakerTtsEngine {
     suspend fun synthesizeToPcm(
         text: String,
         voicePreset: SpeakerTtsVoicePreset = SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET,
         targetSampleRate: Int = SpeakerAudioConfig.Tts.DEFAULT_TTS_QUALITY.sampleRate
+    ): ByteArray
+
+    suspend fun inspectChineseVoices(): SpeakerTtsVoiceInventory
+}
+
+class SpeakerTtsSynthesizer(context: Context) : SpeakerTtsEngine {
+    private val appContext = context.applicationContext
+
+    override suspend fun synthesizeToPcm(
+        text: String,
+        voicePreset: SpeakerTtsVoicePreset,
+        targetSampleRate: Int
     ): ByteArray {
         require(targetSampleRate > 0) { "语音设置有问题，请重试" }
         val wavFile = File(appContext.cacheDir, "speaker-tts-${UUID.randomUUID()}.wav")
@@ -36,7 +45,7 @@ class SpeakerTtsSynthesizer(context: Context) {
         }
     }
 
-    suspend fun inspectChineseVoices(): SpeakerTtsVoiceInventory {
+    override suspend fun inspectChineseVoices(): SpeakerTtsVoiceInventory {
         val engine = createRawEngine()
         return try {
             val languageResult = withContext(Dispatchers.Main.immediate) {
@@ -57,9 +66,7 @@ class SpeakerTtsSynthesizer(context: Context) {
                 allVoiceCount = allVoices.size,
                 chineseVoices = chineseVoices,
                 availablePresets = availablePresets
-            ).also { inventory ->
-                logVoiceInventory(inventory, allVoices)
-            }
+            )
         } finally {
             engine.shutdown()
         }
@@ -251,30 +258,3 @@ private fun Voice.toSystemVoice(): SpeakerTtsSystemVoice =
         latency = latency,
         features = features.orEmpty()
     )
-
-private fun logVoiceInventory(inventory: SpeakerTtsVoiceInventory, allVoices: List<Voice>) {
-    SpeakerLogger.debug(
-        TTS_VOICE_DEBUG_TAG,
-        "engine=${inventory.engineName}, languageResult=${inventory.languageResult}, " +
-            "allVoiceCount=${inventory.allVoiceCount}, chineseVoiceCount=${inventory.chineseVoices.size}, " +
-            "availablePresets=${inventory.availablePresets.joinToString { it.label }}"
-    )
-    allVoices.sortedBy { it.name }.forEach { voice ->
-        SpeakerLogger.debug(
-            TTS_VOICE_DEBUG_TAG,
-            "voice name=${voice.name}, locale=${voice.locale.toLanguageTag()}, " +
-                "quality=${voice.quality}, latency=${voice.latency}, features=${voice.features.orEmpty()}"
-        )
-    }
-    SpeakerAudioConfig.Tts.VOICE_PRESETS
-        .filter { it != SpeakerTtsVoicePreset.Standard }
-        .forEach { preset ->
-            val matches = allVoices
-                .filter { it.isUsableChineseVoice() && it.matchesPreset(preset) }
-                .joinToString { it.name }
-                .ifBlank { "none" }
-            SpeakerLogger.debug(TTS_VOICE_DEBUG_TAG, "preset ${preset.label} matches: $matches")
-        }
-}
-
-private const val TTS_VOICE_DEBUG_TAG = "SpeakerTtsVoices"

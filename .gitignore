@@ -10,6 +10,8 @@ build/
 **/.gradle/
 **/.cxx/
 app/release/
+app/noMap/
+tmp/
 
 # Local machine configuration
 local.properties
@@ -24,6 +26,9 @@ local.properties
 .tmp_tts_probe/
 .tmp_sherpa_android/
 third_party/
+!native/third_party/
+!native/third_party/opus/
+!native/third_party/opus/**
 
 # Large local TTS model assets. Keep them on developer machines or distribute
 # them outside ordinary Git unless Git LFS is enabled for the repository.

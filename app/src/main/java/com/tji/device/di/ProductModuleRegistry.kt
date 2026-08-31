@@ -51,11 +51,39 @@ interface ProductModule : ProductMqttEventHandler {
         get() = null
 }
 
+internal val IMPLEMENTED_PRODUCT_MODULE_TYPES: Set<ProductType> = setOf(
+    ProductType.FireBucket,
+    ProductType.SolarClean,
+    ProductType.DropperSixStage,
+    ProductType.RadioDetection,
+    ProductType.Speaker,
+    ProductType.BreakWindowProjectile
+)
+
 class ProductModuleRegistry(
-    modules: List<ProductModule>
+    modules: List<ProductModule>,
+    requiredProductTypes: Set<ProductType>? = null
 ) {
     private val moduleByType: Map<ProductType, ProductModule> =
         modules.associateByUniqueProductType("product module") { it.productType }
+
+    init {
+        requiredProductTypes?.let { required ->
+            val registered = moduleByType.keys
+            val missing = required - registered
+            val unexpected = registered - required
+            require(missing.isEmpty() && unexpected.isEmpty()) {
+                buildString {
+                    append("Product module registration does not match enabled catalog")
+                    if (missing.isNotEmpty()) append("; missing=${missing.joinToString()}")
+                    if (unexpected.isNotEmpty()) append("; unexpected=${unexpected.joinToString()}")
+                }
+            }
+        }
+    }
+
+    val registeredProductTypes: Set<ProductType>
+        get() = moduleByType.keys
 
     val runtimeControllers: List<ProductRuntimeController> =
         moduleByType.values.map { it.runtimeController }

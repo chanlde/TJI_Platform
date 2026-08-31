@@ -1,7 +1,5 @@
 package com.tji.device.product.speaker.repository
 
-import com.tji.device.product.speaker.core.SpeakerLogger
-import com.tji.device.BuildConfig
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
 import com.tji.device.product.speaker.model.SpeakerAck
@@ -354,24 +352,11 @@ class SpeakerControlRepo : SpeakerControlRepository {
     override suspend fun sendCommand(serialNumber: String, command: SpeakerCommand) {
         val topic = SpeakerMqttTopics.controlTopic(serialNumber)
         val message = SpeakerCommandJson.encode(command = command, deviceId = serialNumber).toString()
-        val requestAt = if (BuildConfig.DEBUG) System.currentTimeMillis() else 0L
         ProductMqttRouter.managerFor(ProductType.Speaker).publishAwait(
             topic = topic,
             message = message,
             qos = 1,
             queueWhenDisconnected = false
         ).getOrThrow()
-        if (BuildConfig.DEBUG) {
-            SpeakerLogger.debug(
-                TAG,
-                "Speaker command sent: topic=$topic cmd=${command.commandName} " +
-                    "msgId=${command.msgId} bytes=${message.toByteArray().size} " +
-                    "cost=${System.currentTimeMillis() - requestAt}ms"
-            )
-        }
-    }
-
-    private companion object {
-        const val TAG = "SpeakerControlRepo"
     }
 }

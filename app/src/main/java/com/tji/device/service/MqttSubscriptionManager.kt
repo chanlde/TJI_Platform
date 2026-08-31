@@ -17,6 +17,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
@@ -55,6 +56,7 @@ class MqttSubscriptionManager(
     private val activeMessageGenerations = ConcurrentHashMap<SubscriptionTarget, Long>()
     private val targetLocks = Array(SUBSCRIPTION_LOCK_STRIPES) { Mutex() }
     private val messageChannels = ConcurrentHashMap<SubscriptionTarget, InboundMessageQueue>()
+    private val messageConsumerJobs = ConcurrentHashMap<SubscriptionTarget, Job>()
     private val desiredTargets = ConcurrentHashMap.newKeySet<SubscriptionTarget>()
     private val connectionObserverJobs = ConcurrentHashMap<MqttClientGateway, Job>()
     private val reconciliationMutex = Mutex()
@@ -133,6 +135,7 @@ class MqttSubscriptionManager(
 
     suspend fun clearAllSubscriptions() = reconciliationMutex.withLock {
         beginSubscriptionReset()
+        cancelAllMessageConsumersAndJoin()
         val targets = subscribedDevices.toList()
         val failures = try {
             withContext(NonCancellable) {
@@ -200,7 +203,7 @@ class MqttSubscriptionManager(
             val knownForClient = (subscribedDevices + desiredForClient)
                 .filter { clientFor(it.productType) === client }
                 .toSet()
-            knownForClient.forEach(::forgetTargetLocally)
+            knownForClient.forEach { target -> forgetTargetLocally(target) }
             debugLog {
                 "MQTT 会话已重连，恢复订阅: epoch=$epoch targets=${desiredForClient.size}"
             }
@@ -283,12 +286,12 @@ class MqttSubscriptionManager(
                                 client.unsubscribeAwait(topic).getOrThrow()
                             }
                         }.onFailure {
-                            Log.e(TAG, "回滚部分订阅失败: target=$target topic=$topic", it)
+                            Log.e(TAG, "回滚部分订阅失败: product=${target.productType}", it)
                         }
                         subscribedTopics.remove(key)
                     }
                 }
-                closeMessageChannel(target)
+                closeMessageChannelAndJoin(target)
                 throw throwable
             }
         }
@@ -305,7 +308,7 @@ class MqttSubscriptionManager(
         }
         subscribedDevices.remove(target)
         activeMessageGenerations.remove(target)
-        closeMessageChannel(target)
+        closeMessageChannelAndJoin(target)
     }
 
     private fun enqueueMessage(
@@ -330,7 +333,7 @@ class MqttSubscriptionManager(
             queue.telemetry.trySend(InboundMessage(message, isRetained))
         }
         if (result.isFailure) {
-            Log.w(TAG, "MQTT 入站队列已关闭，丢弃消息: target=$target")
+            Log.w(TAG, "MQTT 入站队列已关闭，丢弃消息: product=${target.productType}")
         }
     }
 
@@ -346,7 +349,7 @@ class MqttSubscriptionManager(
                     onBufferOverflow = BufferOverflow.DROP_OLDEST
                 )
             ).also { queue ->
-                messageScope.launch {
+                val consumerJob = messageScope.launch {
                     var reliableOpen = true
                     var telemetryOpen = true
                     while (reliableOpen || telemetryOpen) {
@@ -374,18 +377,23 @@ class MqttSubscriptionManager(
                         } catch (cancellation: CancellationException) {
                             throw cancellation
                         } catch (throwable: Throwable) {
-                            Log.e(TAG, "MQTT 消息处理失败: target=$target", throwable)
+                            Log.e(TAG, "MQTT 消息处理失败: product=${target.productType}", throwable)
                         }
                     }
+                }
+                messageConsumerJobs[target] = consumerJob
+                consumerJob.invokeOnCompletion {
+                    messageConsumerJobs.remove(target, consumerJob)
                 }
             }
         }
 
-    private fun closeMessageChannel(target: SubscriptionTarget) {
+    private suspend fun closeMessageChannelAndJoin(target: SubscriptionTarget) {
         messageChannels.remove(target)?.close()
+        messageConsumerJobs.remove(target)?.cancelAndJoin()
     }
 
-    private fun forgetTargetLocally(target: SubscriptionTarget) {
+    private suspend fun forgetTargetLocally(target: SubscriptionTarget) {
         synchronized(subscriptionStateLock) {
             subscriptionTopicsFor(target).forEach { (topic, _) ->
                 subscribedTopics.remove(subscriptionKey(topic, target.productType))
@@ -393,7 +401,16 @@ class MqttSubscriptionManager(
             subscribedDevices.remove(target)
             activeMessageGenerations.remove(target)
         }
-        closeMessageChannel(target)
+        closeMessageChannelAndJoin(target)
+    }
+
+    private suspend fun cancelAllMessageConsumersAndJoin() {
+        val jobs = synchronized(subscriptionStateLock) {
+            messageChannels.values.forEach { it.close() }
+            messageChannels.clear()
+            messageConsumerJobs.values.toList().also { messageConsumerJobs.clear() }
+        }
+        jobs.forEach { it.cancelAndJoin() }
     }
 
     private fun forgetAllSubscriptionsLocally() {
@@ -421,6 +438,8 @@ class MqttSubscriptionManager(
     private fun forgetAllSubscriptionsLocallyLocked() {
         messageChannels.values.forEach { it.close() }
         messageChannels.clear()
+        messageConsumerJobs.values.forEach { it.cancel() }
+        messageConsumerJobs.clear()
         subscribedTopics.clear()
         inFlightTopics.clear()
         subscribedDevices.clear()

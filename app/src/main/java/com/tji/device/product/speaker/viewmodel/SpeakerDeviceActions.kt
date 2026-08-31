@@ -33,66 +33,6 @@ internal class SpeakerDeviceActions(
         )
     }
 
-    fun sweepServo(
-        serialNumber: String,
-        minAngle: Int,
-        maxAngle: Int,
-        speedDps: Int,
-        cycles: Int,
-        durationMs: Int
-    ) {
-        val min = minAngle.coerceIn(SPEAKER_SERVO_MIN_ANGLE, SPEAKER_SERVO_MAX_ANGLE - 1)
-        val max = maxAngle.coerceIn(min + 1, SPEAKER_SERVO_MAX_ANGLE)
-        commands.send(
-            serialNumber,
-            SpeakerCommand.ServoSweepTest(
-                msgId = id("servo-sweep"),
-                minAngle = min,
-                maxAngle = max,
-                speedDps = speedDps.coerceIn(
-                    SPEAKER_SERVO_MIN_SPEED_DPS,
-                    SPEAKER_SERVO_MAX_SPEED_DPS
-                ),
-                cycles = cycles.coerceIn(SPEAKER_SERVO_MIN_CYCLES, SPEAKER_SERVO_MAX_CYCLES),
-                durationMs = durationMs.coerceIn(
-                    SPEAKER_SERVO_MIN_HOLD_MS,
-                    SPEAKER_SERVO_MAX_HOLD_MS
-                )
-            ),
-            "舵机往返测试"
-        )
-    }
-
-    fun stepServo(
-        serialNumber: String,
-        minAngle: Int,
-        maxAngle: Int,
-        stepAngle: Int,
-        speedDps: Int,
-        intervalMs: Int
-    ) {
-        val min = minAngle.coerceIn(SPEAKER_SERVO_MIN_ANGLE, SPEAKER_SERVO_MAX_ANGLE - 1)
-        val max = maxAngle.coerceIn(min + 1, SPEAKER_SERVO_MAX_ANGLE)
-        commands.send(
-            serialNumber,
-            SpeakerCommand.ServoStepTest(
-                msgId = id("servo-step"),
-                minAngle = min,
-                maxAngle = max,
-                stepAngle = stepAngle.coerceIn(1, max - min),
-                speedDps = speedDps.coerceIn(
-                    SPEAKER_SERVO_MIN_SPEED_DPS,
-                    SPEAKER_SERVO_MAX_SPEED_DPS
-                ),
-                intervalMs = intervalMs.coerceIn(
-                    SPEAKER_SERVO_MIN_INTERVAL_MS,
-                    SPEAKER_SERVO_MAX_INTERVAL_MS
-                )
-            ),
-            "舵机分段测试"
-        )
-    }
-
     fun getStatus(serialNumber: String) {
         commands.send(serialNumber, SpeakerCommand.GetStatus(id("status")), "状态查询")
     }

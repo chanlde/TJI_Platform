@@ -172,8 +172,8 @@ fun String.normalizedOtaStatus(): String {
 fun OtaLatestResponse.isStartable(): Boolean =
     !latestVersion.isNullOrBlank() &&
         !downloadUrl.isNullOrBlank() &&
-        fileSize != null &&
-        !sha256.isNullOrBlank()
+        fileSize?.let(::isValidFirmwareSize) == true &&
+        sha256?.trim()?.let(::isValidFirmwareSha256) == true
 
 private val hiddenOtaMachineStates = setOf(
     "IDLE",

@@ -1,5 +1,11 @@
 # Speaker Ogg/Opus 文件配置
 
+## 状态
+
+- 状态：active
+- 产品代码：`speaker`
+- 说明：当前 App、Relay 和 MCU 共用的 Ogg/Opus 文件约束。
+
 ## 范围
 
 按住录音松手、Android 系统 TTS 和录音保存统一生成标准 Ogg/Opus 文件。

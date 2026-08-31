@@ -3,8 +3,12 @@ package com.tji.device
 import android.app.Application
 import android.util.Log
 import com.tji.device.di.AppContainer
+import com.tji.device.diagnostics.AppDiagnostics
 import com.tji.device.ui.AppUiNotifier
+import com.tji.device.update.AppUpdateValidation
+import com.tji.device.update.validateAppUpdateCandidate
 import com.tji.network.TjiApiGateway
+import com.tji.network.config.NetworkEndpoints
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +20,8 @@ class MyApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
+        AppDiagnostics.initialize(this)
 
         AppContainer.initialize(this)
 
@@ -30,12 +36,18 @@ class MyApplication : Application() {
 
     private suspend fun checkUpdate() {
         try {
+            val productId = BuildConfig.TJI_APP_UPDATE_PRODUCT_ID
+            if (productId <= 0) {
+                Log.w(TAG, "未配置 TJI Platform App 更新 productId，跳过更新检查")
+                AppUiNotifier.setAppUpdateCandidate(null)
+                return
+            }
             Log.d(
                 TAG,
-                "开始检查 App 更新: productId=$APP_UPDATE_PRODUCT_ID " +
+                "开始检查 App 更新: productId=$productId " +
                         "localVersionCode=${BuildConfig.VERSION_CODE} localVersionName=${BuildConfig.VERSION_NAME}"
             )
-            val response = TjiApiGateway.getProductInfo(APP_UPDATE_PRODUCT_ID)
+            val response = TjiApiGateway.getProductInfo(productId)
             if (response.code != 200) {
                 Log.w(TAG, "版本检查接口非 200: code=${response.code} message=${response.message}")
                 return
@@ -45,19 +57,23 @@ class MyApplication : Application() {
                 Log.w(TAG, "版本检查: 响应 data 为空")
                 return
             }
-            val serverInner = appVersion.innerVersion
-            if (serverInner == null) {
-                Log.w(TAG, "版本检查: 服务器未返回 innerVersion，跳过强制更新（可对比 version 字符串：${appVersion.version}）")
-                return
-            }
-
-            val localCode = BuildConfig.VERSION_CODE
-            if (localCode < serverInner) {
-                Log.d(TAG, "需要更新: 本地 versionCode=$localCode 服务器 innerVersion=$serverInner")
-                AppUiNotifier.setAppUpdateAvailable(true)
-            } else {
-                Log.d(TAG, "无需强制更新: 本地 versionCode=$localCode 服务器 innerVersion=$serverInner")
-                AppUiNotifier.setAppUpdateAvailable(false)
+            when (
+                val validation = validateAppUpdateCandidate(
+                    response = appVersion,
+                    localVersionCode = BuildConfig.VERSION_CODE,
+                    expectedPackageName = BuildConfig.APPLICATION_ID,
+                    expectedSignerSha256 = BuildConfig.TJI_RELEASE_SIGNER_SHA256,
+                    downloadBaseUrl = NetworkEndpoints.otaBaseUrl
+                )
+            ) {
+                is AppUpdateValidation.Available -> {
+                    Log.d(TAG, "发现通过身份与完整性元数据校验的 App 更新")
+                    AppUiNotifier.setAppUpdateCandidate(validation)
+                }
+                is AppUpdateValidation.Unavailable -> {
+                    Log.w(TAG, "忽略不可安装的 App 更新元数据: ${validation.reason}")
+                    AppUiNotifier.setAppUpdateCandidate(null)
+                }
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -68,6 +84,5 @@ class MyApplication : Application() {
 
     companion object {
         private const val TAG = "MyApplication"
-        private const val APP_UPDATE_PRODUCT_ID = 2
     }
 }

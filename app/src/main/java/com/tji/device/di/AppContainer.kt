@@ -1,6 +1,7 @@
 package com.tji.device.di
 
 import android.content.Context
+import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.repository.AuthRepository
 import com.tji.device.data.repository.NetworkAuthRepository
@@ -14,6 +15,15 @@ import com.tji.device.product.firebucket.repository.FireBucketLinkRepo
 import com.tji.device.product.firebucket.repository.FireBucketLinkRepository
 import com.tji.device.product.firebucket.repository.FireBucketSwitchRepository
 import com.tji.device.product.firebucket.repository.FireBucketSwitchCommandRepository
+import com.tji.device.product.firebucket.model.FireBucketSwitchState
+import com.tji.device.product.firebucket.transport.CloudFireBucketControlTransport
+import com.tji.device.product.firebucket.transport.DirectFireBucketControlTransport
+import com.tji.device.product.firebucket.transport.DirectFireBucketStateStore
+import com.tji.device.product.firebucket.transport.DirectLinkSocketExchange
+import com.tji.device.product.firebucket.transport.DirectLinkRangeTestClient
+import com.tji.device.product.firebucket.transport.FireBucketConnectionMode
+import com.tji.device.product.firebucket.transport.FireBucketConnectionModeStore
+import com.tji.device.BuildConfig
 import com.tji.device.product.firebucket.viewmodel.FireBucketSwitchViewModelFactory
 import com.tji.device.product.glassbreaker.repository.GlassBreakerControlRepo
 import com.tji.device.product.glassbreaker.repository.GlassBreakerControlRepository
@@ -37,6 +47,7 @@ import com.tji.device.product.speaker.audio.SpeakerAudioRelay
 import com.tji.device.product.speaker.audio.SpeakerFeedbackClient
 import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
 import java.io.File
+import kotlin.math.min
 import com.tji.device.product.speaker.repository.SpeakerControlRepo
 import com.tji.device.product.speaker.repository.SpeakerControlRepository
 import com.tji.device.product.speaker.repository.SpeakerRepo
@@ -65,8 +76,78 @@ object AppContainer {
         FireBucketLinkRepo()
     }
 
+    val fireBucketConnectionMode: FireBucketConnectionModeStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        FireBucketConnectionModeStore()
+    }
+
+    val directFireBucketState = DirectFireBucketStateStore()
+
+    private val cloudFireBucketControl by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        CloudFireBucketControlTransport()
+    }
+
+    private val directLinkSocketExchangeDelegate = lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        check(::appContext.isInitialized) { "AppContainer.initialize(context) must be called first" }
+        DirectLinkSocketExchange(
+            context = appContext,
+            serverPort = BuildConfig.TJI_DIRECT_LINK_PORT,
+            onStatusReport = { status ->
+                directFireBucketState.applyStatus(
+                    FireBucketSwitchState(
+                        serialNumber = status.serialNumber,
+                        deviceName = "消防吊桶",
+                        deviceType = "HydroSwitch",
+                        isOnline = status.isOnline,
+                        currentAngle = status.currentAngle,
+                        currentCurrent = status.currentCurrent,
+                        inputVoltage = status.inputVoltage,
+                        servoMinAngle = status.servoMinAngle,
+                        servoMaxAngle = status.servoMaxAngle,
+                        uptime = min(status.uptimeSeconds, Int.MAX_VALUE.toLong()).toInt(),
+                        batteryPercentage = status.batteryPercentage
+                    )
+                )
+            },
+            onConnectionChanged = directFireBucketState::updateConnection,
+            onDisconnected = {
+                directFireBucketState.updateConnection(false)
+            }
+        )
+    }
+    private val directLinkSocketExchange by directLinkSocketExchangeDelegate
+
+    val directLinkRangeTestClient: DirectLinkRangeTestClient by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        check(::appContext.isInitialized) { "AppContainer.initialize(context) must be called first" }
+        DirectLinkRangeTestClient(appContext)
+    }
+
+    private val directFireBucketControl by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        DirectFireBucketControlTransport(directLinkSocketExchange::exchange)
+    }
+
+    fun useCloudFireBucketControl() {
+        fireBucketConnectionMode.useCloud()
+        if (directLinkSocketExchangeDelegate.isInitialized()) directLinkSocketExchange.stop()
+    }
+
+    fun useDirectFireBucketControl() {
+        fireBucketConnectionMode.useDirectLink()
+        directFireBucketState.beginSession()
+        directLinkSocketExchange.start()
+    }
+
+    fun leaveDirectFireBucketControl() {
+        useCloudFireBucketControl()
+        directFireBucketState.clear()
+    }
+
     val switchRepository: FireBucketSwitchRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        FireBucketSwitchCommandRepository()
+        FireBucketSwitchCommandRepository {
+            when (fireBucketConnectionMode.current) {
+                FireBucketConnectionMode.CLOUD -> cloudFireBucketControl
+                FireBucketConnectionMode.DIRECT_LINK -> directFireBucketControl
+            }
+        }
     }
 
     val solarCleanRepository: SolarCleanRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -147,7 +228,7 @@ object AppContainer {
 
     private val productModules: ProductModuleRegistry by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ProductModuleRegistry(
-            listOf(
+            modules = listOf(
                 FireBucketProductModule(
                     linkRepository = fireBucketLinkRepository,
                     switchRepository = switchRepository
@@ -160,7 +241,8 @@ object AppContainer {
                 ),
                 SpeakerProductModule(speakerRepository),
                 GlassBreakerProductModule(glassBreakerRepository)
-            )
+            ),
+            requiredProductTypes = ProductCatalog.enabledTypes
         )
     }
 
@@ -249,7 +331,8 @@ object AppContainer {
             productRuntimeRegistryProvider = { productRuntimeRegistry },
             mqttSubscriptionManagerProvider = { mqttSubscriptionManager },
             initializedMqttSubscriptionManager = ::initializedMqttSubscriptionManagerOrNull,
-            productOtaRuntimeRepositoryProvider = { productOtaRuntimeRepository }
+            productOtaRuntimeRepositoryProvider = { productOtaRuntimeRepository },
+            clearRadioDetectionReplay = { radioDetectionReplayStore.clearAll() }
         )
     }
 }

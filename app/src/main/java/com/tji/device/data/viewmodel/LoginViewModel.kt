@@ -4,7 +4,9 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tji.device.concurrent.LatestRequestTracker
+import com.tji.device.diagnostics.AppDiagnostics
 import com.tji.device.data.model.BoundAccountDevice
+import com.tji.device.data.model.AuthState
 import com.tji.device.data.model.LoginUiState
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
@@ -48,6 +50,7 @@ class LoginViewModel(
     private val authRepository: AuthRepository,
     private val sessionStore: AppSessionStore = AppSessionStore(),
     private val initializedMqttSubscriptionManager: () -> MqttSubscriptionManager? = { null },
+    private val mqttDisconnectAll: () -> Unit = MqttManager::disconnectAll,
     private val accountMqttConnector: (String, String, String) -> Unit = { account, platformClientId, radioDetectionClientId ->
         ProductMqttRouter.resetForAccount(
             account = account,
@@ -56,14 +59,18 @@ class LoginViewModel(
         )
         Log.w(
             "LoginViewModel",
-            "TJI_MQTT_DIAG login mqtt reset account=$account " +
-                "platformClientId=$platformClientId radioDetectionClientId=$radioDetectionClientId"
+            "TJI_MQTT_DIAG login MQTT profiles reset"
         )
         ProductMqttRouter.platformManager().connect(
             onConnected = {
+                AppDiagnostics.record("mqtt_connected", mapOf("profile" to "platform"))
                 Log.w("LoginViewModel", "TJI_MQTT_DIAG platform mqtt connected after login")
             },
             onFailed = { throwable ->
+                AppDiagnostics.record(
+                    "mqtt_connect_failed",
+                    mapOf("profile" to "platform", "error" to throwable.javaClass.simpleName)
+                )
                 Log.e("LoginViewModel", "TJI_MQTT_DIAG platform mqtt connect failed after login", throwable)
             }
         )
@@ -170,11 +177,13 @@ class LoginViewModel(
         if (!isCurrentLogin(loginAttempt, accountOperation)) return
 
         val boundDevices = parseBoundDevices(loginData)
-        sessionStore.startSession(userId = userId, devices = boundDevices)
+        sessionStore.startSession(account = account, userId = userId, devices = boundDevices)
+        AppDiagnostics.record("login_success", mapOf("deviceCount" to boundDevices.size))
         startMqttForAccount(account)
         Log.d(TAG, "登录成功，解析到 ${boundDevices.size} 个后台设备")
 
         updateLoginSuccessState(
+            account = account,
             userId = userId,
             boundDevices = boundDevices
         )
@@ -197,8 +206,7 @@ class LoginViewModel(
         val radioDetectionClientId = currentRadioDetectionMqttClientId(account)
         Log.w(
             TAG,
-            "TJI_MQTT_DIAG start account mqtt account=$account " +
-                "platformClientId=$platformClientId radioDetectionClientId=$radioDetectionClientId"
+            "TJI_MQTT_DIAG start account MQTT connections"
         )
         accountMqttConnector(account, platformClientId, radioDetectionClientId)
     }
@@ -227,12 +235,13 @@ class LoginViewModel(
             addAll(loginData.toBoundAccountDevicesFromTypedRows())
         }
 
-        return serverBoundDevices.distinctBy {
-            "${it.productType.name}:${it.serialNumber}"
-        }
+        return serverBoundDevices
+            .filter { ProductCatalog.isEnabled(it.productType) }
+            .distinctBy { "${it.productType.name}:${it.serialNumber}" }
     }
 
     private fun updateLoginSuccessState(
+        account: String,
         userId: String?,
         boundDevices: List<BoundAccountDevice>
     ) {
@@ -244,7 +253,7 @@ class LoginViewModel(
 
         _uiState.value = _uiState.value.copy(
             isLoading = false,
-            isLoggedIn = true,
+            authState = AuthState.LoggedIn(account),
             userId = userId,
             errorMessage = if (boundDevices.isEmpty()) "未找到可用设备" else null
         )
@@ -254,6 +263,7 @@ class LoginViewModel(
         message: String?,
         callback: (Boolean, String?) -> Unit
     ) {
+        AppDiagnostics.record("login_failed")
         Log.e(TAG, "登录失败: $message")
         _uiState.value = _uiState.value.copy(
             isLoading = false,
@@ -266,7 +276,8 @@ class LoginViewModel(
         exception: Exception,
         callback: (Boolean, String?) -> Unit
     ) {
-        Log.e(TAG, "登录或认证异常: ${exception.message}")
+        AppDiagnostics.record("login_exception", mapOf("error" to exception.javaClass.simpleName))
+        Log.e(TAG, "登录或认证异常")
         _uiState.value = _uiState.value.copy(
             isLoading = false,
             errorMessage = exception.toUserVisibleMessage("登录失败，请稍后重试")
@@ -282,13 +293,18 @@ class LoginViewModel(
      * 3. 清空登录状态和账号信息
      * 4. 清空用户设备列表
      */
-    fun logout() {
+    fun logout(onComplete: () -> Unit = {}) {
+        if (logoutJob?.isActive == true) return
         loginAttempts.begin(Unit)
         loginJob?.cancel()
         loginJob = null
         sessionStore.beginSessionTransition()
         val accountOperation = accountOperations.begin(Unit)
         logoutJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            authState = AuthState.LoggingOut(_account.value),
+            errorMessage = null
+        )
         logoutJob = viewModelScope.launch {
             Log.d(TAG, "用户登出，清理订阅")
             initializedMqttSubscriptionManager()?.let { manager ->
@@ -304,11 +320,12 @@ class LoginViewModel(
                 // A newer successful login owns the process now. An old logout
                 // must never disconnect or erase that new account's session.
                 if (accountOperations.isLatest(Unit, accountOperation)) {
-                    MqttManager.disconnectAll()
+                    mqttDisconnectAll()
                     _uiState.value = LoginUiState()
                     _account.value = ""
                     sessionStore.clear()
                     Log.d(TAG, "用户登出完成")
+                    onComplete()
                 }
             }
         }

@@ -41,14 +41,8 @@ import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedback
 import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedbackStatus
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophonePhase
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophoneState
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_CYCLES
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_HOLD_MS
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_INTERVAL_MS
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_ANGLE
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MAX_SPEED_DPS
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_CYCLES
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_HOLD_MS
-import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_INTERVAL_MS
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_ANGLE
 import com.tji.device.product.speaker.viewmodel.SPEAKER_SERVO_MIN_SPEED_DPS
 import com.tji.device.product.speaker.viewmodel.SpeakerTalkMode
@@ -353,27 +347,12 @@ internal fun OutputVolumeCard(
 internal fun SpeakerServoAngleCard(
     angle: Float,
     speedDps: Float,
-    minAngle: Float,
-    maxAngle: Float,
-    cycles: Float,
-    holdMs: Float,
-    stepAngle: Float,
-    intervalMs: Float,
     reportedAngle: Int?,
     servoState: SpeakerServoState?,
     enabled: Boolean,
     onAngleChange: (Float) -> Unit,
     onSpeedChange: (Float) -> Unit,
-    onMinAngleChange: (Float) -> Unit,
-    onMaxAngleChange: (Float) -> Unit,
-    onCyclesChange: (Float) -> Unit,
-    onHoldMsChange: (Float) -> Unit,
-    onStepAngleChange: (Float) -> Unit,
-    onIntervalMsChange: (Float) -> Unit,
-    onApply: () -> Unit,
-    onTest: () -> Unit,
-    onSweepTest: () -> Unit,
-    onStepTest: () -> Unit
+    onApply: () -> Unit
 ) {
     var sliderAngle by remember { mutableFloatStateOf(angle.coerceIn(SPEAKER_SERVO_MIN_ANGLE.toFloat(), SPEAKER_SERVO_MAX_ANGLE.toFloat())) }
     var sliderSpeed by remember { mutableFloatStateOf(speedDps.coerceIn(SPEAKER_SERVO_MIN_SPEED_DPS.toFloat(), SPEAKER_SERVO_MAX_SPEED_DPS.toFloat())) }
@@ -470,110 +449,18 @@ internal fun SpeakerServoAngleCard(
                 )
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SpeakerActionButton(
-                text = "应用设置",
-                enabled = enabled,
-                color = SpeakerAccent,
-                onClick = onApply,
-                modifier = Modifier.weight(1f)
-            )
-            SpeakerActionButton(
-                text = "测试舵机",
-                enabled = enabled,
-                color = SpeakerWarning,
-                onClick = onTest,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        SpeakerServoRangeControls(
-            minAngle = minAngle,
-            maxAngle = maxAngle,
-            cycles = cycles,
-            holdMs = holdMs,
-            stepAngle = stepAngle,
-            intervalMs = intervalMs,
+        SpeakerActionButton(
+            text = "应用设置",
             enabled = enabled,
-            onMinAngleChange = onMinAngleChange,
-            onMaxAngleChange = onMaxAngleChange,
-            onCyclesChange = onCyclesChange,
-            onHoldMsChange = onHoldMsChange,
-            onStepAngleChange = onStepAngleChange,
-            onIntervalMsChange = onIntervalMsChange
+            color = SpeakerAccent,
+            onClick = onApply,
+            modifier = Modifier.fillMaxWidth()
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            SpeakerActionButton(
-                text = "往返测试",
-                enabled = enabled,
-                color = SpeakerWarning,
-                soft = true,
-                onClick = onSweepTest,
-                modifier = Modifier.weight(1f)
-            )
-            SpeakerActionButton(
-                text = "分段测试",
-                enabled = enabled,
-                color = SpeakerWarning,
-                soft = true,
-                onClick = onStepTest,
-                modifier = Modifier.weight(1f)
-            )
-        }
         SpeakerSoftRow(
             label = "设备上报",
             value = servoStatusText(reportedAngle, servoState)
         )
     }
-}
-
-@Composable
-private fun SpeakerServoRangeControls(
-    minAngle: Float,
-    maxAngle: Float,
-    cycles: Float,
-    holdMs: Float,
-    stepAngle: Float,
-    intervalMs: Float,
-    enabled: Boolean,
-    onMinAngleChange: (Float) -> Unit,
-    onMaxAngleChange: (Float) -> Unit,
-    onCyclesChange: (Float) -> Unit,
-    onHoldMsChange: (Float) -> Unit,
-    onStepAngleChange: (Float) -> Unit,
-    onIntervalMsChange: (Float) -> Unit
-) {
-    SpeakerServoMiniSlider("最小角度", "${minAngle.roundToInt()}°", minAngle, SPEAKER_SERVO_MIN_ANGLE.toFloat()..SPEAKER_SERVO_MAX_ANGLE.toFloat(), enabled, onMinAngleChange)
-    SpeakerServoMiniSlider("最大角度", "${maxAngle.roundToInt()}°", maxAngle, SPEAKER_SERVO_MIN_ANGLE.toFloat()..SPEAKER_SERVO_MAX_ANGLE.toFloat(), enabled, onMaxAngleChange)
-    SpeakerServoMiniSlider("往返次数", if (cycles.roundToInt() == 0) "连续" else "${cycles.roundToInt()}次", cycles, SPEAKER_SERVO_MIN_CYCLES.toFloat()..SPEAKER_SERVO_MAX_CYCLES.toFloat(), enabled, onCyclesChange)
-    SpeakerServoMiniSlider("端点停留", "${holdMs.roundToInt()}ms", holdMs, SPEAKER_SERVO_MIN_HOLD_MS.toFloat()..SPEAKER_SERVO_MAX_HOLD_MS.toFloat(), enabled, onHoldMsChange)
-    SpeakerServoMiniSlider("步进角度", "${stepAngle.roundToInt()}°", stepAngle, 1f..SPEAKER_SERVO_MAX_ANGLE.toFloat(), enabled, onStepAngleChange)
-    SpeakerServoMiniSlider("步进间隔", "${intervalMs.roundToInt()}ms", intervalMs, SPEAKER_SERVO_MIN_INTERVAL_MS.toFloat()..SPEAKER_SERVO_MAX_INTERVAL_MS.toFloat(), enabled, onIntervalMsChange)
-}
-
-@Composable
-private fun SpeakerServoMiniSlider(
-    label: String,
-    valueText: String,
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    enabled: Boolean,
-    onValueChange: (Float) -> Unit
-) {
-    Row(
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(text = label, style = MaterialTheme.typography.bodySmall, color = SpeakerMuted)
-        Text(text = valueText, style = MaterialTheme.typography.bodySmall, color = SpeakerFg, fontWeight = FontWeight.Bold)
-    }
-    TjiControlSlider(
-        value = value.coerceIn(valueRange.start, valueRange.endInclusive),
-        onValueChange = { onValueChange(it.coerceIn(valueRange.start, valueRange.endInclusive)) },
-        valueRange = valueRange,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth()
-    )
 }
 
 private fun servoStatusText(reportedAngle: Int?, servoState: SpeakerServoState?): String {

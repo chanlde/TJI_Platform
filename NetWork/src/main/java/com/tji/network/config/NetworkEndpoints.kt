@@ -12,8 +12,6 @@ object NetworkEndpoints {
     /** 固件下载 base URL，必须以 `/` 结尾。 */
     val otaBaseUrl: String = normalizeBaseUrl(BuildConfig.TJI_OTA_BASE_URL)
 
-    /** App 安装包更新地址。 */
-    val appUpdateUrl: String = BuildConfig.TJI_UPDATE_URL
 }
 
 internal fun normalizeBaseUrl(value: String): String =

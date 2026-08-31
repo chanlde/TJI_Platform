@@ -17,6 +17,7 @@ val BoundAccountDevice.deviceKey: DeviceKey
     get() = DeviceKey(productType = productType, serialNumber = serialNumber)
 
 data class AppSessionState(
+    val account: String = "",
     val userId: String? = null,
     val boundDevices: List<BoundAccountDevice> = emptyList(),
     val selectedDeviceKey: DeviceKey? = null,
@@ -34,10 +35,11 @@ class AppSessionStore {
     val state: StateFlow<AppSessionState> = _state.asStateFlow()
     private val sessionGeneration = AtomicLong(0L)
 
-    fun startSession(userId: String?, devices: List<BoundAccountDevice>) {
+    fun startSession(account: String, userId: String?, devices: List<BoundAccountDevice>) {
         val uniqueDevices = devices.distinctBy { it.deviceKey }
         sessionGeneration.incrementAndGet()
         _state.value = AppSessionState(
+            account = account,
             userId = userId,
             boundDevices = uniqueDevices,
             preferredProductType =

@@ -22,10 +22,6 @@ object SpeakerCoreAudioEngine {
     /** 松手后对完整手机麦克风录音执行噪声估计、软门限和防爆音处理。 */
     fun processPushToTalk(pcm16le: ByteArray, sampleRate: Int): ByteArray {
         val processed = SpeakerPttProcessor.process(pcm16le, sampleRate)
-        SpeakerLogger.debug(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "pttProcessor sampleRate=$sampleRate in=${pcm16le.size} out=${processed.size}"
-        )
         return processed
     }
 
@@ -57,10 +53,6 @@ object SpeakerCoreAudioEngine {
             packetMs = packetMs,
             bitrate = bitrate
         ) ?: error("当前版本必须加载 speaker-core/libopus，无法生成 Ogg Opus")
-        logNative(
-            "ogg-opus",
-            "recordId=$recordId sampleRate=$sampleRate bitrate=$bitrate bytes=${data.size}"
-        )
         return SpeakerOpusFile.fromEncoded(
             data = data,
             pcmBytes = pcm.size - pcm.size % 2,
@@ -83,10 +75,8 @@ object SpeakerCoreAudioEngine {
     ): ByteArray {
         if (sourceSampleRate == targetSampleRate) return pcm16le
         SpeakerCoreNative.resamplePcm16OrNull(pcm16le, sourceSampleRate, targetSampleRate)?.let { resampled ->
-            logNative("resample", "$sourceSampleRate->$targetSampleRate in=${pcm16le.size} out=${resampled.size}")
             return resampled
         }
-        logFallback("resample", "$sourceSampleRate->$targetSampleRate bytes=${pcm16le.size}")
         return pcm16le.resamplePcm16Fallback(sourceSampleRate, targetSampleRate)
     }
 
@@ -116,10 +106,8 @@ object SpeakerCoreAudioEngine {
             fadeMs = fadeMs,
             amplitude = amplitude
         )?.let { tone ->
-            logNative("tone", "frequencyHz=$frequencyHz durationMs=$durationMs bytes=${tone.size}")
             return tone
         }
-        logFallback("tone", "frequencyHz=$frequencyHz durationMs=$durationMs")
         return generateTonePcm16Fallback(frequencyHz, durationMs, amplitude, sampleRate, minDurationMs, fadeMs)
     }
 
@@ -134,10 +122,8 @@ object SpeakerCoreAudioEngine {
         sampleRate: Int
     ): ByteArray {
         SpeakerCoreNative.prependSilencePcm16OrNull(pcm16le, durationMs, sampleRate)?.let { padded ->
-            logNative("prepend-silence", "durationMs=$durationMs sampleRate=$sampleRate in=${pcm16le.size} out=${padded.size}")
             return padded
         }
-        logFallback("prepend-silence", "durationMs=$durationMs sampleRate=$sampleRate bytes=${pcm16le.size}")
         val silenceBytes = sampleRate.coerceAtLeast(1) *
             durationMs.coerceAtLeast(0) /
             MILLIS_PER_SECOND *
@@ -157,19 +143,9 @@ object SpeakerCoreAudioEngine {
         targetSampleRate: Int
     ): ByteArray {
         SpeakerCoreNative.decodeWavPcm16MonoOrNull(wav, targetSampleRate)?.let { pcm ->
-            logNative("wav-pcm16-mono", "targetSampleRate=$targetSampleRate in=${wav.size} out=${pcm.size}")
             return pcm
         }
-        logFallback("wav-pcm16-mono", "targetSampleRate=$targetSampleRate bytes=${wav.size}")
         return wav.decodeWavPcm16MonoFallback(targetSampleRate)
-    }
-
-    private fun logNative(path: String, detail: String) {
-        SpeakerLogger.debug(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=native path=$path $detail")
-    }
-
-    private fun logFallback(path: String, detail: String) {
-        SpeakerLogger.debug(SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG, "speakerCoreNative status=fallback path=$path $detail")
     }
 
     private const val BYTES_PER_PCM16_SAMPLE = 2

@@ -41,6 +41,22 @@ class DropperSixStageControlPayloadTest {
     }
 
     @Test
+    fun openAllIncludesAutomaticCloseDuration() {
+        val payload = DropperSixStageCommand.AllStages(
+            msgId = "all-open-timed",
+            open = true,
+            durationMs = 1_000
+        ).toDropperControlJson()
+
+        assertEquals(
+            setOf("v", "msgId", "module", "action", "duration"),
+            payloadKeys(payload)
+        )
+        assertEquals("open_all", payload.getString("action"))
+        assertEquals(1_000, payload.getInt("duration"))
+    }
+
+    @Test
     fun armAndDisarmUseFireDropSafetyActions() {
         val arm = DropperSixStageCommand.Arm("arm-1").toDropperControlJson()
         val disarm = DropperSixStageCommand.Disarm("disarm-1").toDropperControlJson()

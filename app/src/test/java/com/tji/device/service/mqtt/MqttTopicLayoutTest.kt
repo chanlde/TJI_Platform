@@ -1,11 +1,20 @@
 package com.tji.device.service.mqtt
 
+import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.radiodetection.mqtt.RadioDetectionMqttTopics
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class MqttTopicLayoutTest {
+
+    @Test
+    fun everyEnabledCatalogProductHasConcreteTopics() {
+        ProductCatalog.enabledTypes.forEach { productType ->
+            mqttTopicsFor(productType)
+        }
+    }
 
     @Test
     fun mapsPlatformProductsToCanonicalDeviceTopics() {
@@ -16,8 +25,7 @@ class MqttTopicLayoutTest {
             ProductType.SolarClean to "SolarClean",
             ProductType.DropperSixStage to "FC100_FireDrop",
             ProductType.Speaker to "Speaker",
-            ProductType.BreakWindowProjectile to "GlassBreaker",
-            ProductType.Searchlight to "Searchlight"
+            ProductType.BreakWindowProjectile to "GlassBreaker"
         ).forEach { (productType, productCode) ->
             val topics = mqttTopicsFor(productType)
 
@@ -33,6 +41,13 @@ class MqttTopicLayoutTest {
                 "$productCode/devices/$deviceId/control",
                 topics.controlTopic(deviceId)
             )
+        }
+    }
+
+    @Test
+    fun disabledProductCannotCreatePlaceholderTopics() {
+        assertThrows(IllegalArgumentException::class.java) {
+            mqttTopicsFor(ProductType.Searchlight)
         }
     }
 

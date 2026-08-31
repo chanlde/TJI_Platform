@@ -4,7 +4,7 @@ import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.common.runCatchingPreservingCancellation
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.audio.SpeakerLocalAudioPlayer
-import com.tji.device.product.speaker.audio.SpeakerTtsSynthesizer
+import com.tji.device.product.speaker.audio.SpeakerTtsEngine
 import com.tji.device.product.speaker.audio.SpeakerTtsVoicePreset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
  */
 internal class SpeakerTtsCoordinator(
     scope: CoroutineScope,
-    private val synthesizer: SpeakerTtsSynthesizer
+    private val synthesizer: SpeakerTtsEngine
 ) {
     private val voicePresetState = MutableStateFlow(SpeakerAudioConfig.Tts.DEFAULT_VOICE_PRESET)
     val voicePreset: StateFlow<SpeakerTtsVoicePreset> = voicePresetState.asStateFlow()

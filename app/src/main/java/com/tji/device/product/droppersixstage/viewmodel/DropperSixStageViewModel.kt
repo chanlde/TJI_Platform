@@ -111,10 +111,17 @@ class DropperSixStageViewModel(
         )
     }
 
-    fun toggleAll(serialNumber: String, open: Boolean) {
+    fun toggleAll(serialNumber: String, open: Boolean, durationMs: Int? = null) {
+        val normalizedDuration = durationMs
+            ?.takeIf { open }
+            ?.let(DropperControlLimits::normalizeOpenDuration)
         send(
             serialNumber = serialNumber,
-            command = DropperSixStageCommand.AllStages(newMsgId("all"), open),
+            command = DropperSixStageCommand.AllStages(
+                msgId = newMsgId("all"),
+                open = open,
+                durationMs = normalizedDuration
+            ),
             label = if (open) "全部抛投" else "全部复位"
         )
     }

@@ -24,7 +24,7 @@ App 当前覆盖：
 - 文件播放。
 - 音量设置。
 - 音质设置。
-- 舵机角度设置、往返测试、分段测试。
+- 舵机角度设置。
 - 录音保存。
 - 录音列表查询。
 - 录音播放、删除、改名。
@@ -113,73 +113,9 @@ App 通过控制 topic 下发舵机角度：
 - 为兼容不同固件解析方式，App 会同时在顶层和 `params` 内写入舵机参数。
 - 状态上报可继续使用旧字段 `servoAngle`，也可以上报新的 `servo` 对象。
 
-### 舵机往返测试
-
-App 通过 `SERVO_SWEEP_TEST` 下发往返测试：
-
-```json
-{
-  "v": 1,
-  "deviceId": "T12345678",
-  "cmdId": "speaker-servo-sweep-1",
-  "msgId": "speaker-servo-sweep-1",
-  "ts": 123456789,
-  "cmd": 125,
-  "cmdName": "SERVO_SWEEP_TEST",
-  "minAngle": 0,
-  "maxAngle": 180,
-  "speedDps": 60,
-  "cycles": 1,
-  "durationMs": 300,
-  "params": {
-    "minAngle": 0,
-    "maxAngle": 180,
-    "speedDps": 60,
-    "cycles": 1,
-    "durationMs": 300
-  }
-}
-```
-
-- `minAngle`、`maxAngle` 单位为度，范围 `0..180`，且 `minAngle < maxAngle`。
-- `cycles` 范围 `0..100`，`0` 表示持续往返，直到固件收到停止或新的舵机命令。
-- `durationMs` 为端点停留时间，范围 `0..5000`，默认 `300`。
-- App 的 `测试舵机` 按钮会下发一次 `0°..180°` 的往返测试。
-
-### 舵机分段测试
-
-App 通过 `SERVO_STEP_TEST` 下发分段测试：
-
-```json
-{
-  "v": 1,
-  "deviceId": "T12345678",
-  "cmdId": "speaker-servo-step-1",
-  "msgId": "speaker-servo-step-1",
-  "ts": 123456789,
-  "cmd": 126,
-  "cmdName": "SERVO_STEP_TEST",
-  "minAngle": 30,
-  "maxAngle": 120,
-  "stepAngle": 10,
-  "speedDps": 60,
-  "intervalMs": 2000,
-  "params": {
-    "minAngle": 30,
-    "maxAngle": 120,
-    "stepAngle": 10,
-    "speedDps": 60,
-    "intervalMs": 2000
-  }
-}
-```
-
-- `stepAngle` 范围为 `1..(maxAngle - minAngle)`。
-- `intervalMs` 范围为 `20..60000`。
-
 ### 舵机状态上报
 
-新固件建议在状态里增加 `servo` 对象，App 会解析并展示当前角度、目标角度、速度、移动状态和测试状态：
+新固件建议在状态里增加 `servo` 对象，App 会解析并展示当前角度、目标角度、速度和移动状态：
 
 ```json
 {
@@ -188,15 +124,7 @@ App 通过 `SERVO_STEP_TEST` 下发分段测试：
     "currentAngle": 90,
     "targetAngle": 120,
     "speedDps": 60,
-    "moving": true,
-    "sweepActive": true,
-    "stepMode": false,
-    "stepAngle": 10,
-    "minAngle": 0,
-    "maxAngle": 180,
-    "cyclesLeft": 1,
-    "cyclesDone": 0,
-    "infinite": false
+    "moving": true
   }
 }
 ```

@@ -14,6 +14,7 @@ data class ProductDefinition(
     val type: ProductType,
     val productId: Int,
     val productCode: String,
+    val enabled: Boolean = true,
     val displayName: String,
     val shortLabel: String,
     val description: String,
@@ -87,6 +88,7 @@ object ProductCatalog {
             type = ProductType.Searchlight,
             productId = 8,
             productCode = "Searchlight",
+            enabled = false,
             displayName = "探照灯",
             shortLabel = "Searchlight",
             description = "无人机探照灯产品线",
@@ -96,6 +98,10 @@ object ProductCatalog {
     )
 
     val allTypes: List<ProductType> = definitions.map { it.type }
+    val enabledDefinitions: List<ProductDefinition> = definitions.filter { it.enabled }
+    val enabledTypes: Set<ProductType> = enabledDefinitions.mapTo(linkedSetOf()) { it.type }
+
+    fun isEnabled(type: ProductType): Boolean = definitionOf(type).enabled
 
     fun definitionOf(type: ProductType): ProductDefinition {
         return definitions.first { it.type == type }

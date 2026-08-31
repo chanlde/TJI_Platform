@@ -608,6 +608,7 @@ object ProductCatalog {
                 )
 
         for product_dir in (
+            "common",
             "firebucket",
             "ota",
             "runtime",

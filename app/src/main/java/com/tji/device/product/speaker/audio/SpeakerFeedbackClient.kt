@@ -385,10 +385,8 @@ private class AndroidSpeakerFeedbackAudioSink(
     private val debugCaptureDirectory: File?
 ) : SpeakerFeedbackAudioSink {
     private var track: AudioTrack? = null
-    private var writtenPackets = 0L
     private var playbackGain = SpeakerAudioConfig.Gain.MCU_MONITOR_OUTPUT_GAIN
     private val captureLock = Any()
-    private var captureFile: File? = null
     private var captureOutput: RandomAccessFile? = null
     private var capturedPcmBytes = 0L
     @Volatile
@@ -430,13 +428,6 @@ private class AndroidSpeakerFeedbackAudioSink(
         }
         newTrack.setVolume(playbackGain)
         if (!playbackPaused) newTrack.play()
-        if (BuildConfig.DEBUG) {
-            SpeakerLogger.debug(
-                SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-                "mcu monitor AudioTrack started session=${newTrack.audioSessionId} " +
-                    "sampleRate=${newTrack.sampleRate} gain=$playbackGain"
-            )
-        }
         track = newTrack
     }
 
@@ -479,30 +470,6 @@ private class AndroidSpeakerFeedbackAudioSink(
         if (playbackPaused) return
         val audioTrack = track ?: return
         capturePcm(pcm)
-        writtenPackets++
-        if (BuildConfig.DEBUG && writtenPackets % AUDIO_LEVEL_LOG_INTERVAL_PACKETS == 1L) {
-            var sumSquares = 0.0
-            var peak = 0
-            var samples = 0
-            var index = 0
-            while (index + 1 < pcm.size) {
-                val sample = (
-                    (pcm[index].toInt() and 0xFF) or
-                        (pcm[index + 1].toInt() shl 8)
-                    ).toShort().toInt()
-                val magnitude = kotlin.math.abs(sample)
-                if (magnitude > peak) peak = magnitude
-                sumSquares += sample.toDouble() * sample.toDouble()
-                samples++
-                index += 2
-            }
-            val rms = if (samples == 0) 0.0 else kotlin.math.sqrt(sumSquares / samples)
-            SpeakerLogger.debug(
-                SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-                "mcu monitor pcm packet=$writtenPackets bytes=${pcm.size} " +
-                    "rms=${rms.toInt()} peak=$peak"
-            )
-        }
         var offset = 0
         while (offset < pcm.size) {
             if (playbackPaused) return
@@ -558,13 +525,8 @@ private class AndroidSpeakerFeedbackAudioSink(
             val output = RandomAccessFile(outputFile, "rw")
             output.setLength(0L)
             output.write(ByteArray(WAV_HEADER_BYTES))
-            captureFile = outputFile
             captureOutput = output
             capturedPcmBytes = 0L
-            SpeakerLogger.debug(
-                SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-                "mcu monitor capture started file=${outputFile.absolutePath}"
-            )
             true
         }.onFailure {
             SpeakerLogger.warn(
@@ -577,17 +539,10 @@ private class AndroidSpeakerFeedbackAudioSink(
 
     private fun finishDebugCapture() {
         val output = captureOutput ?: return
-        val outputFile = captureFile
         captureOutput = null
-        captureFile = null
         runCatching {
             writeWavHeader(output, capturedPcmBytes)
             output.close()
-            SpeakerLogger.debug(
-                SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-                "mcu monitor capture saved file=${outputFile?.absolutePath} " +
-                    "pcmBytes=$capturedPcmBytes"
-            )
         }.onFailure {
             runCatching { output.close() }
             SpeakerLogger.warn(
@@ -636,7 +591,6 @@ private class AndroidSpeakerFeedbackAudioSink(
 
     private companion object {
         const val AUDIO_BUFFER_PACKETS = 10
-        const val AUDIO_LEVEL_LOG_INTERVAL_PACKETS = 50L
         const val WAV_HEADER_BYTES = 44
         const val PCM16_BYTES_PER_SAMPLE = 2
         const val PCM16_BITS_PER_SAMPLE = 16

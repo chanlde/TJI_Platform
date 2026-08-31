@@ -60,6 +60,20 @@ private fun FloatingWindowEmptyStatePreview() {
     )
 }
 
+@Preview(showBackground = true, widthDp = 360, heightDp = 520)
+@Composable
+private fun GlassBreakerFloatingWindowPreview() {
+    FloatingWindowContent(
+        uiState = previewGlassBreakerUiState(),
+        isExpanded = true,
+        onToggleExpand = {},
+        onMinimize = {},
+        onClose = {},
+        onSwitchQuickToggle = { _, _, _ -> },
+        onMove = { _, _ -> }
+    )
+}
+
 private fun previewUiState(includeDevice: Boolean): FloatingWindowUiState {
     val switch = if (includeDevice) {
         FloatingSwitchSummary(
@@ -67,7 +81,7 @@ private fun previewUiState(includeDevice: Boolean): FloatingWindowUiState {
             name = "示例水桶",
             isOnline = true,
             currentAngle = 45,
-            inputVoltage = 7.5
+            batteryPercentage = 68.0
         )
     } else null
 
@@ -106,11 +120,11 @@ private fun previewUiStateEmpty(): FloatingWindowUiState {
 
 private fun previewUiStateMultiSwitch(): FloatingWindowUiState {
     val switches = listOf(
-        FloatingSwitchSummary("SW-001", "水桶1", true, 45, 8.0),
-        FloatingSwitchSummary("SW-002", "水桶2", true, 30, 7.2),
-        FloatingSwitchSummary("SW-003", "水桶3", false, 60, 6.5),
-        FloatingSwitchSummary("SW-004", "水桶4", true, 90, 7.8),
-        FloatingSwitchSummary("SW-005", "水桶5", true, 120, 6.2)
+        FloatingSwitchSummary("SW-001", "水桶1", true, 45, 92.0),
+        FloatingSwitchSummary("SW-002", "水桶2", true, 30, 64.0),
+        FloatingSwitchSummary("SW-003", "水桶3", false, 60, 20.0),
+        FloatingSwitchSummary("SW-004", "水桶4", true, 90, 78.0),
+        FloatingSwitchSummary("SW-005", "水桶5", true, 120, 10.0)
     )
 
     val link = FloatingLinkSummary(
@@ -126,5 +140,21 @@ private fun previewUiStateMultiSwitch(): FloatingWindowUiState {
         links = listOf(link),
         selectedLinkSerial = link.serialNumber,
         preferredProductType = ProductType.FireBucket
+    )
+}
+
+private fun previewGlassBreakerUiState(): FloatingWindowUiState {
+    val link = FloatingLinkSummary(
+        serialNumber = "GB-001",
+        name = "破窗器 01",
+        isOnline = true,
+        productType = ProductType.BreakWindowProjectile,
+        onlineSwitches = emptyList(),
+        offlineSwitches = emptyList()
+    )
+    return FloatingWindowUiState(
+        links = listOf(link),
+        selectedLinkSerial = link.serialNumber,
+        preferredProductType = ProductType.BreakWindowProjectile
     )
 }

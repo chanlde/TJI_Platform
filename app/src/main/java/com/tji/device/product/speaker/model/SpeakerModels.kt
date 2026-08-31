@@ -142,24 +142,6 @@ sealed class SpeakerCommand(
         val speedDps: Int = 60
     ) : SpeakerCommand(msgId, 107, "SET_SERVO_ANGLE")
 
-    class ServoSweepTest(
-        msgId: String,
-        val minAngle: Int,
-        val maxAngle: Int,
-        val speedDps: Int = 60,
-        val cycles: Int = 1,
-        val durationMs: Int = 300
-    ) : SpeakerCommand(msgId, 125, "SERVO_SWEEP_TEST")
-
-    class ServoStepTest(
-        msgId: String,
-        val minAngle: Int,
-        val maxAngle: Int,
-        val stepAngle: Int = 10,
-        val speedDps: Int = 30,
-        val intervalMs: Int = 2_000
-    ) : SpeakerCommand(msgId, 126, "SERVO_STEP_TEST")
-
     /**
      * 开关 MCU 板载麦克风回传。与手机麦克风录音/喊话无关。
      */

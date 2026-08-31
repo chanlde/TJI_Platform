@@ -5,7 +5,6 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">192.168.5.1</domain>
         <domain includeSubdomains="false">192.168.5.10</domain>
-        <domain includeSubdomains="false">api.tjinnovations.cloud</domain>
         <domain includeSubdomains="false">146.56.250.203</domain>
     </domain-config>
 </network-security-config>

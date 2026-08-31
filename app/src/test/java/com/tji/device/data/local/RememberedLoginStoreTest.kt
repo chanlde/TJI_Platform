@@ -2,7 +2,9 @@ package com.tji.device.data.local
 
 import android.content.SharedPreferences
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RememberedLoginStoreTest {
@@ -17,12 +19,27 @@ class RememberedLoginStoreTest {
     fun saveMakesCredentialsAvailableToNextLoad() {
         val store = RememberedLoginStore(InMemorySharedPreferences())
 
-        store.save(account = "operator", password = "secret")
+        assertTrue(store.save(account = "operator", password = "secret"))
 
         assertEquals(
             RememberedLoginCredentials(account = "operator", password = "secret"),
             store.load()
         )
+    }
+
+    @Test
+    fun encryptionInitializationFailureClearsLegacyPlaintextAndDisablesSaving() {
+        val legacy = InMemorySharedPreferences()
+        RememberedLoginStore(legacy).save(account = "legacy-user", password = "legacy-secret")
+
+        val store = RememberedLoginStore.openWithEncryptedPreferences(legacy) {
+            error("Android Keystore unavailable")
+        }
+
+        assertFalse(store.isAvailable)
+        assertFalse(store.save(account = "new-user", password = "new-secret"))
+        assertNull(store.load())
+        assertTrue(legacy.all.isEmpty())
     }
 
     @Test
