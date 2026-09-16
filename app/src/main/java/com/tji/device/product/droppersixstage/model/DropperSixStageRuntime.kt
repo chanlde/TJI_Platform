@@ -5,6 +5,7 @@ import com.tji.device.product.runtime.ProductRuntimePayload
 const val DROPPER_STAGE_COUNT = 6
 const val DROPPER_MIN_OPEN_DURATION_MS = 100
 const val DROPPER_MAX_OPEN_DURATION_MS = 30_000
+const val DROPPER_DEFAULT_OPEN_DURATION_MS = 1_000
 
 object DropperControlLimits {
     fun isValidStage(stage: Int): Boolean = stage in 1..DROPPER_STAGE_COUNT
@@ -20,6 +21,7 @@ data class DropperSixStageState(
     val serialNumber: String,
     val name: String? = null,
     val isOnline: Boolean = false,
+    val isArmed: Boolean? = null,
     val stages: List<DropperStageState> = DropperStageState.defaults(),
     val batteryPercent: Int? = null,
     val firmwareVersion: String? = null,
@@ -44,6 +46,7 @@ data class DropperStageState(
 data class DropperSixStageAck(
     val msgId: String,
     val ok: Boolean,
+    val action: String? = null,
     val stage: Int? = null,
     val message: String? = null
 )

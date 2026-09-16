@@ -59,7 +59,8 @@ class GlassBreakerMqttInbound(
             isOnline = allowOnline,
             lockState = json.optFirstString(payload, "lockState", "lock_state")
                 .ifBlank { current?.lockState ?: GlassBreakerLockState.Locked },
-            selectedChannel = selectedChannel ?: current?.selectedChannel,
+            selectedChannel = if (json.optFirstBoolean(payload, "selectionValid") == false) null
+                else selectedChannel ?: current?.selectedChannel,
             laserEnabled = json.optFirstBoolean(payload, "laserEnabled", "laser_enabled")
                 ?: current?.laserEnabled
                 ?: false,
@@ -67,6 +68,7 @@ class GlassBreakerMqttInbound(
                 .ifBlank { current?.fireState ?: GlassBreakerFireState.Idle },
             armRemainingMs = json.optFirstLong(payload, "armRemainingMs", "arm_remaining_ms")
                 ?: current?.armRemainingMs,
+            batteryPercentValid = json.optFirstBoolean(payload, "batteryPercentValid"),
             batteryPercent = json.optFirstInt(payload, "battery", "batteryPercent", "battery_percent"),
             hardwareVersion = json.optFirstString(payload, "hardwareVersion", "hardware_version", "hardware").ifBlank { null },
             firmwareVersion = json.optFirstString(payload, "firmwareVersion", "firmware_version", "version").ifBlank { null },

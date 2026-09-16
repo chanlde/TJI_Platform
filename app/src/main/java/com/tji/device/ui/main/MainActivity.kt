@@ -154,7 +154,6 @@ class MainActivity : ComponentActivity() {
     ) {
         MainScreen(
             onBack = leaveCurrentSession,
-            onLogout = leaveCurrentSession,
             isFloatingWindowEnabled = floatingWindowEnabled,
             hasFloatingWindowPermission = overlayPermissionGranted,
             onFloatingWindowEnabledChange = { enabled ->

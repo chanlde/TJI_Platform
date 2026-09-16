@@ -14,6 +14,7 @@ data class GlassBreakerState(
     val fireState: String = GlassBreakerFireState.Idle,
     val armRemainingMs: Long? = null,
     val batteryPercent: Int? = null,
+    val batteryPercentValid: Boolean? = null,
     val hardwareVersion: String? = null,
     val firmwareVersion: String? = null,
     val firmwareInnerVersion: Int? = null,

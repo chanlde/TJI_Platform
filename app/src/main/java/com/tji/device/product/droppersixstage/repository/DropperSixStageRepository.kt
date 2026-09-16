@@ -20,6 +20,7 @@ interface DropperSixStageRepository {
     suspend fun updateState(state: DropperSixStageState)
     suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?)
     suspend fun updateAck(serialNumber: String, ack: DropperSixStageAck)
+    suspend fun updateArmedStatus(serialNumber: String, isArmed: Boolean)
     fun clearDevices()
 }
 
@@ -37,6 +38,7 @@ class DropperSixStageRepo : DropperSixStageRepository {
                     state.copy(
                         name = state.name ?: old.name,
                         isOnline = state.isOnline || old.isOnline,
+                        isArmed = state.isArmed ?: old.isArmed,
                         lastAck = state.lastAck ?: old.lastAck,
                         batteryPercent = state.batteryPercent ?: old.batteryPercent,
                         firmwareVersion = state.firmwareVersion ?: old.firmwareVersion,
@@ -67,6 +69,8 @@ class DropperSixStageRepo : DropperSixStageRepository {
                     }
                     state.copy(
                         isOnline = isOnline,
+                        // 每次重连都要求设备重新确认或用户重新解锁，不能沿用断线前的安全状态。
+                        isArmed = if (isOnline) state.isArmed else false,
                         timestamp = timestamp ?: state.timestamp
                     )
                 }
@@ -82,13 +86,37 @@ class DropperSixStageRepo : DropperSixStageRepository {
                     DropperSixStageState(
                         serialNumber = serialNumber,
                         lastAck = ack,
+                        // 没有在线生命周期时不能仅凭孤立 ACK 恢复解锁状态。
+                        isArmed = if (ack.armedStateOrNull() == false) false else null,
                         stages = DropperStageState.defaults()
                     )
                 },
                 update = { state ->
                     state.copy(
-                        lastAck = ack
+                        lastAck = ack,
+                        isArmed = when (ack.armedStateOrNull()) {
+                            true -> if (state.isOnline) true else state.isArmed
+                            false -> false
+                            null -> state.isArmed
+                        }
                     )
+                }
+            )
+        }
+    }
+
+    override suspend fun updateArmedStatus(serialNumber: String, isArmed: Boolean) {
+        _devices.update { current ->
+            current.updateOrCreate(
+                serialNumber = serialNumber,
+                create = {
+                    DropperSixStageState(
+                        serialNumber = serialNumber,
+                        isArmed = if (isArmed) null else false
+                    )
+                },
+                update = { state ->
+                    state.copy(isArmed = if (isArmed && !state.isOnline) false else isArmed)
                 }
             )
         }
@@ -115,6 +143,13 @@ class DropperSixStageRepo : DropperSixStageRepository {
         return if (replaced) next else next + create()
     }
 
+}
+
+private fun DropperSixStageAck.armedStateOrNull(): Boolean? = when {
+    !ok -> null
+    action == "arm" -> true
+    action == "disarm" -> false
+    else -> null
 }
 
 interface DropperSixStageControlRepository {

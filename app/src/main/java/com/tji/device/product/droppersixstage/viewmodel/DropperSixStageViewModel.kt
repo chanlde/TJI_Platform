@@ -35,11 +35,10 @@ class DropperSixStageViewModel(
     init {
         viewModelScope.launch {
             devices.collect { states ->
-                val onlineDeviceIds = states.asSequence()
-                    .filter { it.isOnline }
+                _armedDeviceIds.value = states.asSequence()
+                    .filter { it.isOnline && it.isArmed == true }
                     .map { it.serialNumber }
                     .toSet()
-                _armedDeviceIds.value = _armedDeviceIds.value.intersect(onlineDeviceIds)
                 states.asSequence()
                     .mapNotNull { it.lastAck }
                     .forEach { ack ->
@@ -48,9 +47,9 @@ class DropperSixStageViewModel(
                         if (ack.ok) {
                             when (pending.safetyEffect) {
                                 DropperSafetyEffect.Arm ->
-                                    _armedDeviceIds.value += pending.serialNumber
+                                    stateRepository.updateArmedStatus(pending.serialNumber, true)
                                 DropperSafetyEffect.Disarm ->
-                                    _armedDeviceIds.value -= pending.serialNumber
+                                    stateRepository.updateArmedStatus(pending.serialNumber, false)
                                 DropperSafetyEffect.None -> Unit
                             }
                         }
@@ -270,4 +269,5 @@ internal fun DropperSixStageCommand.requiresOnlineDevice(): Boolean =
     this !is DropperSixStageCommand.Ping
 
 internal fun DropperSixStageCommand.requiresArmedDevice(): Boolean =
-    this is DropperSixStageCommand.StageSwitch || this is DropperSixStageCommand.AllStages
+    this is DropperSixStageCommand.StageSwitch ||
+        (this is DropperSixStageCommand.AllStages && open)

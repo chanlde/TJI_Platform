@@ -29,7 +29,6 @@ import com.tji.device.ui.AppUiNotifier
 @Suppress("LongMethod")
 fun MainScreen(
     onBack: (() -> Unit)? = null,
-    onLogout: () -> Unit = {},
     isFloatingWindowEnabled: Boolean = true,
     hasFloatingWindowPermission: Boolean = true,
     connectionMode: FireBucketConnectionMode = FireBucketConnectionMode.CLOUD,
@@ -146,10 +145,6 @@ fun MainScreen(
             onConnectionModeChange = onConnectionModeChange,
             onFloatingWindowEnabledChange = onFloatingWindowEnabledChange,
             onOpenFloatingWindowPermission = onOpenFloatingWindowPermission,
-            onLogout = {
-                showSettings = false
-                onLogout()
-            },
             onDismiss = { showSettings = false }
         )
     }

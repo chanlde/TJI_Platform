@@ -2,6 +2,7 @@ package com.tji.device.product.common
 
 import com.tji.device.product.droppersixstage.model.DropperSixStageCommand
 import com.tji.device.product.droppersixstage.viewmodel.requiresOnlineDevice as dropperRequiresOnline
+import com.tji.device.product.droppersixstage.viewmodel.requiresArmedDevice as dropperRequiresArmed
 import com.tji.device.product.glassbreaker.model.GlassBreakerCommand
 import com.tji.device.product.glassbreaker.viewmodel.requiresOnlineDevice as glassRequiresOnline
 import com.tji.device.product.solarclean.model.SolarCleanCommand
@@ -40,6 +41,18 @@ class DeviceCommandOnlinePolicyTest {
                 "speaker-mcu-mic-off",
                 enabled = false
             ).speakerRequiresOnline()
+        )
+    }
+
+    @Test
+    fun dropperEmergencyCloseAllDoesNotRequireArmedState() {
+        assertTrue(
+            DropperSixStageCommand.AllStages("dropper-open-all", open = true)
+                .dropperRequiresArmed()
+        )
+        assertFalse(
+            DropperSixStageCommand.AllStages("dropper-close-all", open = false)
+                .dropperRequiresArmed()
         )
     }
 }

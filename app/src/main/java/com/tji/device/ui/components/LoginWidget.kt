@@ -38,6 +38,9 @@ import com.tji.device.ui.main.LocalLoginViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/** 本地数传能力暂时保留，但不在客户登录页提供入口。 */
+internal const val SHOW_DIRECT_LINK_LOGIN_ENTRY = false
+
 @Composable
 private fun RememberMeAndForgotPassword(
     rememberMe: Boolean,
@@ -491,22 +494,24 @@ fun LoginForm(
 
         LoginButton(isLoading, onLogin, isLandscape)
 
-        HorizontalDivider(color = PayloadColors.Border)
+        if (SHOW_DIRECT_LINK_LOGIN_ENTRY) {
+            HorizontalDivider(color = PayloadColors.Border)
 
-        OutlinedButton(
-            onClick = onDirectControl,
-            enabled = !isLoading,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (isLandscape) 48.dp else 50.dp),
-            border = BorderStroke(1.dp, PayloadColors.Primary),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = PayloadColors.Primary),
-            shape = RoundedCornerShape(PayloadDimens.ControlRadius)
-        ) {
-            Text(
-                text = "本地数传控制（无需登录）",
-                style = MaterialTheme.typography.titleMedium
-            )
+            OutlinedButton(
+                onClick = onDirectControl,
+                enabled = !isLoading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isLandscape) 48.dp else 50.dp),
+                border = BorderStroke(1.dp, PayloadColors.Primary),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = PayloadColors.Primary),
+                shape = RoundedCornerShape(PayloadDimens.ControlRadius)
+            ) {
+                Text(
+                    text = "本地数传控制（无需登录）",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
         }
     }
 }

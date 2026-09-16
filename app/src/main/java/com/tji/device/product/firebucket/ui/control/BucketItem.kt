@@ -27,6 +27,7 @@ import com.tji.device.ui.theme.TjiWarning
 @Composable
 fun SwitchItem(
     switch: FireBucketSwitchState,
+    controlEnabled: Boolean,
     controlParams: FireBucketSwitchControlParams,
     onControl: (FireBucketSwitchControlParams) -> Unit,
     modifier: Modifier = Modifier,
@@ -94,7 +95,7 @@ fun SwitchItem(
             Spacer(modifier = Modifier.height(5.dp))
             AngleSlider(
                 value = angle,
-                enabled = switch.isOnline,
+                enabled = controlEnabled,
                 onValueChange = { newAngle ->
                     isUserEditingAngle = true
                     angle = newAngle
@@ -118,7 +119,7 @@ fun SwitchItem(
         ) {
             TjiActionButton(
                 text = "打开",
-                enabled = switch.isOnline,
+                enabled = controlEnabled,
                 color = PayloadColors.Primary,
                 onClick = { updateAngleAndControl(90f) },
                 modifier = Modifier
@@ -127,7 +128,7 @@ fun SwitchItem(
 
             TjiActionButton(
                 text = "关闭",
-                enabled = switch.isOnline,
+                enabled = controlEnabled,
                 color = TjiWarning,
                 onClick = { updateAngleAndControl(0f) },
                 modifier = Modifier
@@ -213,6 +214,7 @@ fun SwitchItemPreview() {
         val switch = previewFireBucketSwitch()
         SwitchItem(
             switch = switch,
+            controlEnabled = true,
             controlParams = FireBucketSwitchControlParams(
                 sn = switch.serialNumber,
                 angle = switch.currentAngle.toInt(),

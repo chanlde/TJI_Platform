@@ -1,6 +1,5 @@
 package com.tji.device.ui.main
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -35,7 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.BuildConfig
-import com.tji.device.diagnostics.AppDiagnostics
 import com.tji.device.product.firebucket.transport.FireBucketConnectionMode
 import com.tji.device.ui.components.TjiControlSlider
 import com.tji.device.ui.floating.FloatingWindowAppearance
@@ -54,7 +52,6 @@ fun PlatformSettingsSheet(
     onConnectionModeChange: (FireBucketConnectionMode) -> Unit,
     onFloatingWindowEnabledChange: (Boolean) -> Unit,
     onOpenFloatingWindowPermission: () -> Unit,
-    onLogout: (() -> Unit)?,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -79,8 +76,7 @@ fun PlatformSettingsSheet(
             onOpenFloatingWindowPermission = onOpenFloatingWindowPermission,
             floatingWindowBackgroundAlpha = floatingWindowBackgroundAlpha,
             connectionMode = connectionMode,
-            onConnectionModeChange = onConnectionModeChange,
-            onLogout = onLogout
+            onConnectionModeChange = onConnectionModeChange
         )
     }
 }
@@ -96,8 +92,7 @@ private fun PlatformSettingsContent(
     onOpenFloatingWindowPermission: () -> Unit,
     floatingWindowBackgroundAlpha: Float,
     connectionMode: FireBucketConnectionMode,
-    onConnectionModeChange: (FireBucketConnectionMode) -> Unit,
-    onLogout: (() -> Unit)?
+    onConnectionModeChange: (FireBucketConnectionMode) -> Unit
 ) {
     val context = LocalContext.current
     Column(
@@ -123,8 +118,7 @@ private fun PlatformSettingsContent(
             onAlphaChange = { FloatingWindowAppearance.setBackgroundAlpha(context, it) }
         )
         AccountSettingsGroup(account = account, deviceCount = deviceCount)
-        LogoutSettingsGroup(onLogout)
-        DiagnosticsSettingsGroup(context)
+        VersionSettingsGroup()
     }
 }
 
@@ -191,19 +185,6 @@ private fun AccountSettingsGroup(account: String?, deviceCount: Int) {
 }
 
 @Composable
-private fun LogoutSettingsGroup(onLogout: (() -> Unit)?) {
-    if (onLogout == null) return
-    SettingsGroup {
-        SettingActionRow(
-            title = "退出当前账号",
-            value = "清理设备会话并返回登录页",
-            actionText = "退出",
-            onAction = onLogout
-        )
-    }
-}
-
-@Composable
 private fun ConnectionModeRow(
     mode: FireBucketConnectionMode,
     onModeChange: (FireBucketConnectionMode) -> Unit
@@ -247,33 +228,13 @@ private fun ConnectionModeRow(
 }
 
 @Composable
-private fun DiagnosticsSettingsGroup(context: android.content.Context) {
+private fun VersionSettingsGroup() {
     SettingsGroup {
         SettingInfoRow(
             title = "当前版本",
             value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · ${BuildConfig.FLAVOR}"
         )
-        HorizontalDivider(color = PayloadColors.Border)
-        SettingActionRow(
-            title = "导出诊断包",
-            value = "脱敏的崩溃、连接和升级记录",
-            actionText = "导出",
-            onAction = { shareDiagnosticExport(context) }
-        )
     }
-}
-
-private fun shareDiagnosticExport(context: android.content.Context) {
-    val uri = AppDiagnostics.export(context)
-    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-        type = "application/x-ndjson"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(
-        Intent.createChooser(sendIntent, "导出 TJI 诊断包")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    )
 }
 
 @Composable

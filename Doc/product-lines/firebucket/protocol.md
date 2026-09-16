@@ -24,6 +24,10 @@ app/src/main/java/com/tji/device/product/firebucket/mqtt/FireBucketMqttInbound.k
   收到同一 Link 的新鲜在线心跳后，再按快照中最后上报的桶状态恢复可用性。
 - Link 离线或心跳超时时，其下所有桶立即按离线处理；后续新鲜在线心跳可恢复最后一次
   上报为在线的桶。实时 `SubDeviceStatusChanged` 优先于 retained 快照。
+- 旧 HydroSwitch 不会周期上报自身在线状态，通常在收到控制后才发布
+  `SubDeviceStatusChanged(isOnline=true)`。因此 App 以 Link 在线作为控制通道门禁：即使启动
+  快照中的桶为离线，也允许发送第一条控制命令；Link 离线时仍禁止控制。桶的在线位用于
+  状态展示，不作为首条命令的必要条件。
 - 控制命令由 `FireBucketSwitchRepository` / `SwitchRepo` 负责发布。
 - 入站 MQTT 由 `FireBucketMqttInbound` 解析，不进入通用 MQTT handler 之外的 UI 层。
 

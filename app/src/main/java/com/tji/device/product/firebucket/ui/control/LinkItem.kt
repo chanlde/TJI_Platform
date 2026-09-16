@@ -120,7 +120,11 @@ fun LinkItem(
                         modifier = Modifier.heightIn(max = 400.dp)
                     ) {
                         items(link.subDevices, key = { it.serialNumber }) { switch ->
-                            SwitchItemComposable(link.serial_number, switch = switch)
+                            SwitchItemComposable(
+                                linkSn = link.serial_number,
+                                linkOnline = link.isOnline,
+                                switch = switch
+                            )
                         }
                     }
                 } else {
@@ -132,7 +136,11 @@ fun LinkItem(
                         modifier = Modifier.heightIn(max = 400.dp)
                     ) {
                         items(link.subDevices, key = { it.serialNumber }) { switch ->
-                            SwitchItemComposable(link.serial_number, switch = switch)
+                            SwitchItemComposable(
+                                linkSn = link.serial_number,
+                                linkOnline = link.isOnline,
+                                switch = switch
+                            )
                         }
                     }
                 }

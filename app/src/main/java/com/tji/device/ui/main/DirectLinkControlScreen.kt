@@ -235,6 +235,7 @@ fun DirectLinkControlScreen(
                 items(buckets, key = { it.serialNumber }) { bucket ->
                     SwitchItemComposable(
                         linkSn = DIRECT_FIRE_BUCKET_LINK_ID,
+                        linkOnline = isConnected,
                         switch = bucket
                     )
                 }
@@ -264,7 +265,6 @@ fun DirectLinkControlScreen(
             onConnectionModeChange = onConnectionModeChange,
             onFloatingWindowEnabledChange = onFloatingWindowEnabledChange,
             onOpenFloatingWindowPermission = onOpenFloatingWindowPermission,
-            onLogout = null,
             onDismiss = { showSettings = false }
         )
     }

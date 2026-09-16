@@ -211,7 +211,7 @@ internal fun canToggleFloatingSwitch(
     link: FloatingLinkSummary?,
     switch: FloatingSwitchSummary?
 ): Boolean =
-    link?.isOnline == true && switch?.isOnline == true
+    link?.isOnline == true && switch != null
 
 private fun ProductType.supportsFloatingWindow(): Boolean =
     this != ProductType.RadioDetection

@@ -55,6 +55,7 @@ class DropperSixStageMqttInbound(
             } else {
                 !isRetained
             },
+            isArmed = json.optNullableBoolean("armed") ?: current?.isArmed,
             stages = current?.stages ?: DropperStageState.defaults(),
             firmwareVersion = json.optString("fw").ifBlank {
                 json.optString("firmware_version").ifBlank { null }
@@ -73,6 +74,7 @@ class DropperSixStageMqttInbound(
             serialNumber = serialNumber,
             name = json.optString("name").ifBlank { null },
             isOnline = allowOnline,
+            isArmed = json.optNullableBoolean("armed"),
             stages = parseStages(
                 array = json.optJSONArray("stages"),
                 currentStages = current?.stages ?: DropperStageState.defaults()
@@ -111,6 +113,7 @@ class DropperSixStageMqttInbound(
                 json.has("code") -> json.optNullableInt("code") == 0
                 else -> false
             },
+            action = json.optString("action").ifBlank { null },
             stage = json.optNullableInt("stage"),
             message = json.optString("msg").ifBlank {
                 json.optString("message").ifBlank {

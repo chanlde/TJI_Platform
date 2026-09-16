@@ -263,6 +263,94 @@ class DropperSixStageMqttInboundTest {
     }
 
     @Test
+    fun armAndDisarmAcksUpdateSharedSafetyState() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "online",
+            json = JSONObject("""{"ts":100}""")
+        )
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "ack",
+            json = JSONObject(
+                """{"msgId":"arm-1","action":"arm","ok":true,"code":0}"""
+            )
+        )
+        assertEquals(true, repo.devices.value.single().isArmed)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "ack",
+            json = JSONObject(
+                """{"msgId":"disarm-1","action":"disarm","ok":true,"code":0}"""
+            )
+        )
+        assertEquals(false, repo.devices.value.single().isArmed)
+    }
+
+    @Test
+    fun stateFramesPreserveArmedStatusWhenLaterTelemetryOmitsIt() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"armed":true,"battery":80}""")
+        )
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"battery":79}""")
+        )
+
+        assertEquals(true, repo.devices.value.single().isArmed)
+        assertEquals(79, repo.devices.value.single().batteryPercent)
+    }
+
+    @Test
+    fun offlineLifecycleClearsArmedStatus() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "state",
+            json = JSONObject("""{"armed":true,"ts":100}""")
+        )
+        inbound.handleEvent(
+            serialNumber = SERIAL,
+            eventType = "offline",
+            json = JSONObject("""{"ts":200}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(false, state.isArmed)
+    }
+
+    @Test
+    fun lateArmAckCannotRearmAnOfflineDevice() = runBlocking {
+        val repo = DropperSixStageRepo()
+        val inbound = DropperSixStageMqttInbound(repo)
+
+        inbound.handleEvent(SERIAL, "online", JSONObject("""{"ts":100}"""))
+        inbound.handleEvent(SERIAL, "offline", JSONObject("""{"ts":200}"""))
+        inbound.handleEvent(
+            SERIAL,
+            "ack",
+            JSONObject("""{"msgId":"late-arm","action":"arm","ok":true,"code":0}""")
+        )
+
+        val state = repo.devices.value.single()
+        assertEquals(false, state.isOnline)
+        assertEquals(false, state.isArmed)
+    }
+
+    @Test
     fun retainedStateDoesNotOverrideOnlineStateButCanRefreshTelemetry() = runBlocking {
         val repo = DropperSixStageRepo()
         val inbound = DropperSixStageMqttInbound(repo)

@@ -41,7 +41,7 @@ class GlassBreakerRepo : GlassBreakerRepository {
                         isOnline = state.isOnline || old.isOnline,
                         lastAck = state.lastAck ?: old.lastAck,
                         lastOtaAck = state.lastOtaAck ?: old.lastOtaAck,
-                        batteryPercent = state.batteryPercent ?: old.batteryPercent,
+                        batteryPercent = if (state.batteryPercentValid == false) null else state.batteryPercent ?: old.batteryPercent,
                         hardwareVersion = state.hardwareVersion ?: old.hardwareVersion,
                         firmwareVersion = state.firmwareVersion ?: old.firmwareVersion,
                         firmwareInnerVersion = state.firmwareInnerVersion ?: old.firmwareInnerVersion,

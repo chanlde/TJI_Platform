@@ -42,6 +42,7 @@ import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.di.AppContainer
 import com.tji.device.product.droppersixstage.model.DROPPER_MAX_OPEN_DURATION_MS
 import com.tji.device.product.droppersixstage.model.DROPPER_MIN_OPEN_DURATION_MS
+import com.tji.device.product.droppersixstage.model.DROPPER_DEFAULT_OPEN_DURATION_MS
 import com.tji.device.product.droppersixstage.model.DropperSixStageState
 import com.tji.device.product.droppersixstage.model.DropperStageState
 import com.tji.device.product.droppersixstage.viewmodel.DropperCommandFeedback
@@ -84,7 +85,7 @@ fun DropperSixStageControlScreen(
     val armed = device.serialNumber in armedDeviceIds
     val enabled = online && armed
     val stages = displayState?.stages?.takeIf { it.isNotEmpty() } ?: DropperStageState.defaults()
-    var openDurationMs by remember(device.serialNumber) { mutableIntStateOf(DEFAULT_OPEN_DURATION_MS) }
+    var openDurationMs by remember(device.serialNumber) { mutableIntStateOf(DROPPER_DEFAULT_OPEN_DURATION_MS) }
     var selectedStageIndex by remember(device.serialNumber) { mutableIntStateOf(1) }
     var testingStage by remember(device.serialNumber) { mutableStateOf<Int?>(null) }
     val selectedStage = stages.firstOrNull { it.index == selectedStageIndex } ?: stages.first()
@@ -167,7 +168,7 @@ fun DropperSixStageControlScreen(
                     )
                     TjiActionButton(
                         text = "全部关闭",
-                        enabled = enabled,
+                        enabled = online,
                         color = PayloadColors.Warning,
                         onClick = { viewModel?.toggleAll(device.serialNumber, false) },
                         modifier = Modifier.weight(1f)
@@ -480,6 +481,5 @@ private fun FeedbackBadge(feedback: DropperCommandFeedback) {
     TjiFeedbackBadge(text = feedback.text, color = color)
 }
 
-private const val DEFAULT_OPEN_DURATION_MS = 1_000
 private const val DURATION_STEP_MS = 500
 private const val TEST_LOOP_GAP_MS = 1_000L
