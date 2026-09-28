@@ -20,15 +20,15 @@ import com.tji.device.ui.theme.TjiOnline
 import com.tji.device.ui.theme.TjiWarning
 
 /**
- * 根据电压显示电量图标（使用 Canvas 精确绘制）
+ * 根据吊桶上报的实际百分比显示电量图标。
  */
 @Composable
 fun BatteryIndicator(
-    voltage: Double,
+    percentage: Double,
     modifier: Modifier = Modifier,
     iconSize: Dp = 16.dp
 ) {
-    val batteryLevel = calculateBatteryLevel(voltage)
+    val batteryLevel = (percentage / 100.0).coerceIn(0.0, 1.0).toFloat()
     val fillColor = getBatteryColor(batteryLevel)
     val fillWidth = batteryLevel.coerceIn(0f, 1f)
 
@@ -69,13 +69,6 @@ fun BatteryIndicator(
             }
         }
     }
-}
-
-private fun calculateBatteryLevel(voltage: Double): Float {
-    val minVoltage = 7.0
-    val maxVoltage = 8.1
-    val clampedVoltage = voltage.coerceIn(minVoltage, maxVoltage)
-    return ((clampedVoltage - minVoltage) / (maxVoltage - minVoltage)).toFloat()
 }
 
 private fun getBatteryColor(level: Float): Color {

@@ -18,7 +18,7 @@ class GlassBreakerMqttInbound(
         isRetained: Boolean = false
     ) {
         when (eventType) {
-            "online" -> if (!isRetained) {
+            "online" -> {
                 repository.updateOnlineStatus(
                     serialNumber = serialNumber,
                     isOnline = true,
@@ -30,7 +30,9 @@ class GlassBreakerMqttInbound(
                 isOnline = false,
                 timestamp = json.optNullableLong("ts")
             )
-            "state", "status" -> repository.updateState(parseState(serialNumber, json))
+            "state", "status" -> repository.updateState(
+                parseState(serialNumber, json, allowOnline = !isRetained)
+            )
             "ack" -> repository.updateAck(serialNumber, parseAck(json))
             "otaAck" -> repository.updateOtaAck(serialNumber, parseAck(json))
             else -> Log.d(TAG, "GlassBreaker MQTT ignored: deviceId=$serialNumber event=$eventType")
@@ -41,7 +43,8 @@ class GlassBreakerMqttInbound(
 
     private fun parseState(
         serialNumber: String,
-        json: JSONObject
+        json: JSONObject,
+        allowOnline: Boolean
     ): GlassBreakerState {
         val payload = json.payloadObject()
         val deviceId = json.optFirstString(payload, "deviceId", "device_id").ifBlank { serialNumber }
@@ -51,10 +54,13 @@ class GlassBreakerMqttInbound(
         return GlassBreakerState(
             serialNumber = deviceId,
             name = json.optFirstString(payload, "name", "product").ifBlank { null },
-            isOnline = false,
+            // A live state frame proves the device is reachable. A retained state frame only
+            // restores telemetry; lifecycle remains the authority for its online status.
+            isOnline = allowOnline,
             lockState = json.optFirstString(payload, "lockState", "lock_state")
                 .ifBlank { current?.lockState ?: GlassBreakerLockState.Locked },
-            selectedChannel = selectedChannel ?: current?.selectedChannel,
+            selectedChannel = if (json.optFirstBoolean(payload, "selectionValid") == false) null
+                else selectedChannel ?: current?.selectedChannel,
             laserEnabled = json.optFirstBoolean(payload, "laserEnabled", "laser_enabled")
                 ?: current?.laserEnabled
                 ?: false,
@@ -62,6 +68,7 @@ class GlassBreakerMqttInbound(
                 .ifBlank { current?.fireState ?: GlassBreakerFireState.Idle },
             armRemainingMs = json.optFirstLong(payload, "armRemainingMs", "arm_remaining_ms")
                 ?: current?.armRemainingMs,
+            batteryPercentValid = json.optFirstBoolean(payload, "batteryPercentValid"),
             batteryPercent = json.optFirstInt(payload, "battery", "batteryPercent", "battery_percent"),
             hardwareVersion = json.optFirstString(payload, "hardwareVersion", "hardware_version", "hardware").ifBlank { null },
             firmwareVersion = json.optFirstString(payload, "firmwareVersion", "firmware_version", "version").ifBlank { null },

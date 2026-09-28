@@ -4,17 +4,26 @@
 
 - 状态：draft
 - 产品代码：`droppersixstage`
-- ProductCode：`SixStageDropper`
-- 旧称 / 兼容别名：`DropperSixStage`、`FC100_FireDrop`
+- 设备 ProductCode：`FC100_FireDrop`
+- App 兼容别名：`SixStageDropper`、`DropperSixStage`
 
 ## Topic 规则
 
 沿用平台三主题：
 
 ```text
-SixStageDropper/devices/{deviceId}/lifecycle
-SixStageDropper/devices/{deviceId}/status
-SixStageDropper/devices/{deviceId}/control
+FC100_FireDrop/devices/{deviceId}/lifecycle
+FC100_FireDrop/devices/{deviceId}/status
+FC100_FireDrop/devices/{deviceId}/control
+```
+
+App 入站同时订阅旧的 `SixStageDropper/devices/{deviceId}/...` lifecycle/status，
+控制指令统一发送到设备实际使用的 `FC100_FireDrop` 前缀。
+
+设备可使用 identity 作为上线帧；其中显式的 `online` 字段是生命周期真值：
+
+```json
+{"type":"identity","deviceId":"D29D5405F","product":"FC100_FireDrop","fw":"1.7.42.114","online":true}
 ```
 
 ## 控制 Payload

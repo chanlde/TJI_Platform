@@ -15,7 +15,11 @@ import com.tji.device.product.firebucket.model.FireBucketSwitchUiState
 import com.tji.device.product.firebucket.viewmodel.FireBucketSwitchViewModel
 
 @Composable
-fun SwitchItemComposable(linkSn: String, switch: FireBucketSwitchState) {
+fun SwitchItemComposable(
+    linkSn: String,
+    linkOnline: Boolean,
+    switch: FireBucketSwitchState
+) {
     val controlParams = remember(switch.serialNumber) {
         FireBucketSwitchControlParams(
             sn = switch.serialNumber,
@@ -42,6 +46,7 @@ fun SwitchItemComposable(linkSn: String, switch: FireBucketSwitchState) {
 
     SwitchItem(
         switch = switch,
+        controlEnabled = canControlFireBucketSwitch(linkOnline),
         controlParams = controlParams,
         errorMessage = uiState.errorMessage,
         onControl = { updatedParms ->
@@ -49,3 +54,9 @@ fun SwitchItemComposable(linkSn: String, switch: FireBucketSwitchState) {
         }
     )
 }
+
+/**
+ * 旧 HydroSwitch 只有收到控制后才会上报在线状态，因此桶的 isOnline 不能作为首条命令门禁。
+ * Link 在线代表 MQTT 控制通道可用；Link 离线时仍禁止发送。
+ */
+internal fun canControlFireBucketSwitch(linkOnline: Boolean): Boolean = linkOnline

@@ -42,6 +42,12 @@ class RadioRgbCommandTracker {
         return true
     }
 
+    fun reset() {
+        pendingCommandIds.clear()
+        currentCommandId = null
+        currentFeedback = null
+    }
+
     private fun currentPendingFeedback(
         msgId: String,
         text: String

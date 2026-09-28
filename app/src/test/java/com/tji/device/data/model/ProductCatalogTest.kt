@@ -1,9 +1,100 @@
 package com.tji.device.data.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProductCatalogTest {
+
+    @Test
+    fun unknownBackendProductCannotEnterFireBucketControls() {
+        assertEquals(
+            null,
+            ProductCatalog.controlTypeForBoundDevice(
+                productId = null,
+                productType = "FireWaterTank",
+                productCode = "FireWaterTank",
+                fallbackName = "消防水箱"
+            )
+        )
+        assertEquals(
+            ProductType.FireBucket,
+            ProductCatalog.controlTypeForBoundDevice(
+                productId = null,
+                productType = null,
+                productCode = null,
+                fallbackName = "旧版设备"
+            )
+        )
+        assertEquals(
+            ProductType.FireGun,
+            ProductCatalog.controlTypeForBoundDevice(
+                productId = 2,
+                productType = "FireBucket",
+                productCode = "FireBucket",
+                fallbackName = "HydroGunLink_V1"
+            )
+        )
+    }
+
+    @Test
+    fun deviceNameCannotOverrideExplicitProductCode() {
+        assertEquals(
+            null,
+            ProductCatalog.controlTypeForBoundDevice(
+                productId = null,
+                productType = "FireWaterTank",
+                productCode = "FireWaterTank",
+                fallbackName = "HydroGunLink_V1 水箱"
+            )
+        )
+        assertEquals(
+            ProductType.SolarClean,
+            ProductCatalog.controlTypeForBoundDevice(
+                productId = 3,
+                productType = "SolarClean",
+                productCode = "SolarClean",
+                fallbackName = "HydroGunLink_V1 清洗设备"
+            )
+        )
+        assertEquals(
+            null,
+            ProductCatalog.controlTypeForBoundDevice(
+                productId = null,
+                productType = "FireWaterTank",
+                productCode = null,
+                fallbackName = "HydroGunLink_V1 水箱"
+            )
+        )
+        assertEquals(
+            ProductType.SolarClean,
+            ProductCatalog.controlTypeForBoundDevice(
+                productId = 3,
+                productType = null,
+                productCode = null,
+                fallbackName = "HydroGunLink_V1 清洗设备"
+            )
+        )
+    }
+
+    @Test
+    fun enablesOnlyProductsWithCompleteProductionModules() {
+        assertEquals(
+            setOf(
+                ProductType.FireBucket,
+                ProductType.FireGun,
+                ProductType.SolarClean,
+                ProductType.DropperSixStage,
+                ProductType.RadioDetection,
+                ProductType.Speaker,
+                ProductType.BreakWindowProjectile
+            ),
+            ProductCatalog.enabledTypes
+        )
+        assertTrue(ProductCatalog.enabledDefinitions.all { it.enabled })
+        assertFalse(ProductCatalog.isEnabled(ProductType.Searchlight))
+    }
 
     @Test
     fun mapsKnownBackendProductIdsBeforeNameFallback() {
@@ -76,6 +167,8 @@ class ProductCatalogTest {
     fun exposesCanonicalProductIdsAndCodes() {
         assertEquals(2, ProductCatalog.backendProductIdOf(ProductType.FireBucket))
         assertEquals("FireBucket", ProductCatalog.productCodeOf(ProductType.FireBucket))
+        assertEquals(2, ProductCatalog.backendProductIdOf(ProductType.FireGun))
+        assertEquals("FireGun", ProductCatalog.productCodeOf(ProductType.FireGun))
         assertEquals(3, ProductCatalog.backendProductIdOf(ProductType.SolarClean))
         assertEquals("SolarClean", ProductCatalog.productCodeOf(ProductType.SolarClean))
         assertEquals(4, ProductCatalog.backendProductIdOf(ProductType.RadioDetection))
@@ -92,6 +185,15 @@ class ProductCatalogTest {
 
     @Test
     fun infersSupportedProductsFromBackendText() {
+        assertEquals(
+            ProductType.FireGun,
+            ProductCatalog.fromBackendFields(
+                productId = 2,
+                productType = null,
+                productCode = null,
+                fallbackName = "HydroGunLink_V1-9526D839"
+            )
+        )
         assertEquals(
             ProductType.DropperSixStage,
             ProductCatalog.fromBackendFields(
@@ -136,6 +238,12 @@ class ProductCatalogTest {
                 fallbackName = "探照灯"
             )
         )
+    }
+
+    @Test
+    fun fireGunPrefixIsCaseInsensitiveButDoesNotMatchOrdinaryHydroLink() {
+        assertTrue(ProductCatalog.isFireGunIdentifier("hydrogunlink_v1-test"))
+        assertFalse(ProductCatalog.isFireGunIdentifier("HydroLink_V3-test"))
     }
 
     @Test

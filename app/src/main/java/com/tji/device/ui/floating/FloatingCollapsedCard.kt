@@ -59,6 +59,7 @@ fun ProductFloatingGlyph(
 ) {
     val backgroundColor = when (productType) {
         ProductType.FireBucket -> PayloadColors.Primary
+        ProductType.FireGun -> PayloadColors.Primary
         ProductType.SolarClean -> PayloadColors.Warning
         ProductType.DropperSixStage -> PayloadColors.Primary
         ProductType.RadioDetection -> PayloadColors.Primary

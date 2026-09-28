@@ -2,6 +2,7 @@ package com.tji.device.data.model
 
 enum class ProductType {
     FireBucket,
+    FireGun,
     SolarClean,
     DropperSixStage,
     RadioDetection,
@@ -14,6 +15,7 @@ data class ProductDefinition(
     val type: ProductType,
     val productId: Int,
     val productCode: String,
+    val enabled: Boolean = true,
     val displayName: String,
     val shortLabel: String,
     val description: String,
@@ -32,6 +34,17 @@ object ProductCatalog {
             description = "消防吊桶控制产品线",
             platformSubtitle = "无人机消防吊桶系统",
             platformValueLine = "高效灭火 · 快速响应"
+        ),
+        ProductDefinition(
+            type = ProductType.FireGun,
+            // 消防喷枪当前仍通过后台“消防吊桶”产品线绑定，使用同一个登录 productId。
+            productId = 2,
+            productCode = "FireGun",
+            displayName = "消防喷枪",
+            shortLabel = "FireGun",
+            description = "消防喷枪控制产品线",
+            platformSubtitle = "无人机消防喷枪系统",
+            platformValueLine = "远程解锁 · 展开收回"
         ),
         ProductDefinition(
             type = ProductType.SolarClean,
@@ -87,6 +100,7 @@ object ProductCatalog {
             type = ProductType.Searchlight,
             productId = 8,
             productCode = "Searchlight",
+            enabled = false,
             displayName = "探照灯",
             shortLabel = "Searchlight",
             description = "无人机探照灯产品线",
@@ -96,6 +110,10 @@ object ProductCatalog {
     )
 
     val allTypes: List<ProductType> = definitions.map { it.type }
+    val enabledDefinitions: List<ProductDefinition> = definitions.filter { it.enabled }
+    val enabledTypes: Set<ProductType> = enabledDefinitions.mapTo(linkedSetOf()) { it.type }
+
+    fun isEnabled(type: ProductType): Boolean = definitionOf(type).enabled
 
     fun definitionOf(type: ProductType): ProductDefinition {
         return definitions.first { it.type == type }
@@ -113,16 +131,68 @@ object ProductCatalog {
         return definitionOf(type).productCode
     }
 
+    /** Only known control modules may enter a product-specific control screen. */
+    fun controlTypeForBoundDevice(
+        productId: Int?,
+        productType: String?,
+        productCode: String?,
+        fallbackName: String?
+    ): ProductType? {
+        val explicitCode = productCode?.trim()?.takeIf(String::isNotEmpty)
+        if (explicitCode != null) {
+            val knownType = knownControlType(explicitCode) ?: return null
+            // Legacy FireGun devices are bound under the FireBucket product code.
+            return if (knownType == ProductType.FireBucket && isFireGunIdentifier(fallbackName)) {
+                ProductType.FireGun
+            } else {
+                knownType
+            }
+        }
+
+        if (productId != null) {
+            val knownType = definitions.firstOrNull { it.productId == productId }?.type ?: return null
+            return if (knownType == ProductType.FireBucket && isFireGunIdentifier(fallbackName)) {
+                ProductType.FireGun
+            } else {
+                knownType
+            }
+        }
+
+        val explicitType = productType?.trim()?.takeIf(String::isNotEmpty)
+        if (explicitType != null) {
+            val knownType = knownControlType(explicitType) ?: return null
+            return if (knownType == ProductType.FireBucket && isFireGunIdentifier(fallbackName)) {
+                ProductType.FireGun
+            } else {
+                knownType
+            }
+        }
+
+        // Legacy bucket rows have no product metadata at all.
+        return fromBackendFields(null, null, null, fallbackName)
+    }
+
+    private fun knownControlType(value: String): ProductType? =
+        definitions.firstOrNull {
+            it.productCode.equals(value, ignoreCase = true) ||
+                it.type.name.equals(value, ignoreCase = true)
+        }?.type ?: when {
+            value.equals("FC100_FireDrop", ignoreCase = true) -> ProductType.DropperSixStage
+            else -> null
+        }
+
     fun inferType(
         deviceType: String?,
         deviceModel: String?,
         deviceName: String?
     ): ProductType {
-        val fingerprint = listOf(deviceType, deviceModel, deviceName)
+        val sourceFields = listOf(deviceType, deviceModel, deviceName)
+        val fingerprint = sourceFields
             .joinToString(separator = " ")
             .lowercase()
 
         return when {
+            sourceFields.any(::isFireGunIdentifier) || "firegun" in fingerprint -> ProductType.FireGun
             "光伏" in fingerprint -> ProductType.SolarClean
             "solar" in fingerprint -> ProductType.SolarClean
             "抛投" in fingerprint -> ProductType.DropperSixStage
@@ -159,11 +229,13 @@ object ProductCatalog {
         productCode: String?,
         fallbackName: String?
     ): ProductType {
-        val fingerprint = listOf(productType, productCode, fallbackName)
+        val sourceFields = listOf(productType, productCode, fallbackName)
+        val fingerprint = sourceFields
             .joinToString(separator = " ")
             .lowercase()
 
         return when {
+            sourceFields.any(::isFireGunIdentifier) || "firegun" in fingerprint -> ProductType.FireGun
             productId == 2 -> ProductType.FireBucket
             productId == 3 -> ProductType.SolarClean
             productId == 4 -> ProductType.RadioDetection
@@ -213,4 +285,13 @@ object ProductCatalog {
             )
         }
     }
+
+    /**
+     * 消防喷枪暂时与消防吊桶共用后台 productId=2。后台绑定记录中的稳定产品名称
+     * 以 `HydroGunLink_` 开头，因此必须在 productId 分流之前优先识别该前缀。
+     */
+    fun isFireGunIdentifier(value: String?): Boolean =
+        value?.trim()?.startsWith(FIRE_GUN_LINK_PREFIX, ignoreCase = true) == true
+
+    private const val FIRE_GUN_LINK_PREFIX = "HydroGunLink_"
 }

@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tji.device.data.model.BoundAccountDevice
+import com.tji.device.data.model.CatalogBoundDevice
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.session.DeviceKey
@@ -49,13 +50,23 @@ internal val PlatformInk = PayloadColors.TextPrimary
 internal val PlatformMuted = PayloadColors.TextSecondary
 internal val PlatformBlue = PayloadColors.Primary
 
+@Suppress("LongMethod") // Declarative sections share one home-screen state scope.
 @Composable
 internal fun ProductHome(
     onProductSelected: (ProductType) -> Unit,
     boundAccountDevices: List<BoundAccountDevice>,
     runtimeDevices: List<ProductDeviceRuntimeSnapshot>,
     onSettingsClick: () -> Unit,
-    modifier: Modifier = Modifier
+    catalogDevices: List<CatalogBoundDevice> = emptyList(),
+    onCatalogProductSelected: (String) -> Unit = {},
+    modifier: Modifier = Modifier,
+    homeTitle: String = "设备平台首页",
+    homeDescription: String? = null,
+    deviceMetricTitle: String = "绑定设备",
+    totalDeviceCountOverride: Int? = null,
+    onlineDeviceCountOverride: Int? = null,
+    emptyTitle: String = "暂无绑定设备",
+    emptyDescription: String = "当前账号下没有可显示的设备"
 ) {
     val onlineDeviceKeys = remember(runtimeDevices) {
         runtimeDevices.asSequence()
@@ -73,6 +84,9 @@ internal fun ProductHome(
             .map { it.productType }
             .distinct()
     }
+    val catalogProducts = remember(catalogDevices) {
+        catalogDevices.groupBy { it.productCode }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -83,10 +97,17 @@ internal fun ProductHome(
     ) {
         item {
             PlatformHomeHeader(
-                totalDeviceCount = boundAccountDevices.size,
-                onlineDeviceCount = onlineCount,
-                productCount = accountProductTypes.size,
-                onSettingsClick = onSettingsClick
+                totalDeviceCount = totalDeviceCountOverride ?: boundAccountDevices.size + catalogDevices.size,
+                onlineDeviceCount = onlineDeviceCountOverride ?: onlineCount,
+                productCount = accountProductTypes.size + catalogProducts.size,
+                onSettingsClick = onSettingsClick,
+                title = homeTitle,
+                description = homeDescription ?: when {
+                    boundAccountDevices.isNotEmpty() || catalogDevices.isNotEmpty() ->
+                        "统一查看账号下各产品设备；已支持的设备可进入专用控制台。"
+                    else -> "暂无绑定设备，请先添加或联系管理员开通。"
+                },
+                deviceMetricTitle = deviceMetricTitle
             )
         }
         item {
@@ -98,53 +119,81 @@ internal fun ProductHome(
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
-        item {
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val products = accountProductTypes
-                if (maxWidth >= 620.dp) {
-                    Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
-                        products.chunked(2).forEach { rowProducts ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
-                            ) {
-                                rowProducts.forEach { productType ->
-                                    ProductEntryCard(
-                                        productType = productType,
-                                        selected = false,
-                                        onClick = { onProductSelected(productType) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                if (rowProducts.size == 1) {
-                                    Box(modifier = Modifier.weight(1f))
+        if (accountProductTypes.isNotEmpty()) {
+            item {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val products = accountProductTypes
+                    if (maxWidth >= 620.dp) {
+                        Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
+                            products.chunked(2).forEach { rowProducts ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
+                                ) {
+                                    rowProducts.forEach { productType ->
+                                        ProductEntryCard(
+                                            productType = productType,
+                                            selected = false,
+                                            onClick = { onProductSelected(productType) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    if (rowProducts.size == 1) {
+                                        Box(modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
-                        products.forEach { productType ->
-                            ProductEntryCard(
-                                productType = productType,
-                                selected = false,
-                                onClick = { onProductSelected(productType) }
-                            )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
+                            products.forEach { productType ->
+                                ProductEntryCard(
+                                    productType = productType,
+                                    selected = false,
+                                    onClick = { onProductSelected(productType) }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-        if (accountProductTypes.isEmpty()) {
+        if (catalogProducts.isNotEmpty()) {
             item {
-                EmptyProductHomeCard()
+                Text(
+                    text = "其他产品",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = PlatformInk
+                )
+            }
+            catalogProducts.forEach { (code, devices) ->
+                item(key = "catalog:$code") {
+                    CatalogProductEntryCard(
+                        productName = devices.first().productName,
+                        productCode = code,
+                        deviceCount = devices.size,
+                        onClick = { onCatalogProductSelected(code) }
+                    )
+                }
+            }
+        }
+        if (accountProductTypes.isEmpty() && catalogProducts.isEmpty()) {
+            item {
+                EmptyProductHomeCard(
+                    title = emptyTitle,
+                    description = emptyDescription
+                )
             }
         }
     }
 }
 
 @Composable
-private fun EmptyProductHomeCard() {
+private fun EmptyProductHomeCard(
+    title: String,
+    description: String
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(PayloadDimens.CardRadius),
@@ -159,13 +208,13 @@ private fun EmptyProductHomeCard() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "暂无绑定设备",
+                text = title,
                 style = MaterialTheme.typography.titleMedium,
                 color = PlatformInk,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "当前账号下没有可显示的设备",
+                text = description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = PlatformMuted
             )
@@ -229,6 +278,7 @@ private fun ProductEntryCard(
                         brush = Brush.horizontalGradient(
                             colors = when (productType) {
                                 ProductType.FireBucket -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
+                                ProductType.FireGun -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
                                 ProductType.SolarClean -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
                                 ProductType.DropperSixStage -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
                                 ProductType.RadioDetection -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
@@ -323,6 +373,7 @@ private fun ProductGlyph(productType: ProductType) {
 internal fun productAccentColor(productType: ProductType): Color {
     return when (productType) {
         ProductType.FireBucket -> PlatformBlue
+        ProductType.FireGun -> PlatformBlue
         ProductType.SolarClean -> PayloadColors.Warning
         ProductType.DropperSixStage -> PlatformBlue
         ProductType.RadioDetection -> PlatformBlue

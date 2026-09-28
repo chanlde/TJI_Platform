@@ -2,6 +2,7 @@ package com.tji.device.product.common
 
 import com.tji.device.product.droppersixstage.model.DropperSixStageCommand
 import com.tji.device.product.droppersixstage.viewmodel.requiresOnlineDevice as dropperRequiresOnline
+import com.tji.device.product.droppersixstage.viewmodel.requiresArmedDevice as dropperRequiresArmed
 import com.tji.device.product.glassbreaker.model.GlassBreakerCommand
 import com.tji.device.product.glassbreaker.viewmodel.requiresOnlineDevice as glassRequiresOnline
 import com.tji.device.product.solarclean.model.SolarCleanCommand
@@ -25,6 +26,8 @@ class DeviceCommandOnlinePolicyTest {
     @Test
     fun physicalControlsRequireAnOnlineDevice() {
         assertTrue(DropperSixStageCommand.AllStages("dropper-all", open = true).dropperRequiresOnline())
+        assertTrue(DropperSixStageCommand.Arm("dropper-arm").dropperRequiresOnline())
+        assertTrue(DropperSixStageCommand.Disarm("dropper-disarm").dropperRequiresOnline())
         assertTrue(GlassBreakerCommand.Unlock("glass-unlock").glassRequiresOnline())
         assertTrue(SolarCleanCommand.PumpSwitch("solar-pump", on = true).solarRequiresOnline())
         assertTrue(SpeakerCommand.SetVolume("speaker-volume", volume = 50).speakerRequiresOnline())
@@ -38,6 +41,18 @@ class DeviceCommandOnlinePolicyTest {
                 "speaker-mcu-mic-off",
                 enabled = false
             ).speakerRequiresOnline()
+        )
+    }
+
+    @Test
+    fun dropperEmergencyCloseAllDoesNotRequireArmedState() {
+        assertTrue(
+            DropperSixStageCommand.AllStages("dropper-open-all", open = true)
+                .dropperRequiresArmed()
+        )
+        assertFalse(
+            DropperSixStageCommand.AllStages("dropper-close-all", open = false)
+                .dropperRequiresArmed()
         )
     }
 }

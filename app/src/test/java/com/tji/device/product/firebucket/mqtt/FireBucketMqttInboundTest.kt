@@ -23,7 +23,9 @@ class FireBucketMqttInboundTest {
 
         delay(60L)
 
-        assertFalse(repository.links.value.single().isOnline)
+        val timedOutLink = repository.links.value.single()
+        assertFalse(timedOutLink.isOnline)
+        assertFalse(timedOutLink.subDevices.single().isOnline)
         inbound.cleanup()
     }
 
@@ -56,6 +58,7 @@ class FireBucketMqttInboundTest {
             json = startupPayload()
                 .getJSONArray("subDevices")
                 .getJSONObject(0)
+                .put("isOnline", false)
                 .put("currentAngle", 55)
         )
 
@@ -68,7 +71,17 @@ class FireBucketMqttInboundTest {
 
         val link = repository.links.value.single()
         assertTrue(link.isOnline)
+        assertFalse(link.subDevices.single().isOnline)
         assertEquals(55.0, link.subDevices.single().currentAngle, 0.0)
+
+        inbound.handleEvent(
+            linkSn = LINK_SERIAL,
+            eventType = "LinkDeviceHeartbeat",
+            json = JSONObject()
+                .put("serial_number", LINK_SERIAL)
+                .put("isOnline", true)
+        )
+        assertFalse(repository.links.value.single().subDevices.single().isOnline)
         inbound.cleanup()
     }
 
@@ -91,6 +104,7 @@ class FireBucketMqttInboundTest {
         assertEquals(55.0, switch.currentAngle, 0.0)
         assertEquals(1.0, switch.currentCurrent, 0.0)
         assertEquals(8.0, switch.inputVoltage, 0.0)
+        assertEquals(75.0, switch.batteryPercentage, 0.0)
         assertEquals(2, switch.uptime)
         assertTrue(switch.isOnline)
         inbound.cleanup()
@@ -116,6 +130,79 @@ class FireBucketMqttInboundTest {
         )
 
         assertTrue(repository.links.value.single().isOnline)
+        assertTrue(repository.links.value.single().subDevices.single().isOnline)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun freshLinkHeartbeatRestoresSubDeviceAvailabilityFromRetainedStartup() = runBlocking {
+        val repository = FireBucketLinkRepo()
+        val inbound = FireBucketMqttInbound(repository)
+        inbound.handleEvent(
+            linkSn = LINK_SERIAL,
+            eventType = "LinkDeviceStartup",
+            json = startupPayload(),
+            isRetained = true
+        )
+        assertFalse(repository.links.value.single().subDevices.single().isOnline)
+
+        inbound.handleEvent(
+            linkSn = LINK_SERIAL,
+            eventType = "LinkDeviceHeartbeat",
+            json = JSONObject()
+                .put("serial_number", LINK_SERIAL)
+                .put("isOnline", true)
+        )
+
+        val link = repository.links.value.single()
+        assertTrue(link.isOnline)
+        assertTrue(link.subDevices.single().isOnline)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun heartbeatDoesNotPromoteSubDeviceReportedOffline() = runBlocking {
+        val repository = FireBucketLinkRepo()
+        val inbound = FireBucketMqttInbound(repository)
+        inbound.handleEvent(
+            linkSn = LINK_SERIAL,
+            eventType = "LinkDeviceStartup",
+            json = startupPayload().also {
+                it.getJSONArray("subDevices").getJSONObject(0).put("isOnline", false)
+            },
+            isRetained = true
+        )
+
+        inbound.handleEvent(
+            linkSn = LINK_SERIAL,
+            eventType = "LinkDeviceHeartbeat",
+            json = JSONObject()
+                .put("serial_number", LINK_SERIAL)
+                .put("isOnline", true)
+        )
+
+        assertFalse(repository.links.value.single().subDevices.single().isOnline)
+        inbound.cleanup()
+    }
+
+    @Test
+    fun linkOfflineDisablesChildAndNextFreshHeartbeatRestoresLastReportedState() = runBlocking {
+        val repository = FireBucketLinkRepo()
+        val inbound = FireBucketMqttInbound(repository)
+        inbound.handleEvent(LINK_SERIAL, "LinkDeviceStartup", startupPayload())
+
+        inbound.handleEvent(LINK_SERIAL, "LinkDeviceOffline", JSONObject())
+        assertFalse(repository.links.value.single().subDevices.single().isOnline)
+
+        inbound.handleEvent(
+            linkSn = LINK_SERIAL,
+            eventType = "LinkDeviceHeartbeat",
+            json = JSONObject()
+                .put("serial_number", LINK_SERIAL)
+                .put("isOnline", true)
+        )
+
+        assertTrue(repository.links.value.single().subDevices.single().isOnline)
         inbound.cleanup()
     }
 
@@ -181,6 +268,7 @@ class FireBucketMqttInboundTest {
             "currentAngle": 10,
             "currentCurrent": 1,
             "inputVoltage": 8,
+            "batteryPercentage": 75,
             "servoMinAngle": 0,
             "servoMaxAngle": 90,
             "uptime": 1

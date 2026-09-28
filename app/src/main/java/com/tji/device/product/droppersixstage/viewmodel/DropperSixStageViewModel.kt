@@ -27,21 +27,43 @@ class DropperSixStageViewModel(
     private val _commandFeedback = MutableStateFlow(DropperCommandFeedback())
     val commandFeedback: StateFlow<DropperCommandFeedback> = _commandFeedback.asStateFlow()
 
+    private val _armedDeviceIds = MutableStateFlow<Set<String>>(emptySet())
+    val armedDeviceIds: StateFlow<Set<String>> = _armedDeviceIds.asStateFlow()
+
     private val pendingCommands = DropperPendingCommandTracker()
 
     init {
         viewModelScope.launch {
             devices.collect { states ->
+                _armedDeviceIds.value = states.asSequence()
+                    .filter { it.isOnline && it.isArmed == true }
+                    .map { it.serialNumber }
+                    .toSet()
                 states.asSequence()
-                    .mapNotNull { it.lastAck }
-                    .forEach { ack ->
-                        val pending = pendingCommands.complete(ack.msgId) ?: return@forEach
+                    .mapNotNull { state -> state.lastAck?.let { state.serialNumber to it } }
+                    .forEach { (serialNumber, ack) ->
+                        val pending = pendingCommands.complete(ack.msgId, serialNumber) ?: return@forEach
                         if (_commandFeedback.value.msgId != ack.msgId) return@forEach
+                        if (ack.ok) {
+                            when (pending.safetyEffect) {
+                                DropperSafetyEffect.Arm ->
+                                    stateRepository.updateArmedStatus(pending.serialNumber, true)
+                                DropperSafetyEffect.Disarm ->
+                                    stateRepository.updateArmedStatus(pending.serialNumber, false)
+                                DropperSafetyEffect.None -> Unit
+                            }
+                        }
                         val feedback = DropperCommandFeedback(
                             serialNumber = pending.serialNumber,
                             msgId = ack.msgId,
                             status = if (ack.ok) DropperCommandFeedbackStatus.Success else DropperCommandFeedbackStatus.Failed,
-                            text = if (ack.ok) "${pending.label}成功" else "${pending.label}失败"
+                            text = if (ack.ok) {
+                                "${pending.label}成功"
+                            } else {
+                                ack.message?.takeIf { it.isNotBlank() }
+                                    ?.let { "${pending.label}失败：$it" }
+                                    ?: "${pending.label}失败"
+                            }
                         )
                         _commandFeedback.value = feedback
                         clearFeedbackAfter(ack.msgId)
@@ -62,6 +84,14 @@ class DropperSixStageViewModel(
         )
     }
 
+    fun arm(serialNumber: String) {
+        send(serialNumber, DropperSixStageCommand.Arm(newMsgId("arm")), "解锁")
+    }
+
+    fun disarm(serialNumber: String) {
+        send(serialNumber, DropperSixStageCommand.Disarm(newMsgId("disarm")), "上锁")
+    }
+
     fun timedOpenStage(serialNumber: String, stage: Int, durationMs: Int) {
         if (!DropperControlLimits.isValidStage(stage)) {
             rejectLocal(serialNumber, "通道编号无效")
@@ -80,10 +110,17 @@ class DropperSixStageViewModel(
         )
     }
 
-    fun toggleAll(serialNumber: String, open: Boolean) {
+    fun toggleAll(serialNumber: String, open: Boolean, durationMs: Int? = null) {
+        val normalizedDuration = durationMs
+            ?.takeIf { open }
+            ?.let(DropperControlLimits::normalizeOpenDuration)
         send(
             serialNumber = serialNumber,
-            command = DropperSixStageCommand.AllStages(newMsgId("all"), open),
+            command = DropperSixStageCommand.AllStages(
+                msgId = newMsgId("all"),
+                open = open,
+                durationMs = normalizedDuration
+            ),
             label = if (open) "全部抛投" else "全部复位"
         )
     }
@@ -97,7 +134,18 @@ class DropperSixStageViewModel(
             rejectOffline(serialNumber, label)
             return
         }
-        if (!pendingCommands.start(command.msgId, serialNumber, command.resourceKeys(serialNumber), label)) {
+        if (command.requiresArmedDevice() && serialNumber !in _armedDeviceIds.value) {
+            rejectLocal(serialNumber, "请先解锁设备")
+            return
+        }
+        if (!pendingCommands.start(
+                command.msgId,
+                serialNumber,
+                command.resourceKeys(serialNumber),
+                label,
+                command.safetyEffect()
+            )
+        ) {
             return
         }
         _commandFeedback.value = DropperCommandFeedback(
@@ -173,6 +221,14 @@ class DropperSixStageViewModel(
         is DropperSixStageCommand.AllStages ->
             (1..DROPPER_STAGE_COUNT).mapTo(mutableSetOf()) { stage -> "$serialNumber:stage:$stage" }
         is DropperSixStageCommand.Ping -> setOf("$serialNumber:ping")
+        is DropperSixStageCommand.Arm,
+        is DropperSixStageCommand.Disarm -> setOf("$serialNumber:safety")
+    }
+
+    private fun DropperSixStageCommand.safetyEffect(): DropperSafetyEffect = when (this) {
+        is DropperSixStageCommand.Arm -> DropperSafetyEffect.Arm
+        is DropperSixStageCommand.Disarm -> DropperSafetyEffect.Disarm
+        else -> DropperSafetyEffect.None
     }
 
     private companion object {
@@ -211,3 +267,7 @@ enum class DropperCommandFeedbackStatus {
 
 internal fun DropperSixStageCommand.requiresOnlineDevice(): Boolean =
     this !is DropperSixStageCommand.Ping
+
+internal fun DropperSixStageCommand.requiresArmedDevice(): Boolean =
+    this is DropperSixStageCommand.StageSwitch ||
+        (this is DropperSixStageCommand.AllStages && open)

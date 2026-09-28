@@ -4,7 +4,6 @@ import android.util.Log
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.droppersixstage.model.DropperSixStageAck
 import com.tji.device.product.droppersixstage.model.DropperSixStageCommand
-import com.tji.device.product.droppersixstage.model.DropperSixStageCommandCode
 import com.tji.device.product.droppersixstage.model.DropperSixStageState
 import com.tji.device.product.common.isOlderDeviceTimestamp
 import com.tji.device.product.droppersixstage.model.DropperStageState
@@ -21,6 +20,7 @@ interface DropperSixStageRepository {
     suspend fun updateState(state: DropperSixStageState)
     suspend fun updateOnlineStatus(serialNumber: String, isOnline: Boolean, timestamp: Long?)
     suspend fun updateAck(serialNumber: String, ack: DropperSixStageAck)
+    suspend fun updateArmedStatus(serialNumber: String, isArmed: Boolean)
     fun clearDevices()
 }
 
@@ -38,6 +38,7 @@ class DropperSixStageRepo : DropperSixStageRepository {
                     state.copy(
                         name = state.name ?: old.name,
                         isOnline = state.isOnline || old.isOnline,
+                        isArmed = state.isArmed ?: old.isArmed,
                         lastAck = state.lastAck ?: old.lastAck,
                         batteryPercent = state.batteryPercent ?: old.batteryPercent,
                         firmwareVersion = state.firmwareVersion ?: old.firmwareVersion,
@@ -68,6 +69,8 @@ class DropperSixStageRepo : DropperSixStageRepository {
                     }
                     state.copy(
                         isOnline = isOnline,
+                        // 每次重连都要求设备重新确认或用户重新解锁，不能沿用断线前的安全状态。
+                        isArmed = if (isOnline) state.isArmed else false,
                         timestamp = timestamp ?: state.timestamp
                     )
                 }
@@ -83,13 +86,37 @@ class DropperSixStageRepo : DropperSixStageRepository {
                     DropperSixStageState(
                         serialNumber = serialNumber,
                         lastAck = ack,
+                        // 没有在线生命周期时不能仅凭孤立 ACK 恢复解锁状态。
+                        isArmed = if (ack.armedStateOrNull() == false) false else null,
                         stages = DropperStageState.defaults()
                     )
                 },
                 update = { state ->
                     state.copy(
-                        lastAck = ack
+                        lastAck = ack,
+                        isArmed = when (ack.armedStateOrNull()) {
+                            true -> if (state.isOnline) true else state.isArmed
+                            false -> false
+                            null -> state.isArmed
+                        }
                     )
+                }
+            )
+        }
+    }
+
+    override suspend fun updateArmedStatus(serialNumber: String, isArmed: Boolean) {
+        _devices.update { current ->
+            current.updateOrCreate(
+                serialNumber = serialNumber,
+                create = {
+                    DropperSixStageState(
+                        serialNumber = serialNumber,
+                        isArmed = if (isArmed) null else false
+                    )
+                },
+                update = { state ->
+                    state.copy(isArmed = if (isArmed && !state.isOnline) false else isArmed)
                 }
             )
         }
@@ -116,6 +143,13 @@ class DropperSixStageRepo : DropperSixStageRepository {
         return if (replaced) next else next + create()
     }
 
+}
+
+private fun DropperSixStageAck.armedStateOrNull(): Boolean? = when {
+    !ok -> null
+    action == "arm" -> true
+    action == "disarm" -> false
+    else -> null
 }
 
 interface DropperSixStageControlRepository {
@@ -149,44 +183,28 @@ class DropperSixStageControlRepo : DropperSixStageControlRepository {
 /**
  * 六段抛投控制协议。
  *
- * `cmd/cmdName/stage/open` 是当前产品协议；`module/action/hook/state` 暂时保留，
- * 兼容已经按早期联调字段实现的固件。
+ * FC100 FireDrop-6 MQTT V1 控制协议。
+ *
+ * 控制消息只包含协议定义的字段，不携带旧版联调使用的
+ * `cmd/cmdName/stage/open/ts/durationMs` 扩展字段。
  */
-internal fun DropperSixStageCommand.toDropperControlJson(
-    timestampMillis: Long = System.currentTimeMillis()
-): JSONObject = JSONObject().apply {
+internal fun DropperSixStageCommand.toDropperControlJson(): JSONObject = JSONObject().apply {
     put("v", 1)
     put("msgId", msgId)
-    put("ts", timestampMillis)
     put("module", "firedrop")
     when (this@toDropperControlJson) {
-        is DropperSixStageCommand.Ping -> {
-            put("cmd", DropperSixStageCommandCode.PING)
-            put("cmdName", "PING")
-            put("action", "query")
-        }
+        is DropperSixStageCommand.Ping -> put("action", "query")
+        is DropperSixStageCommand.Arm -> put("action", "arm")
+        is DropperSixStageCommand.Disarm -> put("action", "disarm")
         is DropperSixStageCommand.StageSwitch -> {
-            put("cmd", DropperSixStageCommandCode.SET_STAGE_SWITCH)
-            put("cmdName", "SET_STAGE_SWITCH")
-            put("stage", stage)
-            put("open", open)
             put("action", "set_hook")
             put("hook", stage)
             put("state", if (open) "open" else "close")
-            durationMs?.let {
-                put("durationMs", it)
-                put("duration", it)
-            }
+            if (open) durationMs?.let { put("duration", it) }
         }
         is DropperSixStageCommand.AllStages -> {
-            put("cmd", DropperSixStageCommandCode.SET_ALL_STAGES)
-            put("cmdName", "SET_ALL_STAGES")
-            put("open", open)
             put("action", if (open) "open_all" else "close_all")
-            durationMs?.let {
-                put("durationMs", it)
-                put("duration", it)
-            }
+            if (open) durationMs?.let { put("duration", it) }
         }
     }
 }

@@ -107,6 +107,7 @@ private fun DeviceInfoDialog(
                     "当前角度" to "${switch.currentAngle}°",  // 使用 currentAngle
                     "当前电流" to "${switch.currentCurrent}mA",  // 使用 currentCurrent
                     "输入电压" to "${switch.inputVoltage}V",  // 使用 inputVoltage
+                    "剩余电量" to "${switch.batteryPercentage}%",
                     "舵机最小角度" to "${switch.servoMinAngle}°",  // 使用 servoMinAngle
                     "舵机最大角度" to "${switch.servoMaxAngle}°",  // 使用 servoMaxAngle
                     "运行时间" to "${switch.uptime}秒"  // 使用 uptime

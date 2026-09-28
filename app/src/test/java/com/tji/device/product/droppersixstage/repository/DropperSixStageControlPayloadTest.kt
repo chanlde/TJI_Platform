@@ -2,27 +2,23 @@ package com.tji.device.product.droppersixstage.repository
 
 import com.tji.device.product.droppersixstage.model.DropperSixStageCommand
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DropperSixStageControlPayloadTest {
     @Test
-    fun stageCommandContainsCurrentProtocolAndLegacyCompatibilityFields() {
+    fun stageCommandMatchesV1SetHookPayloadExactly() {
         val payload = DropperSixStageCommand.StageSwitch(
             msgId = "stage-2",
             stage = 2,
             open = true,
             durationMs = 1_500
-        ).toDropperControlJson(timestampMillis = 123)
+        ).toDropperControlJson()
 
-        assertEquals(1, payload.getInt("v"))
-        assertEquals("stage-2", payload.getString("msgId"))
-        assertEquals(123L, payload.getLong("ts"))
-        assertEquals(10, payload.getInt("cmd"))
-        assertEquals("SET_STAGE_SWITCH", payload.getString("cmdName"))
-        assertEquals(2, payload.getInt("stage"))
-        assertEquals(true, payload.getBoolean("open"))
-        assertEquals(1_500, payload.getInt("durationMs"))
-        assertEquals("firedrop", payload.getString("module"))
+        assertEquals(
+            setOf("v", "msgId", "module", "action", "hook", "state", "duration"),
+            payloadKeys(payload)
+        )
         assertEquals("set_hook", payload.getString("action"))
         assertEquals(2, payload.getInt("hook"))
         assertEquals("open", payload.getString("state"))
@@ -30,20 +26,60 @@ class DropperSixStageControlPayloadTest {
     }
 
     @Test
-    fun allStagesAndPingUseDocumentedCommandCodes() {
+    fun closeAllAndQueryMatchV1PayloadsExactly() {
         val all = DropperSixStageCommand.AllStages(
             msgId = "all-close",
             open = false
-        ).toDropperControlJson(timestampMillis = 456)
+        ).toDropperControlJson()
         val ping = DropperSixStageCommand.Ping("ping")
-            .toDropperControlJson(timestampMillis = 789)
+            .toDropperControlJson()
 
-        assertEquals(11, all.getInt("cmd"))
-        assertEquals("SET_ALL_STAGES", all.getString("cmdName"))
-        assertEquals(false, all.getBoolean("open"))
+        assertEquals(setOf("v", "msgId", "module", "action"), payloadKeys(all))
         assertEquals("close_all", all.getString("action"))
-        assertEquals(0, ping.getInt("cmd"))
-        assertEquals("PING", ping.getString("cmdName"))
+        assertEquals(setOf("v", "msgId", "module", "action"), payloadKeys(ping))
         assertEquals("query", ping.getString("action"))
+    }
+
+    @Test
+    fun openAllIncludesAutomaticCloseDuration() {
+        val payload = DropperSixStageCommand.AllStages(
+            msgId = "all-open-timed",
+            open = true,
+            durationMs = 1_000
+        ).toDropperControlJson()
+
+        assertEquals(
+            setOf("v", "msgId", "module", "action", "duration"),
+            payloadKeys(payload)
+        )
+        assertEquals("open_all", payload.getString("action"))
+        assertEquals(1_000, payload.getInt("duration"))
+    }
+
+    @Test
+    fun armAndDisarmUseFireDropSafetyActions() {
+        val arm = DropperSixStageCommand.Arm("arm-1").toDropperControlJson()
+        val disarm = DropperSixStageCommand.Disarm("disarm-1").toDropperControlJson()
+
+        assertEquals(setOf("v", "msgId", "module", "action"), payloadKeys(arm))
+        assertEquals(setOf("v", "msgId", "module", "action"), payloadKeys(disarm))
+        assertEquals("firedrop", arm.getString("module"))
+        assertEquals("arm", arm.getString("action"))
+        assertEquals("disarm", disarm.getString("action"))
+    }
+
+    @Test
+    fun legacyFieldsAreNotSent() {
+        val payload = DropperSixStageCommand.StageSwitch("stage-1", 1, open = true)
+            .toDropperControlJson()
+
+        listOf("ts", "cmd", "cmdName", "stage", "open", "durationMs").forEach {
+            assertFalse("V1 payload must not include $it", payload.has(it))
+        }
+    }
+
+    private fun payloadKeys(payload: org.json.JSONObject): Set<String> = buildSet {
+        val keys = payload.keys()
+        while (keys.hasNext()) add(keys.next())
     }
 }

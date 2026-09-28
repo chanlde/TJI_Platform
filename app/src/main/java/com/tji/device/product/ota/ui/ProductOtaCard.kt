@@ -34,13 +34,13 @@ import com.tji.device.product.ota.ProductOtaStatus
 import com.tji.device.product.ota.displayProgressPercent
 import com.tji.device.product.ota.isDeviceAtLatest
 import com.tji.device.product.ota.isOtaBusy
+import com.tji.device.product.ota.otaCandidateSummaryText
 import com.tji.device.product.ota.normalizedOtaStatus
 import com.tji.device.product.ota.otaProgressTitle
 import com.tji.device.product.ota.otaStatusColor
 import com.tji.device.product.ota.otaStatusText
 import com.tji.device.product.ota.otaUserMessage
 import com.tji.device.product.ota.shouldShowOtaProgress
-import com.tji.device.product.ota.toCompletedIfDeviceReachedLatest
 import com.tji.device.ui.components.TjiActionButton
 import com.tji.device.ui.components.TjiFeedbackBadge
 import com.tji.device.ui.components.TjiSectionCard
@@ -58,12 +58,15 @@ private const val OTA_PROGRESS_ANIMATION_MS = 700
 private const val OTA_PROGRESS_TICK_MS = 300L
 private const val OTA_PROGRESS_OPTIMISTIC_STEP = 0.004f
 
+@Suppress("LongParameterList") // Live device, task and action state come from separate sources.
 @Composable
 fun ProductOtaCard(
     deviceInfo: ProductDeviceInfo?,
     otaStatus: ProductOtaStatus?,
+    serverTask: com.tji.network.data.OtaTaskResponse?,
     otaCheckState: ProductOtaCheckState,
     commandFeedback: ProductOtaCommandFeedback,
+    startReserved: Boolean,
     deviceOnline: Boolean,
     onRefreshDeviceInfo: () -> Unit,
     onCheckUpdate: () -> Unit,
@@ -71,7 +74,17 @@ fun ProductOtaCard(
 ) {
     val latest = otaCheckState.latest
     val deviceReachedLatest = isDeviceAtLatest(deviceInfo, latest)
-    val effectiveOtaStatus = otaStatus?.toCompletedIfDeviceReachedLatest(deviceReachedLatest)
+    val effectiveOtaStatus = serverTask?.let { task ->
+        ProductOtaStatus(
+            status = task.status,
+            cmdId = task.cmdId,
+            seq = task.lastEventSeq.toLong(),
+            progress = task.progress,
+            targetVersion = task.targetVersion,
+            targetInnerVersion = task.targetInnerVersion,
+            message = task.lastMessage
+        )
+    } ?: otaStatus
     val successNoticeKey = "${latest?.innerVersion}:${deviceInfo?.firmwareInnerVersion}"
     var showSuccessNotice by remember(successNoticeKey) { mutableStateOf(true) }
     LaunchedEffect(successNoticeKey, effectiveOtaStatus?.status) {
@@ -88,7 +101,7 @@ fun ProductOtaCard(
     }
     TjiSectionCard(
         title = "固件升级",
-        trailing = { ProductOtaFeedbackBadge(commandFeedback) }
+        trailing = { ProductOtaFeedbackBadge(commandFeedback, effectiveOtaStatus) }
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -102,7 +115,8 @@ fun ProductOtaCard(
         latest?.let {
             OtaUpdateInfo(
                 latest = it,
-                hasUpdate = hasUpdate
+                hasUpdate = hasUpdate,
+                otaStatus = effectiveOtaStatus
             )
         }
         displayOtaStatus?.takeIf { it.shouldShowOtaProgress() }?.let { OtaProgressLine(it) }
@@ -126,8 +140,12 @@ fun ProductOtaCard(
                 onClick = onCheckUpdate
             )
             TjiActionButton(
-                text = "立即升级",
-                enabled = deviceOnline && !isOtaBusy && hasUpdate && latest != null,
+                text = when {
+                    startReserved -> "等待设备响应"
+                    isOtaBusy -> "升级处理中"
+                    else -> "立即升级"
+                },
+                enabled = deviceOnline && !isOtaBusy && !startReserved && hasUpdate && latest != null,
                 color = TjiWarning,
                 onClick = onStartOta
             )
@@ -136,7 +154,14 @@ fun ProductOtaCard(
 }
 
 @Composable
-private fun ProductOtaFeedbackBadge(feedback: ProductOtaCommandFeedback) {
+private fun ProductOtaFeedbackBadge(
+    feedback: ProductOtaCommandFeedback,
+    otaStatus: ProductOtaStatus?
+) {
+    if (
+        feedback.status == ProductOtaCommandFeedbackStatus.Success &&
+        otaStatus?.status?.normalizedOtaStatus() in setOf("SUCCESS", "FAILED", "ROLLED_BACK", "TEST_DONE")
+    ) return
     val text = feedback.text ?: return
     val color = when (feedback.status) {
         ProductOtaCommandFeedbackStatus.Pending -> PayloadColors.TextSecondary
@@ -163,8 +188,12 @@ private fun CompactInfo(label: String, value: String) {
 }
 
 @Composable
-private fun OtaUpdateInfo(latest: OtaLatestResponse, hasUpdate: Boolean) {
-    val color = if (hasUpdate) TjiWarning else TjiOnline
+private fun OtaUpdateInfo(latest: OtaLatestResponse, hasUpdate: Boolean, otaStatus: ProductOtaStatus?) {
+    val color = when {
+        otaStatus?.isOtaBusy() == true -> PayloadColors.Primary
+        hasUpdate -> TjiWarning
+        else -> TjiOnline
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -177,7 +206,7 @@ private fun OtaUpdateInfo(latest: OtaLatestResponse, hasUpdate: Boolean) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = if (hasUpdate) "发现新版本" else "已是最新版本",
+                text = otaCandidateSummaryText(hasUpdate, otaStatus),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = color

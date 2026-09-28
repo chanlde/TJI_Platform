@@ -38,6 +38,7 @@ import com.tji.device.ui.icon.product.productIconVector
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
 
+@Suppress("LongMethod") // This Compose item renders one Link and its device summary.
 @Composable
 fun LinkItem(
     link: FireBucketLinkDevice,
@@ -120,7 +121,11 @@ fun LinkItem(
                         modifier = Modifier.heightIn(max = 400.dp)
                     ) {
                         items(link.subDevices, key = { it.serialNumber }) { switch ->
-                            SwitchItemComposable(link.serial_number, switch = switch)
+                            SwitchItemComposable(
+                                linkSn = link.serial_number,
+                                linkOnline = link.isOnline,
+                                switch = switch
+                            )
                         }
                     }
                 } else {
@@ -132,7 +137,11 @@ fun LinkItem(
                         modifier = Modifier.heightIn(max = 400.dp)
                     ) {
                         items(link.subDevices, key = { it.serialNumber }) { switch ->
-                            SwitchItemComposable(link.serial_number, switch = switch)
+                            SwitchItemComposable(
+                                linkSn = link.serial_number,
+                                linkOnline = link.isOnline,
+                                switch = switch
+                            )
                         }
                     }
                 }

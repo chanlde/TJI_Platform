@@ -41,7 +41,13 @@ internal fun PlatformHomeHeader(
     totalDeviceCount: Int,
     onlineDeviceCount: Int,
     productCount: Int,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    title: String = "设备平台首页",
+    description: String = when {
+        totalDeviceCount > 0 -> "统一查看账号下各产品设备，并按设备进入对应控制台。"
+        else -> "暂无绑定设备，请先添加或联系管理员开通。"
+    },
+    deviceMetricTitle: String = "绑定设备"
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -56,16 +62,13 @@ internal fun PlatformHomeHeader(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "设备平台首页",
+                    text = title,
                     style = MaterialTheme.typography.displaySmall,
                     color = PlatformInk,
                     fontWeight = FontWeight.Black
                 )
                 Text(
-                    text = when {
-                        totalDeviceCount > 0 -> "统一查看账号下各产品设备，并按设备进入对应控制台。"
-                        else -> "暂无绑定设备，请先添加或联系管理员开通。"
-                    },
+                    text = description,
                     style = MaterialTheme.typography.titleMedium,
                     color = PlatformMuted,
                     fontWeight = FontWeight.Medium
@@ -91,7 +94,7 @@ internal fun PlatformHomeHeader(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             PlatformMetaCard(
-                title = "绑定设备",
+                title = deviceMetricTitle,
                 value = "$totalDeviceCount",
                 unit = "台",
                 kind = MetricKind.Device,

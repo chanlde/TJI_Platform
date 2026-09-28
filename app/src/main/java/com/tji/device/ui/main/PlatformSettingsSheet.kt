@@ -16,6 +16,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.BuildConfig
+import com.tji.device.product.firebucket.transport.FireBucketConnectionMode
 import com.tji.device.ui.components.TjiControlSlider
 import com.tji.device.ui.floating.FloatingWindowAppearance
 import com.tji.device.ui.theme.PayloadColors
@@ -38,11 +42,14 @@ import com.tji.device.ui.theme.PayloadDimens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongParameterList")
 fun PlatformSettingsSheet(
-    account: String,
+    account: String?,
     deviceCount: Int,
     isFloatingWindowEnabled: Boolean,
     hasFloatingWindowPermission: Boolean,
+    connectionMode: FireBucketConnectionMode,
+    onConnectionModeChange: (FireBucketConnectionMode) -> Unit,
     onFloatingWindowEnabledChange: (Boolean) -> Unit,
     onOpenFloatingWindowPermission: () -> Unit,
     onDismiss: () -> Unit
@@ -60,81 +67,173 @@ fun PlatformSettingsSheet(
         containerColor = PayloadColors.Surface,
         shape = RoundedCornerShape(topStart = PayloadDimens.CardRadius, topEnd = PayloadDimens.CardRadius)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 640.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "设置",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = PayloadColors.TextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "管理悬浮窗、权限和当前应用信息",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = PayloadColors.TextSecondary
-                )
-            }
+        PlatformSettingsContent(
+            account = account,
+            deviceCount = deviceCount,
+            isFloatingWindowEnabled = isFloatingWindowEnabled,
+            hasFloatingWindowPermission = hasFloatingWindowPermission,
+            onFloatingWindowEnabledChange = onFloatingWindowEnabledChange,
+            onOpenFloatingWindowPermission = onOpenFloatingWindowPermission,
+            floatingWindowBackgroundAlpha = floatingWindowBackgroundAlpha,
+            connectionMode = connectionMode,
+            onConnectionModeChange = onConnectionModeChange
+        )
+    }
+}
 
-            SettingsGroup {
-                SettingSwitchRow(
-                    title = "悬浮窗",
-                    description = if (hasFloatingWindowPermission) {
-                        "开启后可在其他页面快速查看当前产品控制面板"
-                    } else {
-                        "需要先授予悬浮窗权限"
-                    },
-                    checked = isFloatingWindowEnabled,
-                    onCheckedChange = { enabled ->
-                        onFloatingWindowEnabledChange(enabled)
-                        if (enabled && !hasFloatingWindowPermission) {
-                            onOpenFloatingWindowPermission()
-                        }
-                    }
-                )
-                HorizontalDivider(color = PayloadColors.Border)
-                SettingActionRow(
-                    title = "悬浮窗权限",
-                    value = if (hasFloatingWindowPermission) "已授权" else "未授权",
-                    actionText = if (hasFloatingWindowPermission) null else "去授权",
-                    onAction = onOpenFloatingWindowPermission
-                )
-                HorizontalDivider(color = PayloadColors.Border)
-                FloatingWindowOpacityRow(
-                    alpha = floatingWindowBackgroundAlpha,
-                    onAlphaChange = { alpha ->
-                        FloatingWindowAppearance.setBackgroundAlpha(context, alpha)
-                    }
-                )
-            }
+@Composable
+@Suppress("LongParameterList")
+private fun PlatformSettingsContent(
+    account: String?,
+    deviceCount: Int,
+    isFloatingWindowEnabled: Boolean,
+    hasFloatingWindowPermission: Boolean,
+    onFloatingWindowEnabledChange: (Boolean) -> Unit,
+    onOpenFloatingWindowPermission: () -> Unit,
+    floatingWindowBackgroundAlpha: Float,
+    connectionMode: FireBucketConnectionMode,
+    onConnectionModeChange: (FireBucketConnectionMode) -> Unit
+) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 640.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .navigationBarsPadding()
+            .padding(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        SettingsSheetHeader()
+        SettingsGroup {
+            ConnectionModeRow(mode = connectionMode, onModeChange = onConnectionModeChange)
+        }
+        FloatingWindowSettingsGroup(
+            isEnabled = isFloatingWindowEnabled,
+            hasPermission = hasFloatingWindowPermission,
+            alpha = floatingWindowBackgroundAlpha,
+            onEnabledChange = onFloatingWindowEnabledChange,
+            onOpenPermission = onOpenFloatingWindowPermission,
+            onAlphaChange = { FloatingWindowAppearance.setBackgroundAlpha(context, it) }
+        )
+        AccountSettingsGroup(account = account, deviceCount = deviceCount)
+        VersionSettingsGroup()
+    }
+}
 
-            SettingsGroup {
-                SettingInfoRow(
-                    title = "当前账号",
-                    value = account.ifBlank { "未获取" }
-                )
-                HorizontalDivider(color = PayloadColors.Border)
-                SettingInfoRow(
-                    title = "绑定设备",
-                    value = "$deviceCount 台"
-                )
-            }
+@Composable
+private fun SettingsSheetHeader() {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = "设置",
+            style = MaterialTheme.typography.headlineSmall,
+            color = PayloadColors.TextPrimary,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "管理控制链路、悬浮窗和当前应用信息",
+            style = MaterialTheme.typography.bodyMedium,
+            color = PayloadColors.TextSecondary
+        )
+    }
+}
 
-            SettingsGroup {
-                SettingInfoRow(
-                    title = "当前版本",
-                    value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
-                )
+@Composable
+private fun FloatingWindowSettingsGroup(
+    isEnabled: Boolean,
+    hasPermission: Boolean,
+    alpha: Float,
+    onEnabledChange: (Boolean) -> Unit,
+    onOpenPermission: () -> Unit,
+    onAlphaChange: (Float) -> Unit
+) {
+    SettingsGroup {
+        SettingSwitchRow(
+            title = "悬浮窗",
+            description = if (hasPermission) {
+                "开启后可在其他页面快速查看当前产品控制面板"
+            } else {
+                "需要先授予悬浮窗权限"
+            },
+            checked = isEnabled,
+            onCheckedChange = { enabled ->
+                onEnabledChange(enabled)
+                if (enabled && !hasPermission) onOpenPermission()
+            }
+        )
+        HorizontalDivider(color = PayloadColors.Border)
+        SettingActionRow(
+            title = "悬浮窗权限",
+            value = if (hasPermission) "已授权" else "未授权",
+            actionText = if (hasPermission) null else "去授权",
+            onAction = onOpenPermission
+        )
+        HorizontalDivider(color = PayloadColors.Border)
+        FloatingWindowOpacityRow(alpha = alpha, onAlphaChange = onAlphaChange)
+    }
+}
+
+@Composable
+private fun AccountSettingsGroup(account: String?, deviceCount: Int) {
+    if (account == null) return
+    SettingsGroup {
+        SettingInfoRow(title = "当前账号", value = account.ifBlank { "未获取" })
+        HorizontalDivider(color = PayloadColors.Border)
+        SettingInfoRow(title = "绑定设备", value = "$deviceCount 台")
+    }
+}
+
+@Composable
+private fun ConnectionModeRow(
+    mode: FireBucketConnectionMode,
+    onModeChange: (FireBucketConnectionMode) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "控制链路",
+            style = MaterialTheme.typography.titleMedium,
+            color = PayloadColors.TextPrimary,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = if (mode == FireBucketConnectionMode.CLOUD) {
+                "通过 4G 云端发送控制命令"
+            } else {
+                "通过当前 Wi-Fi 连接的数传设备发送控制命令"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = PayloadColors.TextSecondary
+        )
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            listOf(
+                FireBucketConnectionMode.CLOUD to "4G",
+                FireBucketConnectionMode.DIRECT_LINK to "数传"
+            ).forEachIndexed { index, (itemMode, label) ->
+                SegmentedButton(
+                    selected = mode == itemMode,
+                    onClick = { onModeChange(itemMode) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 2)
+                ) {
+                    Text(label)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun VersionSettingsGroup() {
+    SettingsGroup {
+        SettingInfoRow(
+            title = "当前版本",
+            value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · ${BuildConfig.FLAVOR}"
+        )
     }
 }
 

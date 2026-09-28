@@ -67,6 +67,25 @@ fun GlassBreakerControlScreen(
     device: BoundAccountDevice,
     modifier: Modifier = Modifier
 ) {
+    GlassBreakerControlContent(
+        device = device,
+        modifier = modifier
+            .fillMaxSize()
+            .background(PayloadColors.Background),
+        showDeviceHeader = true
+    )
+}
+
+/**
+ * 破窗器主页面和悬浮窗共用同一套状态、操作与安全确认内容。
+ */
+@Composable
+internal fun GlassBreakerControlContent(
+    device: BoundAccountDevice,
+    modifier: Modifier = Modifier,
+    showDeviceHeader: Boolean,
+    contentPadding: PaddingValues = PaddingValues(PayloadDimens.ScreenPadding)
+) {
     val isPreview = LocalInspectionMode.current
     val viewModel: GlassBreakerControlViewModel? = if (isPreview) {
         null
@@ -93,18 +112,18 @@ fun GlassBreakerControlScreen(
     }
 
     LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(PayloadColors.Background),
-        contentPadding = PaddingValues(PayloadDimens.ScreenPadding),
+        modifier = modifier,
+        contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
     ) {
-        item {
-            GlassBreakerHeaderCard(
-                device = device,
-                state = displayState,
-                feedback = visibleFeedback
-            )
+        if (showDeviceHeader) {
+            item {
+                GlassBreakerHeaderCard(
+                    device = device,
+                    state = displayState,
+                    feedback = visibleFeedback
+                )
+            }
         }
         item {
             SafetyControlCard(

@@ -1,6 +1,7 @@
 package com.tji.device.data.session
 
 import com.tji.device.data.model.BoundAccountDevice
+import com.tji.device.data.model.CatalogBoundDevice
 import com.tji.device.data.model.ProductType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,8 +18,10 @@ val BoundAccountDevice.deviceKey: DeviceKey
     get() = DeviceKey(productType = productType, serialNumber = serialNumber)
 
 data class AppSessionState(
+    val account: String = "",
     val userId: String? = null,
     val boundDevices: List<BoundAccountDevice> = emptyList(),
+    val catalogDevices: List<CatalogBoundDevice> = emptyList(),
     val selectedDeviceKey: DeviceKey? = null,
     val preferredProductType: ProductType = ProductType.FireBucket
 )
@@ -34,12 +37,19 @@ class AppSessionStore {
     val state: StateFlow<AppSessionState> = _state.asStateFlow()
     private val sessionGeneration = AtomicLong(0L)
 
-    fun startSession(userId: String?, devices: List<BoundAccountDevice>) {
+    fun startSession(
+        account: String,
+        userId: String?,
+        devices: List<BoundAccountDevice>,
+        catalogDevices: List<CatalogBoundDevice> = emptyList()
+    ) {
         val uniqueDevices = devices.distinctBy { it.deviceKey }
         sessionGeneration.incrementAndGet()
         _state.value = AppSessionState(
+            account = account,
             userId = userId,
             boundDevices = uniqueDevices,
+            catalogDevices = catalogDevices.distinctBy { it.productCode to it.serialNumber },
             preferredProductType =
                 uniqueDevices.firstOrNull()?.productType ?: ProductType.FireBucket
         )

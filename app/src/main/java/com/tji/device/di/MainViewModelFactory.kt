@@ -12,7 +12,7 @@ import com.tji.device.product.ota.ProductOtaRuntimeRepository
 import com.tji.device.service.MqttSubscriptionManager
 
 /**
- * 创建 MainViewModel、LoginViewModel；产品运行时通过 ProductRuntimeRegistry 注入，避免 MainViewModel 依赖某个具体产品。
+ * 分别创建 MainViewModel、LoginViewModel；两者由同一个 Activity ViewModelStore 独立管理。
  */
 class MainViewModelFactory(
     private val authRepository: AuthRepository,
@@ -20,22 +20,21 @@ class MainViewModelFactory(
     private val productRuntimeRegistryProvider: () -> ProductRuntimeRegistry,
     private val mqttSubscriptionManagerProvider: () -> MqttSubscriptionManager,
     private val initializedMqttSubscriptionManager: () -> MqttSubscriptionManager?,
-    private val productOtaRuntimeRepositoryProvider: () -> ProductOtaRuntimeRepository
+    private val productOtaRuntimeRepositoryProvider: () -> ProductOtaRuntimeRepository,
+    private val clearRadioDetectionReplay: () -> Unit
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when {
             modelClass.isAssignableFrom(MainViewModel::class.java) -> {
-                val loginViewModel = createLoginViewModel()
-
                 @Suppress("UNCHECKED_CAST")
                 MainViewModel(
-                    loginViewModel,
                     authRepository,
                     sessionStore,
                     productRuntimeRegistryProvider,
                     mqttSubscriptionManagerProvider,
-                    productOtaRuntimeRepositoryProvider
+                    productOtaRuntimeRepositoryProvider,
+                    clearRadioDetectionReplay
                 ) as T
             }
             modelClass.isAssignableFrom(LoginViewModel::class.java) -> {

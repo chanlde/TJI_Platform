@@ -1,0 +1,23 @@
+complexity:
+  LongMethod:
+    active: true
+    threshold: 100
+  LongParameterList:
+    active: true
+    functionThreshold: 10
+    constructorThreshold: 12
+    ignoreDefaultParameters: true
+  TooManyFunctions:
+    active: true
+    thresholdInFiles: 40
+    thresholdInClasses: 35
+
+style:
+  MaxLineLength:
+    active: true
+    maxLineLength: 140
+    excludeCommentStatements: true
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    active: true

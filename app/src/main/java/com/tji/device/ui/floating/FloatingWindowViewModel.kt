@@ -10,6 +10,12 @@ import com.tji.device.data.session.AppSessionState
 import com.tji.device.data.session.AppSessionStore
 import com.tji.device.di.ProductFloatingQuickControl
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
+import com.tji.device.product.firebucket.transport.DIRECT_FIRE_BUCKET_LINK_ID
+import com.tji.device.product.firebucket.transport.DIRECT_FIRE_BUCKET_LINK_NAME
+import com.tji.device.product.firebucket.transport.DirectFireBucketState
+import com.tji.device.product.firebucket.transport.DirectFireBucketStateStore
+import com.tji.device.product.firebucket.transport.FireBucketConnectionMode
+import com.tji.device.product.firebucket.transport.FireBucketConnectionModeStore
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.product.runtime.ProductRuntimeRegistry
 import com.tji.device.error.toUserVisibleMessage
@@ -38,6 +44,8 @@ class FloatingWindowViewModel(
     private val productRuntimeRegistry: ProductRuntimeRegistry,
     private val floatingQuickControlFor: (ProductType) -> ProductFloatingQuickControl,
     private val sessionStore: AppSessionStore,
+    private val directFireBucketStateStore: DirectFireBucketStateStore,
+    private val connectionModeStore: FireBucketConnectionModeStore,
     private val commandErrorReporter: (String) -> Unit = AppUiNotifier::showShortMessage
 ) : ViewModel() {
 
@@ -66,17 +74,30 @@ class FloatingWindowViewModel(
             }.distinctUntilChanged()
             combine(
                 linkSummaries,
-                sessionStore.state
-            ) { summaries, session ->
-                FloatingWindowSources(summaries, session)
+                sessionStore.state,
+                directFireBucketStateStore.state,
+                connectionModeStore.mode
+            ) { summaries, session, directState, connectionMode ->
+                FloatingWindowSources(summaries, session, directState, connectionMode)
             }.collect { sources ->
                 _uiState.update { current ->
+                    if (sources.connectionMode == FireBucketConnectionMode.DIRECT_LINK) {
+                        val directLink = sources.directState.toFloatingLinkSummary()
+                        return@update current.copy(
+                            links = listOfNotNull(directLink),
+                            selectedLinkSerial = directLink?.serialNumber,
+                            selectedLinkName = directLink?.name,
+                            preferredProductType = ProductType.FireBucket
+                        )
+                    }
                     val summaries = sources.linkSummaries
                     val selectedKey = sources.session.selectedDeviceKey
                     val selectedBoundDevice = selectedKey?.let { key ->
                         sources.session.boundDevices.firstOrNull {
                             it.productType == key.productType && it.serialNumber == key.serialNumber
                         }
+                    } ?: sources.session.boundDevices.firstOrNull {
+                        it.productType == sources.session.preferredProductType
                     }
                     val explicitlySelected = selectedKey?.let { key ->
                         summaries.firstOrNull {
@@ -97,7 +118,7 @@ class FloatingWindowViewModel(
                     val selectedSerial = when {
                         !selectedProductType.supportsFloatingWindow() -> null
                         selectedKey != null -> selectedKey.serialNumber
-                        else -> selectedLink?.serialNumber
+                        else -> selectedLink?.serialNumber ?: selectedBoundDevice?.serialNumber
                     }
                     if (BuildConfig.DEBUG) {
                         Log.d(
@@ -153,7 +174,7 @@ class FloatingWindowViewModel(
                 onFailure = { throwable ->
                     Log.e(
                         TAG,
-                        "悬浮窗控制失败: link=${link.serialNumber} switch=${switch.serialNumber}",
+                        "悬浮窗控制失败: product=${link.productType}",
                         throwable
                     )
                     commandErrorReporter(
@@ -175,7 +196,7 @@ class FloatingWindowViewModel(
         ) {
             Log.w(
                 TAG,
-                "忽略失效的悬浮窗控制: link=$linkSerial switch=${switch.serialNumber}"
+                "忽略失效的悬浮窗控制"
             )
             return
         }
@@ -192,7 +213,7 @@ internal fun canToggleFloatingSwitch(
     link: FloatingLinkSummary?,
     switch: FloatingSwitchSummary?
 ): Boolean =
-    link?.isOnline == true && switch?.isOnline == true
+    link?.isOnline == true && switch != null
 
 private fun ProductType.supportsFloatingWindow(): Boolean =
     this != ProductType.RadioDetection
@@ -204,6 +225,8 @@ class FloatingWindowViewModelFactory(
     private val productRuntimeRegistry: ProductRuntimeRegistry,
     private val floatingQuickControlFor: (ProductType) -> ProductFloatingQuickControl,
     private val sessionStore: AppSessionStore,
+    private val directFireBucketStateStore: DirectFireBucketStateStore,
+    private val connectionModeStore: FireBucketConnectionModeStore,
     private val commandErrorReporter: (String) -> Unit = AppUiNotifier::showShortMessage
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -213,6 +236,8 @@ class FloatingWindowViewModelFactory(
                 productRuntimeRegistry = productRuntimeRegistry,
                 floatingQuickControlFor = floatingQuickControlFor,
                 sessionStore = sessionStore,
+                directFireBucketStateStore = directFireBucketStateStore,
+                connectionModeStore = connectionModeStore,
                 commandErrorReporter = commandErrorReporter
             ) as T
         }
@@ -222,8 +247,21 @@ class FloatingWindowViewModelFactory(
 
 private data class FloatingWindowSources(
     val linkSummaries: List<FloatingLinkSummary>,
-    val session: AppSessionState
+    val session: AppSessionState,
+    val directState: DirectFireBucketState,
+    val connectionMode: FireBucketConnectionMode
 )
+
+internal fun DirectFireBucketState.toFloatingLinkSummary(): FloatingLinkSummary? {
+    if (buckets.isEmpty()) return null
+    return FloatingLinkSummary.fromSwitches(
+        serialNumber = DIRECT_FIRE_BUCKET_LINK_ID,
+        name = DIRECT_FIRE_BUCKET_LINK_NAME,
+        isOnline = isConnected,
+        productType = ProductType.FireBucket,
+        switches = buckets
+    )
+}
 
 internal suspend fun executeFloatingQuickToggle(
     control: ProductFloatingQuickControl,

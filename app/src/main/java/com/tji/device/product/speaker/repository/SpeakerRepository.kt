@@ -1,7 +1,5 @@
 package com.tji.device.product.speaker.repository
 
-import android.util.Log
-import com.tji.device.BuildConfig
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.speaker.model.DEFAULT_SPEAKER_VOLUME
 import com.tji.device.product.speaker.model.SpeakerAck
@@ -36,7 +34,8 @@ interface SpeakerRepository {
         limit: Int,
         total: Int,
         hasMore: Boolean,
-        timestamp: Long?
+        timestamp: Long?,
+        nextOffset: Int? = null
     )
     suspend fun updateStorageStatus(serialNumber: String, status: SpeakerStorageStatus)
     suspend fun updateRecordEvent(serialNumber: String, event: SpeakerRecordEvent)
@@ -61,7 +60,21 @@ class SpeakerRepo : SpeakerRepository {
                 if (isOlderDeviceTimestamp(timestamp, it.timestamp)) {
                     return@updateOrCreate it
                 }
-                it.copy(isOnline = isOnline, timestamp = timestamp ?: it.timestamp)
+                /*
+                 * The speaker's MQTT will payload has no timestamp. Treat that
+                 * offline event as the end of the current MCU uptime epoch.
+                 * Otherwise a rebooted MCU starts again from a smaller uptime
+                 * and every new online/state frame is rejected as stale.
+                 */
+                val nextTimestamp = when {
+                    !isOnline && timestamp == null -> null
+                    else -> timestamp ?: it.timestamp
+                }
+                it.copy(
+                    isOnline = isOnline,
+                    recordListTimestamp = if (!isOnline && timestamp == null) null else it.recordListTimestamp,
+                    timestamp = nextTimestamp
+                )
             }
         }
     }
@@ -77,6 +90,7 @@ class SpeakerRepo : SpeakerRepository {
                     records = old.records,
                     recordOffset = old.recordOffset,
                     recordLimit = old.recordLimit,
+                    recordNextOffset = old.recordNextOffset,
                     recordTotal = old.recordTotal,
                     recordHasMore = old.recordHasMore,
                     recordListTimestamp = old.recordListTimestamp,
@@ -109,7 +123,8 @@ class SpeakerRepo : SpeakerRepository {
         limit: Int,
         total: Int,
         hasMore: Boolean,
-        timestamp: Long?
+        timestamp: Long?,
+        nextOffset: Int?
     ) {
         _devices.update { current ->
             current.updateOrCreate(serialNumber, { SpeakerDeviceState(serialNumber = serialNumber) }) {
@@ -123,11 +138,17 @@ class SpeakerRepo : SpeakerRepository {
                     limit = limit,
                     hasMore = hasMore
                 )
+                val safeTotal = total.coerceAtLeast(0)
+                val inferredNextOffset = (offset.coerceAtLeast(0) + records.size)
+                    .coerceAtMost(safeTotal)
+                val safeNextOffset = (nextOffset ?: inferredNextOffset)
+                    .coerceIn(0, safeTotal)
                 it.copy(
                     records = mergedRecords,
                     recordOffset = offset,
                     recordLimit = limit,
-                    recordTotal = total,
+                    recordNextOffset = safeNextOffset,
+                    recordTotal = safeTotal,
                     recordHasMore = hasMore,
                     recordListTimestamp = mergeDeviceTimestamp(it.recordListTimestamp, timestamp),
                     timestamp = mergeDeviceTimestamp(it.timestamp, timestamp)
@@ -167,6 +188,13 @@ class SpeakerRepo : SpeakerRepository {
                         }
                         "record_deleted" -> if (event.ok || isDeleteGone) {
                             it.records.filterNot { record -> record.recordId == event.recordId }
+                        } else {
+                            it.records
+                        }
+                        "record_updated" -> if (event.ok && !event.name.isNullOrBlank()) {
+                            it.records.map { record ->
+                                if (record.recordId == event.recordId) record.copy(name = event.name) else record
+                            }
                         } else {
                             it.records
                         }
@@ -281,7 +309,7 @@ class SpeakerRepo : SpeakerRepository {
         limit: Int,
         hasMore: Boolean
     ): List<SpeakerRecord> {
-        if (offset == 0 && !hasMore) return incoming.sortedForSpeakerRecordList()
+        if (offset <= 0) return incoming.sortedForSpeakerRecordList()
         val sortedExisting = existing.sortedForSpeakerRecordList()
         val safeOffset = offset.coerceAtLeast(0)
         val safeLimit = limit.coerceAtLeast(incoming.size).coerceAtLeast(1)
@@ -324,24 +352,11 @@ class SpeakerControlRepo : SpeakerControlRepository {
     override suspend fun sendCommand(serialNumber: String, command: SpeakerCommand) {
         val topic = SpeakerMqttTopics.controlTopic(serialNumber)
         val message = SpeakerCommandJson.encode(command = command, deviceId = serialNumber).toString()
-        val requestAt = if (BuildConfig.DEBUG) System.currentTimeMillis() else 0L
         ProductMqttRouter.managerFor(ProductType.Speaker).publishAwait(
             topic = topic,
             message = message,
             qos = 1,
             queueWhenDisconnected = false
         ).getOrThrow()
-        if (BuildConfig.DEBUG) {
-            Log.d(
-                TAG,
-                "Speaker command sent: topic=$topic cmd=${command.commandName} " +
-                    "msgId=${command.msgId} bytes=${message.toByteArray().size} " +
-                    "cost=${System.currentTimeMillis() - requestAt}ms"
-            )
-        }
-    }
-
-    private companion object {
-        const val TAG = "SpeakerControlRepo"
     }
 }

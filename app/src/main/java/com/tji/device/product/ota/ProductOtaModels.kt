@@ -11,6 +11,7 @@ data class ProductDeviceInfo(
     val hardwareVersion: String? = null,
     val firmwareVersion: String? = null,
     val firmwareInnerVersion: Int? = null,
+    val otaTaskProtocolVersion: Int? = null,
     val otaStatus: String? = null,
     val lastOtaResult: String? = null,
     val lastFailReason: String? = null,
@@ -40,7 +41,8 @@ data class ProductOtaPackage(
     val sha256: String,
     val targetInnerVersion: Int? = null,
     val hardwareVersion: String? = null,
-    val signature: String? = null
+    val signature: String? = null,
+    val taskId: String? = null
 )
 
 data class ProductOtaCheckState(

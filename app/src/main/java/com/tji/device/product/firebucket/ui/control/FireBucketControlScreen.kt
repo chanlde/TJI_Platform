@@ -18,6 +18,7 @@ import com.tji.device.ui.theme.PayloadDimens
 @Composable
 fun FireBucketControlScreen(
     link: FireBucketLinkDevice,
+    belowControlContent: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -29,6 +30,9 @@ fun FireBucketControlScreen(
     ) {
         item {
             LinkItem(link = link)
+        }
+        belowControlContent?.let { content ->
+            item { content() }
         }
     }
 }

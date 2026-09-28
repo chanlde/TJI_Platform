@@ -35,7 +35,9 @@ data class BoundAccountDevice(
                     BoundAccountDevice(
                         serialNumber = parts[0],
                         name = name,
-                        productType = forcedProductType
+                        productType = if (ProductCatalog.isFireGunIdentifier(name)) {
+                            ProductType.FireGun
+                        } else forcedProductType
                             ?: ProductCatalog.fromBackendFields(
                                 productId = parts.getOrNull(2)?.toIntOrNull(),
                                 productType = parts.getOrNull(2),
@@ -47,7 +49,9 @@ data class BoundAccountDevice(
                     BoundAccountDevice(
                         serialNumber = parts[0],
                         name = parts[0],
-                        productType = forcedProductType
+                        productType = if (ProductCatalog.isFireGunIdentifier(parts[0])) {
+                            ProductType.FireGun
+                        } else forcedProductType
                             ?: ProductCatalog.fromBackendFields(
                                 productId = null,
                                 productType = null,
@@ -62,3 +66,11 @@ data class BoundAccountDevice(
         }
     }
 }
+
+/** Admin-created product without an installed Android control module. Inventory display only. */
+data class CatalogBoundDevice(
+    val serialNumber: String,
+    val name: String,
+    val productCode: String,
+    val productName: String
+)

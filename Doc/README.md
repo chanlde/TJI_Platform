@@ -30,7 +30,6 @@
 | App UI/UX 优化 | [features/app-ui-ux-optimization.md](features/app-ui-ux-optimization.md) |
 | 悬浮窗 UI 优化 | [features/floating-window-ui-optimization.md](features/floating-window-ui-optimization.md) |
 | 喊话器 Payload UI 重做 | [features/speaker-payload-ui-redesign.md](features/speaker-payload-ui-redesign.md) |
-| 喊话器 C++ Core 与 Qt 上位机 | [features/speaker-cpp-core-qt-plan.md](features/speaker-cpp-core-qt-plan.md) |
 | 客户端自动化测试 | [operations/client-automation-checklist.md](operations/client-automation-checklist.md) |
 | 文档删除与归档规则 | [operations/document-retirement-policy.md](operations/document-retirement-policy.md) |
 | 服务器接口待办 | [operations/server-api-backlog.md](operations/server-api-backlog.md) |

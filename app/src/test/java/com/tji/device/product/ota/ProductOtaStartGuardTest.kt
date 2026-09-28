@@ -12,7 +12,7 @@ class ProductOtaStartGuardTest {
     private val deviceKey = DeviceKey(ProductType.SolarClean, "SOLAR-01")
 
     @Test
-    fun keepsReservationThroughSuccessAndOnlyReleasesForRetryableFailure() {
+    fun keepsReservationWhileActiveAndReleasesForTerminalStatus() {
         val guard = ProductOtaStartGuard()
 
         assertSame(OtaStartReservation.Accepted, guard.reserve(deviceKey, "ota-1"))
@@ -21,7 +21,7 @@ class ProductOtaStartGuardTest {
             guard.reserve(deviceKey, "ota-2")
         )
         assertFalse(
-            guard.releaseIfRetryAllowed(
+            guard.releaseIfTerminal(
                 deviceKey,
                 ProductOtaStatus(status = "OTA_DOWNLOADING", cmdId = "ota-1")
             )
@@ -31,26 +31,15 @@ class ProductOtaStartGuardTest {
             guard.reserve(deviceKey, "ota-3")
         )
         assertFalse(
-            guard.releaseIfRetryAllowed(
+            guard.releaseIfTerminal(
                 deviceKey,
                 ProductOtaStatus(status = "OTA_SUCCESS", cmdId = "older-ota")
             )
         )
-        assertFalse(
-            guard.releaseIfRetryAllowed(
+        assertTrue(
+            guard.releaseIfTerminal(
                 deviceKey,
                 ProductOtaStatus(status = "OTA_SUCCESS", cmdId = "ota-1")
-            )
-        )
-        assertEquals(
-            OtaStartReservation.AlreadyReserved("ota-1"),
-            guard.reserve(deviceKey, "ota-4")
-        )
-
-        assertTrue(
-            guard.releaseIfRetryAllowed(
-                deviceKey,
-                ProductOtaStatus(status = "OTA_FAILED", cmdId = "ota-1")
             )
         )
         assertSame(OtaStartReservation.Accepted, guard.reserve(deviceKey, "ota-4"))
@@ -97,7 +86,7 @@ class ProductOtaStartGuardTest {
         guard.reserve(otherDevice, "ota-speaker")
 
         assertTrue(
-            guard.releaseIfRetryAllowed(
+            guard.releaseIfTerminal(
                 deviceKey,
                 ProductOtaStatus(status = "OTA_FAILED", cmdId = "ota-solar")
             )
@@ -107,6 +96,29 @@ class ProductOtaStartGuardTest {
         assertEquals(
             OtaStartReservation.AlreadyReserved("ota-speaker"),
             guard.reserve(otherDevice, "ota-speaker-duplicate")
+        )
+    }
+
+    @Test
+    fun rollbackInProgressDoesNotReleaseReservation() {
+        val guard = ProductOtaStartGuard()
+        guard.reserve(deviceKey, "ota-1")
+
+        assertFalse(
+            guard.releaseIfTerminal(
+                deviceKey,
+                ProductOtaStatus(status = "OTA_ROLLBACK", cmdId = "ota-1")
+            )
+        )
+        assertEquals(
+            OtaStartReservation.AlreadyReserved("ota-1"),
+            guard.reserve(deviceKey, "ota-2")
+        )
+        assertTrue(
+            guard.releaseIfTerminal(
+                deviceKey,
+                ProductOtaStatus(status = "OTA_ROLLED_BACK", cmdId = "ota-1")
+            )
         )
     }
 }

@@ -1,5 +1,7 @@
 # 产品线文档
 
+- [产品交付与注册矩阵](product-delivery-matrix.md)
+
 这里放每个具体产品线自己的需求、协议和落地说明。新增产品线时先复制 `_template/`，再按产品代码命名目录。
 
 ## 当前产品线
@@ -8,17 +10,18 @@
 |--------|------|
 | 文档模板 | [_template/README.md](_template/README.md) |
 | 消防吊桶 | [firebucket/README.md](firebucket/README.md) |
+| 消防喷枪 | [firegun/README.md](firegun/README.md) |
 | 光伏清洗 | [solarclean/README.md](solarclean/README.md) |
 | 六段抛投 | [droppersixstage/README.md](droppersixstage/README.md) |
 | 喊话器 | [speaker/README.md](speaker/README.md) |
 | 无线电侦测 | [radiodetection/README.md](radiodetection/README.md) |
+| 破窗弹 | [glassbreaker/README.md](glassbreaker/README.md) |
 
 ## 已在 ProductCatalog 登记但暂未建独立代码目录
 
 | 产品线 | ProductCatalog productCode | 计划代码目录 | 当前状态 |
 |--------|----------------------------|--------------|----------|
-| 破窗弹 | `GlassBreaker` | `product/breakwindowprojectile` | 已在 `ProductCatalog` 预留，待建产品代码目录后补文档 |
-| 探照灯 | `Searchlight` | `product/searchlight` | 已在 `ProductCatalog` 预留，待建产品代码目录后补文档 |
+| 探照灯 | `Searchlight` | `product/searchlight` | 已预留但 `enabled=false`，不进入正式登录、展示、订阅和控制 |
 
 ## 新增产品线步骤
 

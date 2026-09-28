@@ -1,6 +1,7 @@
 package com.tji.device.di
 
 import com.tji.device.data.model.ProductType
+import com.tji.device.data.model.ProductCatalog
 import com.tji.device.product.runtime.ProductDeviceRuntimeSnapshot
 import com.tji.device.product.runtime.ProductRuntimeController
 import kotlinx.coroutines.flow.Flow
@@ -13,6 +14,36 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class ProductModuleRegistryTest {
+
+    @Test
+    fun implementedModulesMatchEnabledProductionCatalog() {
+        assertEquals(ProductCatalog.enabledTypes, IMPLEMENTED_PRODUCT_MODULE_TYPES)
+
+        val modules = ProductCatalog.enabledTypes.map(::FakeProductModule)
+        val registry = ProductModuleRegistry(
+            modules = modules,
+            requiredProductTypes = ProductCatalog.enabledTypes
+        )
+
+        assertEquals(ProductCatalog.enabledTypes, registry.registeredProductTypes)
+    }
+
+    @Test
+    fun requiredCatalogRejectsMissingOrDisabledModules() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductModuleRegistry(
+                modules = listOf(FakeProductModule(ProductType.FireBucket)),
+                requiredProductTypes = ProductCatalog.enabledTypes
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ProductModuleRegistry(
+                modules = ProductCatalog.enabledTypes.map(::FakeProductModule) +
+                    FakeProductModule(ProductType.Searchlight),
+                requiredProductTypes = ProductCatalog.enabledTypes
+            )
+        }
+    }
 
     @Test
     fun exposesRuntimeControllersAndHandlersByProductType() {

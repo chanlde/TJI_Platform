@@ -1,7 +1,6 @@
 package com.tji.device.product.speaker.mqtt
 
-import android.util.Log
-import com.tji.device.BuildConfig
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.speaker.core.SpeakerMqttPayloadParser
 import com.tji.device.product.speaker.repository.SpeakerRepository
 import org.json.JSONObject
@@ -45,14 +44,8 @@ class SpeakerMqttInbound(
             "record_list" -> {
                 val parsed = SpeakerMqttPayloadParser.parseRecordList(json)
                 val records = parsed.records
-                debugLog {
-                    "Speaker record list parsed deviceId=$serialNumber offset=${parsed.offset} " +
-                        "limit=${parsed.limit} total=${parsed.total} " +
-                        "count=${records.size} first=${records.firstOrNull()?.recordId.orEmpty()} " +
-                        "last=${records.lastOrNull()?.recordId.orEmpty()}"
-                }
                 if (records.isEmpty() && parsed.total > 0) {
-                    Log.w(TAG, "Speaker record list has total but parsed empty: ${json.toString().take(600)}")
+                    SpeakerLogger.warn(TAG, "Speaker record list has total but parsed empty")
                 }
                 repository.updateRecords(
                     serialNumber = serialNumber,
@@ -61,41 +54,28 @@ class SpeakerMqttInbound(
                     limit = parsed.limit,
                     total = parsed.total,
                     hasMore = parsed.hasMore,
-                    timestamp = parsed.timestamp
+                    timestamp = parsed.timestamp,
+                    nextOffset = parsed.nextOffset
                 )
             }
             "storage_status" -> {
                 val status = SpeakerMqttPayloadParser.parseStorageStatus(json)
-                debugLog {
-                    "Speaker storage parsed deviceId=$serialNumber ok=${status.ok} " +
-                        "free=${status.freeBytes} total=${status.totalBytes} " +
-                        "records=${status.recordCount}/${status.maxRecords} backend=${status.backend}"
-                }
                 repository.updateStorageStatus(serialNumber, status)
             }
             "record_saved",
             "record_failed",
             "record_progress",
-            "record_verify",
             "record_updated",
             "record_deleted",
             "record_playback" -> {
                 val event = SpeakerMqttPayloadParser.parseRecordEvent(eventType, json)
-                debugLog {
-                    "Speaker record event deviceId=$serialNumber type=${event.type} ok=${event.ok} " +
-                        "code=${event.code} recordId=${event.recordId} progress=${event.progress} msg=${event.message}"
-                }
                 repository.updateRecordEvent(serialNumber, event)
             }
-            else -> debugLog { "Speaker MQTT ignored deviceId=$serialNumber event=$eventType" }
+            else -> Unit
         }
     }
 
     fun cleanup() = Unit
-
-    private inline fun debugLog(message: () -> String) {
-        if (BuildConfig.DEBUG) Log.d(TAG, message())
-    }
 
     private companion object {
         const val TAG = "SpeakerMqttInbound"

@@ -2,12 +2,27 @@ package com.tji.device.ui.floating
 
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.firebucket.model.FireBucketSwitchState
+import com.tji.device.product.firebucket.transport.DIRECT_FIRE_BUCKET_LINK_ID
+import com.tji.device.product.firebucket.transport.DirectFireBucketState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class FloatingWindowStateTest {
+    @Test
+    fun fireGunBoundDeviceCanDriveFloatingWindowBeforeRuntimeArrives() {
+        val state = FloatingWindowUiState(
+            links = emptyList(),
+            selectedLinkSerial = "E465B062174A5124",
+            selectedLinkName = "HydroGunLink_V1-9526D839",
+            preferredProductType = ProductType.FireGun
+        )
+
+        assertEquals(ProductType.FireGun, state.activeProductType)
+        assertEquals("E465B062174A5124", state.selectedLink?.serialNumber)
+        assertEquals("HydroGunLink_V1-9526D839", state.selectedLink?.name)
+    }
 
     @Test
     fun selectedLinkUsesBoundDeviceFallbackWhenRuntimeIsMissing() {
@@ -85,6 +100,23 @@ class FloatingWindowStateTest {
             listOf("BUCKET-ONLINE", "BUCKET-OFFLINE"),
             link.allSwitches.map { it.serialNumber }
         )
+    }
+
+    @Test
+    fun directModeUsesTheExistingFireBucketFloatingSummary() {
+        val summary = DirectFireBucketState(
+            isConnected = true,
+            buckets = listOf(bucketSwitch(serial = "FB00A123", online = true))
+        ).toFloatingLinkSummary()
+
+        assertEquals(DIRECT_FIRE_BUCKET_LINK_ID, summary?.serialNumber)
+        assertEquals(ProductType.FireBucket, summary?.productType)
+        assertEquals("FB00A123", summary?.allSwitches?.single()?.serialNumber)
+    }
+
+    @Test
+    fun directModeDoesNotInventAFloatingProductBeforeAStatusReport() {
+        assertEquals(null, DirectFireBucketState(isConnected = true).toFloatingLinkSummary())
     }
 
     private fun bucketSwitch(

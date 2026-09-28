@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.R
 import com.tji.device.data.model.Login
 import com.tji.device.ui.theme.LoginColors
@@ -34,9 +33,12 @@ import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.data.local.RememberedLoginStore
 import com.tji.device.ui.AppUiNotifier
-import com.tji.device.ui.main.LocalMainViewModel
+import com.tji.device.ui.main.LocalLoginViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/** 本地数传能力暂时保留，但不在客户登录页提供入口。 */
+internal const val SHOW_DIRECT_LINK_LOGIN_ENTRY = false
 
 @Composable
 private fun RememberMeAndForgotPassword(
@@ -83,8 +85,10 @@ private fun RememberMeAndForgotPassword(
 fun LoginWidget(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
+    isUpdateAvailable: Boolean = false,
     onLogin: (Login) -> Unit = {},
-    onDeveloperModeClick: () -> Unit,
+    onUpdate: () -> Unit = {},
+    onDirectControl: () -> Unit = {},
     onForgotPassword: () -> Unit = {},
     context: Context
 ) {
@@ -102,7 +106,7 @@ fun LoginWidget(
     var passwordVisible by remember { mutableStateOf(false) }
     var accountError by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf("") }
-    val mainViewModel = if (isPreview) null else LocalMainViewModel.current
+    val loginViewModel = if (isPreview) null else LocalLoginViewModel.current
 
     LaunchedEffect(context, isPreview) {
         if (isPreview) return@LaunchedEffect
@@ -127,11 +131,13 @@ fun LoginWidget(
             return
         }
 
-        mainViewModel?.login(account, password, rememberMe) { loginSuccess, errorMsg ->
+        loginViewModel?.login(account, password, rememberMe) { loginSuccess, errorMsg ->
             if (loginSuccess) {
                 // 保存账号和密码
                 if (rememberMe) {
-                    rememberedLoginStore?.save(account, password)
+                    if (rememberedLoginStore?.save(account, password) == false) {
+                        AppUiNotifier.showShortMessage("当前设备无法安全保存密码，本次仍可正常登录")
+                    }
                 } else {
                     rememberedLoginStore?.clear()
                 }
@@ -166,6 +172,7 @@ fun LoginWidget(
             passwordVisible = passwordVisible,
             rememberMe = rememberMe,
             isLoading = isLoading || isRestoringRememberedLogin,
+            isUpdateAvailable = isUpdateAvailable,
             onAccountChange = {
                 userHasEditedLogin = true
                 account = it
@@ -181,11 +188,9 @@ fun LoginWidget(
                 userHasEditedLogin = true
                 rememberMe = it
             },
-            onLogin = { handleLogin() },
-            onForgotPassword = onForgotPassword,
-            onDeveloperModeClick = {
-                onDeveloperModeClick()
-            }
+            onLogin = { if (isUpdateAvailable) onUpdate() else handleLogin() },
+            onDirectControl = onDirectControl,
+            onForgotPassword = onForgotPassword
         )
     }
 }
@@ -264,6 +269,7 @@ private fun LoginCard(
 }
 
 @Composable
+@Suppress("LongParameterList")
 private fun BoxScope.LoginLayout(
     account: String,
     password: String,
@@ -272,12 +278,13 @@ private fun BoxScope.LoginLayout(
     passwordVisible: Boolean,
     rememberMe: Boolean,
     isLoading: Boolean,
+    isUpdateAvailable: Boolean,
     onAccountChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPasswordVisibilityToggle: () -> Unit,
     onRememberMeChange: (Boolean) -> Unit,
     onLogin: () -> Unit,
-    onDeveloperModeClick: () -> Unit,
+    onDirectControl: () -> Unit,
     onForgotPassword: () -> Unit
  ) {
     val configuration = LocalConfiguration.current
@@ -304,14 +311,15 @@ private fun BoxScope.LoginLayout(
                     passwordVisible = passwordVisible,
                     rememberMe = rememberMe,
                     isLoading = isLoading,
+                    isUpdateAvailable = isUpdateAvailable,
                     onAccountChange = onAccountChange,
                     onPasswordChange = onPasswordChange,
                     onPasswordVisibilityToggle = onPasswordVisibilityToggle,
                     onRememberMeChange = onRememberMeChange,
                     onLogin = onLogin,
+                    onDirectControl = onDirectControl,
                     onForgotPassword = onForgotPassword,
-                    isLandscape = true,
-                    onDeveloperModeClick = onDeveloperModeClick
+                    isLandscape = true
                 )
             }
         }
@@ -336,14 +344,15 @@ private fun BoxScope.LoginLayout(
                     passwordVisible = passwordVisible,
                     rememberMe = rememberMe,
                     isLoading = isLoading,
+                    isUpdateAvailable = isUpdateAvailable,
                     onAccountChange = onAccountChange,
                     onPasswordChange = onPasswordChange,
                     onPasswordVisibilityToggle = onPasswordVisibilityToggle,
                     onRememberMeChange = onRememberMeChange,
                     onLogin = onLogin,
+                    onDirectControl = onDirectControl,
                     onForgotPassword = onForgotPassword,
-                    isLandscape = false,
-                    onDeveloperModeClick = onDeveloperModeClick
+                    isLandscape = false
                 )
             }
         }
@@ -351,6 +360,7 @@ private fun BoxScope.LoginLayout(
 }
 
 @Composable
+@Suppress("LongParameterList")
 private fun LoginFormContent(
     account: String,
     password: String,
@@ -359,12 +369,13 @@ private fun LoginFormContent(
     passwordVisible: Boolean,
     rememberMe: Boolean,
     isLoading: Boolean,
+    isUpdateAvailable: Boolean,
     onAccountChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPasswordVisibilityToggle: () -> Unit,
     onRememberMeChange: (Boolean) -> Unit,
     onLogin: () -> Unit,
-    onDeveloperModeClick: () -> Unit,
+    onDirectControl: () -> Unit,
     onForgotPassword: () -> Unit,
     isLandscape: Boolean
 ) {
@@ -380,14 +391,15 @@ private fun LoginFormContent(
         passwordVisible = passwordVisible,
         rememberMe = rememberMe,
         isLoading = isLoading,
+        isUpdateAvailable = isUpdateAvailable,
         onAccountChange = onAccountChange,
         onPasswordChange = onPasswordChange,
         onPasswordVisibilityToggle = onPasswordVisibilityToggle,
         onRememberMeChange = onRememberMeChange,
         onLogin = onLogin,
+        onDirectControl = onDirectControl,
         onForgotPassword = onForgotPassword,
-        isLandscape = isLandscape,
-        onDeveloperModeClick = onDeveloperModeClick
+        isLandscape = isLandscape
     )
     }
 }
@@ -412,11 +424,10 @@ fun LogoOrTitle(isLandscape: Boolean) {
 @Composable
 fun LoginButton(
     isLoading: Boolean,
+    isUpdateAvailable: Boolean,
     onLogin: () -> Unit,
     isLandscape: Boolean
 ) {
-    val needUpdate by AppUiNotifier.appUpdateAvailable.collectAsStateWithLifecycle()
-
     Button(
         onClick = onLogin,
         enabled = !isLoading,
@@ -437,7 +448,7 @@ fun LoginButton(
             )
         } else {
             Text(
-                text = if (needUpdate) "需更新到最新版本" else "登录",
+                text = if (isUpdateAvailable) "需更新到最新版本" else "登录",
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White
             )
@@ -446,6 +457,7 @@ fun LoginButton(
 }
 
 @Composable
+@Suppress("LongParameterList")
 fun LoginForm(
     account: String,
     password: String,
@@ -454,12 +466,13 @@ fun LoginForm(
     passwordVisible: Boolean,
     rememberMe: Boolean,
     isLoading: Boolean,
+    isUpdateAvailable: Boolean,
     onAccountChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPasswordVisibilityToggle: () -> Unit,
     onRememberMeChange: (Boolean) -> Unit,
     onLogin: () -> Unit,
-    onDeveloperModeClick: () -> Unit,
+    onDirectControl: () -> Unit,
     onForgotPassword: () -> Unit,
     isLandscape: Boolean = false
 ) {
@@ -486,14 +499,26 @@ fun LoginForm(
 
         RememberMeAndForgotPassword(rememberMe, onRememberMeChange, onForgotPassword)
 
-        LoginButton(isLoading, onLogin, isLandscape)
+        LoginButton(isLoading, isUpdateAvailable, onLogin, isLandscape)
 
-        TextButton(onClick = onDeveloperModeClick) {
-            Text(
-                text = "Wi-Fi 模式",
-                style = MaterialTheme.typography.bodyMedium,
-                color = LoginColors.OnSurfaceVariant
-            )
+        if (SHOW_DIRECT_LINK_LOGIN_ENTRY) {
+            HorizontalDivider(color = PayloadColors.Border)
+
+            OutlinedButton(
+                onClick = onDirectControl,
+                enabled = !isLoading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isLandscape) 48.dp else 50.dp),
+                border = BorderStroke(1.dp, PayloadColors.Primary),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = PayloadColors.Primary),
+                shape = RoundedCornerShape(PayloadDimens.ControlRadius)
+            ) {
+                Text(
+                    text = "本地数传控制（无需登录）",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
         }
     }
 }
@@ -525,7 +550,6 @@ fun LoginWidgetPreview() {
     LoginWidget(
         isLoading = false,
         onLogin = { /* Handle login */ },
-        onDeveloperModeClick = { /* Handle developer mode click */ },
         context = LocalContext.current
     )
 }

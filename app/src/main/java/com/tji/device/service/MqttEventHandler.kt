@@ -38,7 +38,7 @@ class MqttEventHandler(
         try {
             val productHandler = productModules.mqttHandlerFor(productType)
             if (productHandler == null) {
-                Log.w(TAG, "未注册 MQTT 产品处理器: sn=$serialNumber product=$productType")
+                Log.w(TAG, "未注册 MQTT 产品处理器: product=$productType")
                 return
             }
             val trimmedMessage = message.trim()
@@ -82,7 +82,7 @@ class MqttEventHandler(
                 ) {
                     return
                 }
-                Log.w(TAG, "MQTT 消息不是有效 JSON: sn=$serialNumber product=$productType")
+                Log.w(TAG, "MQTT 消息不是有效 JSON: product=$productType")
                 return
             }
             val eventType = ProductOtaMqttParser.resolveEventType(json)
@@ -94,7 +94,7 @@ class MqttEventHandler(
             }
 
             if (eventType.isBlank()) {
-                Log.w(TAG, "MQTT 消息缺少 event_type/type: sn=$serialNumber product=$productType")
+                Log.w(TAG, "MQTT 消息缺少 event_type/type: product=$productType")
                 return
             }
             if (BuildConfig.DEBUG) {
@@ -166,7 +166,7 @@ class MqttEventHandler(
         }
         val productHandler = productModules.mqttHandlerFor(productType)
         if (productHandler == null) {
-            Log.w(TAG, "未注册生命周期产品处理器: sn=$serialNumber product=$productType")
+            Log.w(TAG, "未注册生命周期产品处理器: product=$productType")
             return
         }
         productHandler.handleJsonEvent(serialNumber, eventType, json, isRetained)

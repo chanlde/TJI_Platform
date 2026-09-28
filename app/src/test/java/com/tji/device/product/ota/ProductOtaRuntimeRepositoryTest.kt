@@ -111,7 +111,7 @@ class ProductOtaRuntimeRepositoryTest {
     }
 
     @Test
-    fun marksRebootWaitAsSuccessWhenDeviceComesOnline() {
+    fun keepsRebootWaitUnconfirmedWhenDeviceComesOnline() {
         var now = 200L
         val repo = ProductOtaRuntimeRepo(nowMillis = { now })
 
@@ -139,9 +139,9 @@ class ProductOtaRuntimeRepositoryTest {
         )
 
         val state = repo.states.value.single()
-        assertEquals("SUCCESS", state.otaStatus?.status)
-        assertEquals(100, state.otaStatus?.progress)
-        assertEquals("设备已重启并上线", state.otaStatus?.message)
+        assertEquals("BOOT_VERIFY", state.otaStatus?.status)
+        assertEquals(99, state.otaStatus?.progress)
+        assertEquals("设备已重启并上线，等待升级结果确认", state.otaStatus?.message)
         assertEquals(300L, state.otaStatus?.timestamp)
     }
 
@@ -192,7 +192,7 @@ class ProductOtaRuntimeRepositoryTest {
             eventType = "online",
             timestamp = 202
         )
-        assertEquals("SUCCESS", repo.states.value.single().otaStatus?.status)
+        assertEquals("BOOT_VERIFY", repo.states.value.single().otaStatus?.status)
     }
 
     @Test
@@ -236,7 +236,7 @@ class ProductOtaRuntimeRepositoryTest {
             eventType = "online",
             timestamp = 203
         )
-        assertEquals("SUCCESS", repo.states.value.single().otaStatus?.status)
+        assertEquals("BOOT_VERIFY", repo.states.value.single().otaStatus?.status)
     }
 
     @Test

@@ -132,6 +132,7 @@ private fun PlatformDeviceCard(
 ) {
     val accentColors = when (device.productType) {
         ProductType.FireBucket -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
+        ProductType.FireGun -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
         ProductType.SolarClean -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
         ProductType.DropperSixStage -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
         ProductType.RadioDetection -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)

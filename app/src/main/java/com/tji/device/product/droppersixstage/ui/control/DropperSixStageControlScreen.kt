@@ -42,6 +42,7 @@ import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.di.AppContainer
 import com.tji.device.product.droppersixstage.model.DROPPER_MAX_OPEN_DURATION_MS
 import com.tji.device.product.droppersixstage.model.DROPPER_MIN_OPEN_DURATION_MS
+import com.tji.device.product.droppersixstage.model.DROPPER_DEFAULT_OPEN_DURATION_MS
 import com.tji.device.product.droppersixstage.model.DropperSixStageState
 import com.tji.device.product.droppersixstage.model.DropperStageState
 import com.tji.device.product.droppersixstage.viewmodel.DropperCommandFeedback
@@ -73,13 +74,18 @@ fun DropperSixStageControlScreen(
     val feedback by viewModel?.commandFeedback?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(DropperCommandFeedback()) }
     }
+    val armedDeviceIds by viewModel?.armedDeviceIds?.collectAsStateWithLifecycle().let {
+        it ?: remember { mutableStateOf(emptySet()) }
+    }
     val visibleFeedback = feedback.takeIf { it.serialNumber == null || it.serialNumber == device.serialNumber }
         ?: DropperCommandFeedback()
     val state = devices.firstOrNull { it.serialNumber == device.serialNumber }
     val displayState = if (isPreview) previewDropperState(device.serialNumber, device.name) else state
-    val enabled = viewModel != null && displayState?.isOnline == true
+    val online = viewModel != null && displayState?.isOnline == true
+    val armed = device.serialNumber in armedDeviceIds
+    val enabled = online && armed
     val stages = displayState?.stages?.takeIf { it.isNotEmpty() } ?: DropperStageState.defaults()
-    var openDurationMs by remember(device.serialNumber) { mutableIntStateOf(DEFAULT_OPEN_DURATION_MS) }
+    var openDurationMs by remember(device.serialNumber) { mutableIntStateOf(DROPPER_DEFAULT_OPEN_DURATION_MS) }
     var selectedStageIndex by remember(device.serialNumber) { mutableIntStateOf(1) }
     var testingStage by remember(device.serialNumber) { mutableStateOf<Int?>(null) }
     val selectedStage = stages.firstOrNull { it.index == selectedStageIndex } ?: stages.first()
@@ -118,6 +124,14 @@ fun DropperSixStageControlScreen(
             )
         }
         item {
+            DropperSafetyControlCard(
+                online = online,
+                armed = armed,
+                onArm = { viewModel?.arm(device.serialNumber) },
+                onDisarm = { viewModel?.disarm(device.serialNumber) }
+            )
+        }
+        item {
             TjiSectionCard(
                 title = "抛投控制",
                 trailing = {
@@ -143,12 +157,18 @@ fun DropperSixStageControlScreen(
                         text = "全部开钩",
                         enabled = enabled,
                         color = PayloadColors.Primary,
-                        onClick = { viewModel?.toggleAll(device.serialNumber, true) },
+                        onClick = {
+                            viewModel?.toggleAll(
+                                serialNumber = device.serialNumber,
+                                open = true,
+                                durationMs = openDurationMs
+                            )
+                        },
                         modifier = Modifier.weight(1f)
                     )
                     TjiActionButton(
                         text = "全部关闭",
-                        enabled = enabled,
+                        enabled = online,
                         color = PayloadColors.Warning,
                         onClick = { viewModel?.toggleAll(device.serialNumber, false) },
                         modifier = Modifier.weight(1f)
@@ -178,6 +198,49 @@ fun DropperSixStageControlScreen(
                 }
             )
         }
+    }
+}
+
+@Composable
+internal fun DropperSafetyControlCard(
+    online: Boolean,
+    armed: Boolean,
+    onArm: () -> Unit,
+    onDisarm: () -> Unit
+) {
+    TjiSectionCard(
+        title = "安全锁",
+        trailing = {
+            TjiStatusText(
+                text = if (armed) "已解锁" else "已上锁",
+                color = if (armed) PayloadColors.Success else PayloadColors.Warning
+            )
+        }
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            TjiActionButton(
+                text = "解锁",
+                enabled = online && !armed,
+                color = PayloadColors.Primary,
+                onClick = onArm,
+                modifier = Modifier.weight(1f)
+            )
+            TjiActionButton(
+                text = "上锁",
+                enabled = online && armed,
+                color = PayloadColors.Warning,
+                onClick = onDisarm,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Text(
+            text = if (armed) "设备已解锁，可以执行抛投。" else "请先解锁设备，再执行单路或全部抛投。",
+            style = MaterialTheme.typography.bodySmall,
+            color = PayloadColors.TextSecondary
+        )
     }
 }
 
@@ -418,6 +481,5 @@ private fun FeedbackBadge(feedback: DropperCommandFeedback) {
     TjiFeedbackBadge(text = feedback.text, color = color)
 }
 
-private const val DEFAULT_OPEN_DURATION_MS = 1_000
 private const val DURATION_STEP_MS = 500
 private const val TEST_LOOP_GAP_MS = 1_000L

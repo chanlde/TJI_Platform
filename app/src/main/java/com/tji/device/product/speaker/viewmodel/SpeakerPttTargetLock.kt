@@ -23,4 +23,12 @@ internal class SpeakerPttTargetLock {
         this.serialNumber = null
         return true
     }
+
+    @Synchronized
+    fun clearAndGetIfOwnedBy(serialNumber: String? = null): String? {
+        val owner = this.serialNumber ?: return null
+        if (serialNumber != null && owner != serialNumber) return null
+        this.serialNumber = null
+        return owner
+    }
 }

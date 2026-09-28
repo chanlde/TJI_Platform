@@ -3,6 +3,7 @@ package com.tji.network
 import android.util.Log
 import com.hivemq.client.mqtt.MqttClient
 import com.hivemq.client.mqtt.MqttClientState
+import com.hivemq.client.mqtt.MqttClientTransportConfig
 import com.hivemq.client.mqtt.datatypes.MqttQos
 import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +16,8 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.text.decodeToString
 import kotlin.text.toByteArray
 import kotlin.coroutines.resume
+
+internal const val MAX_INBOUND_MQTT_PAYLOAD_BYTES = 1_048_576
 
 interface MqttClientGateway {
     /**
@@ -105,8 +108,7 @@ class MqttManager private constructor(
     private val client: Mqtt3AsyncClient = MqttClient.builder()
         .useMqttVersion3()
         .identifier(config.clientId)
-        .serverHost(config.serverHost)
-        .serverPort(config.serverPort)
+        .transportConfig(config.toTransportConfig())
 
         // 重连设置
         .automaticReconnect()
@@ -258,7 +260,16 @@ class MqttManager private constructor(
             .topicFilter(topic)
             .qos(qos.toMqttQos())
             .callback { publish ->
-                val message = publish.payloadAsBytes.decodeToString()
+                val payloadBytes = publish.payloadAsBytes
+                if (!isMqttPayloadWithinLimit(payloadBytes.size)) {
+                    Log.w(
+                        TAG,
+                        "MQTT inbound payload rejected: bytes=${payloadBytes.size} " +
+                            "limit=$MAX_INBOUND_MQTT_PAYLOAD_BYTES"
+                    )
+                    return@callback
+                }
+                val message = payloadBytes.decodeToString()
                 if (BuildConfig.DEBUG) {
                     val receiveAt = System.currentTimeMillis()
                     val sequence = messageSequence.incrementAndGet()
@@ -277,8 +288,7 @@ class MqttManager private constructor(
                 if (throwable != null) {
                     Log.e(
                         TAG,
-                        "MQTT subscribe failed after ${costMs}ms: " +
-                            "topic=$topic, ${throwable.message}",
+                        "MQTT subscribe failed after ${costMs}ms",
                         throwable
                     )
                     onError?.invoke(throwable)
@@ -374,7 +384,7 @@ class MqttManager private constructor(
             .whenComplete { _, throwable ->
                 val costMs = System.currentTimeMillis() - startAt
                 if (throwable != null) {
-                    Log.e(TAG, "MQTT publish failed after ${costMs}ms: topic=$topic", throwable)
+                    Log.e(TAG, "MQTT publish failed after ${costMs}ms", throwable)
                     onError?.invoke(throwable)
                 } else {
                     debugLog { "publish succeeded after ${costMs}ms: topic=$topic" }
@@ -430,7 +440,7 @@ class MqttManager private constructor(
             .send()
             .whenComplete { _, throwable ->
                 if (throwable != null) {
-                    Log.e(TAG, "MQTT unsubscribe failed: topic=$topic", throwable)
+                    Log.e(TAG, "MQTT unsubscribe failed", throwable)
                     onError?.invoke(throwable)
                 } else {
                     debugLog { "MQTT unsubscribed from $topic" }
@@ -522,3 +532,16 @@ class MqttManager private constructor(
     }
 
 }
+
+internal fun MqttConnectionConfig.toTransportConfig(): MqttClientTransportConfig {
+    val builder = MqttClientTransportConfig.builder()
+        .serverHost(serverHost)
+        .serverPort(serverPort)
+    if (enableTLS) {
+        builder.sslWithDefaultConfig()
+    }
+    return builder.build()
+}
+
+internal fun isMqttPayloadWithinLimit(byteCount: Int): Boolean =
+    byteCount in 0..MAX_INBOUND_MQTT_PAYLOAD_BYTES

@@ -24,7 +24,7 @@
 - MQTT topic 与 profile 路由：不同产品是否走正确 topic，只有无线电检测走 legacy MQTT profile。
 - MQTT 入站解析：产品 JSON 字段、别名字段、乱序消息、retained 消息。
 - OTA 通用逻辑：设备信息解析、升级状态解析、进度换算、终态保护、旧 seq 丢弃。
-- 喊话器音频纯逻辑：PCM/ADPCM/HADP 数据结构、录音时长/大小格式化、客户 UI 文案不泄露包数。
+- 喊话器音频纯逻辑：PCM/Ogg Opus 数据结构、录音时长/大小格式化、客户 UI 文案不泄露包数。
 - 悬浮窗状态机：选中设备、空状态、多设备摘要、快速控制入口。
 
 ### 静态扫描
@@ -66,6 +66,8 @@ rg -n "TODO|FIXME|发送.*包|packetsSent|debug|Debug|测试设备" app/src/main
 - `CustomerVisibleTextGuardTest`：扫描生产源码，防止“测试设备”进入客户可见代码；同时锁住 release 关闭本地演示设备和 OTA 测试入口。
 - `ProductRuntimeRegistryTest`：锁住运行时 registry 的按产品清理、全量清理、重复产品注册覆盖行为。
 - `ProductOtaFormattersTest`：补充 OTA 进度 clamp、字节进度边界、升级包可启动条件。
+- `ProductOtaPackagePolicyTest` / `DownloadedApkPolicyTest`：覆盖固件与 App 更新候选、下载后实际 APK 身份和完整性拒绝路径。
+- `test_verify_ota_artifacts.py`：用内存 fixture 覆盖现网固件流式校验工具，不调用真实服务器。
 - `SolarCleanDisplayFormattersTest`：锁住水位和 MQTT 状态客户可见文案。
 
 ## 自动化已抓到并修复的问题
@@ -79,8 +81,9 @@ rg -n "TODO|FIXME|发送.*包|packetsSent|debug|Debug|测试设备" app/src/main
 
 ### P0
 
-- `./gradlew testDebugUnitTest --console=plain`
-- Release 前跑 `./gradlew assembleRelease --console=plain`
+- `./gradlew checkDocs :app:testMapDebugUnitTest :app:testNoMapDebugUnitTest :NetWork:testDebugUnitTest`
+- Release 前跑 `./tools/build_signed_release.sh`，同时验证双 flavor Release JVM、lint、R8、签名和产物 manifest。
+- 需要核对正式固件文件时人工运行 `python3 tools/verify_ota_artifacts.py --product-ids 2,4,6,7`；该外部探测不作为普通 CI 的稳定依赖。
 
 ### P1
 

@@ -13,7 +13,7 @@ data class FloatingSwitchSummary(
     val name: String,
     val isOnline: Boolean,
     val currentAngle: Int,
-    val inputVoltage: Double = 0.0 // 输入电压
+    val batteryPercentage: Double = 0.0
 )
 
 data class FloatingLinkSummary(
@@ -44,7 +44,7 @@ data class FloatingLinkSummary(
                     name = switch.deviceName,
                     isOnline = switch.isOnline,
                     currentAngle = switch.currentAngle.toInt(),
-                    inputVoltage = switch.inputVoltage
+                    batteryPercentage = switch.batteryPercentage
                 )
                 if (switch.isOnline) {
                     online.add(summary)

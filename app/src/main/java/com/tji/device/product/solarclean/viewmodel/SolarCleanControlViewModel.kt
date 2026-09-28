@@ -266,7 +266,7 @@ class SolarCleanControlViewModel(
             ).onFailure { throwable ->
                 Log.e(
                     TAG,
-                    "OTA 重启后刷新设备信息失败: serial=${state.serialNumber}",
+                    "OTA 重启后刷新设备信息失败",
                     throwable
                 )
             }

@@ -1,11 +1,13 @@
 package com.tji.device.product.speaker.viewmodel
 
-import android.util.Log
+import com.tji.device.product.speaker.core.SpeakerLogger
 import com.tji.device.product.common.DeviceCommandId
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
-import com.tji.device.product.speaker.audio.SpeakerHadpFile
-import com.tji.device.product.speaker.audio.SpeakerRecordUploadClient
-import com.tji.device.product.speaker.audio.SpeakerRecordUploadResult
+import com.tji.device.product.speaker.audio.SpeakerAudioTransport
+import com.tji.device.product.speaker.audio.SpeakerMediaTransferClient
+import com.tji.device.product.speaker.audio.SpeakerMediaTransferMode
+import com.tji.device.product.speaker.audio.SpeakerMediaTransferRequest
+import com.tji.device.product.speaker.audio.SpeakerOpusFile
 import com.tji.device.product.speaker.model.SpeakerCommand
 import com.tji.device.product.speaker.model.SpeakerDeviceState
 import com.tji.device.product.speaker.model.SpeakerRecord
@@ -21,7 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Coordinates the asynchronous "upload -> device download -> record event" lifecycle.
+ * Coordinates the asynchronous "reliable Ogg UDP transfer -> record event" lifecycle.
  *
  * Keeping this state machine outside the screen ViewModel makes duplicate-event handling,
  * timeout fallback and paged record confirmation testable as one unit.
@@ -30,7 +32,7 @@ internal class SpeakerRecordSaveCoordinator(
     private val scope: CoroutineScope,
     private val stateRepository: SpeakerRepository,
     private val controlRepository: SpeakerControlRepository,
-    private val uploadClient: SpeakerRecordUploadClient,
+    private val audioRelay: SpeakerAudioTransport,
     private val commands: SpeakerCommandCoordinator,
     private val deviceActions: SpeakerDeviceActions,
     private val devices: StateFlow<List<SpeakerDeviceState>>,
@@ -42,25 +44,20 @@ internal class SpeakerRecordSaveCoordinator(
     private var lastSaveEventKey: String? = null
     private var lastMutationEventKey: String? = null
 
-    suspend fun uploadAndRequestPlayback(request: SpeakerRecordUploadRequest) {
+    suspend fun transferAndAwaitResult(request: SpeakerRecordTransferRequest) {
         talkState.value = talkState.value.copy(progress = 0.40f)
         feedback.value = SpeakerCommandFeedback(
             status = SpeakerCommandFeedbackStatus.Pending,
-            text = "正在上传${request.label}"
+            text = "正在传输${request.label}"
         )
-        val upload = uploadClient.uploadTempRecord(
-            deviceId = request.serialNumber,
-            recordId = request.recordId,
-            name = request.recordName,
-            hadp = request.hadp
-        )
-        talkState.value = talkState.value.copy(progress = 0.80f)
-        val downloadMsgId = id(request.downloadMsgPrefix)
+        val transferId = id(request.downloadMsgPrefix)
         val pending = PendingRecordSave(
             serialNumber = request.serialNumber,
-            recordId = upload.recordId,
-            commandMsgId = downloadMsgId,
-            record = upload.toSpeakerRecord(request.recordName, request.createdAt),
+            recordId = request.recordId,
+            commandMsgId = transferId,
+            record = request.opusFile.toSpeakerRecord(
+                request.recordId, request.recordName, request.createdAt
+            ),
             startedAt = request.startedAt,
             autoPlayVolume = if (request.fallbackPlayAfterSave) {
                 request.autoPlayVolume?.coerceIn(0, 100)
@@ -71,50 +68,48 @@ internal class SpeakerRecordSaveCoordinator(
             waitForPlayback = request.autoPlayInDownload,
             cacheRecord = !request.temporary,
             timeoutMs = if (request.autoPlayInDownload) {
-                RECORD_SAVE_EVENT_TIMEOUT_MS + upload.durationMs + RECORD_PLAYBACK_TIMEOUT_MARGIN_MS
+                RECORD_SAVE_EVENT_TIMEOUT_MS +
+                    request.opusFile.durationMs + RECORD_PLAYBACK_TIMEOUT_MARGIN_MS
             } else {
                 RECORD_SAVE_EVENT_TIMEOUT_MS
             }
         )
         replace(pending)
         try {
-            val published = commands.publish(
-                serialNumber = request.serialNumber,
-                command = SpeakerCommand.RecordDownload(
-                    msgId = downloadMsgId,
-                    recordId = upload.recordId,
-                    storeTaskId = request.storeTaskId,
-                    createdAt = request.createdAt,
+            audioRelay.sendMedia(
+                SpeakerMediaTransferRequest(
+                    deviceId = request.serialNumber,
+                    sessionId = request.storeTaskId,
+                    recordId = request.recordId,
                     name = request.recordName,
-                    downloadUrl = upload.downloadUrl,
-                    fileSize = upload.fileSize,
-                    crc32 = upload.crc32,
-                    durationMs = upload.durationMs,
-                    codec = upload.codec,
-                    sampleRate = upload.sampleRate,
-                    channels = upload.channels,
-                    packetMs = upload.packetMs,
-                    frameBytes = upload.frameBytes,
-                    samplesPerFrame = upload.samplesPerFrame,
-                    temporary = request.temporary,
-                    visible = request.visible,
-                    autoPlay = request.autoPlayInDownload,
-                    playbackVolume = request.autoPlayVolume
-                ),
-                label = request.label
-            )
-            if (!published) {
-                discard(pending)
-                talkState.value = SpeakerTalkState(
-                    mode = SpeakerTalkMode.Idle,
-                    error = "${request.label}指令发送失败"
+                    createdAt = request.createdAt,
+                    opusFile = request.opusFile,
+                    mode = if (request.temporary) {
+                        SpeakerMediaTransferMode.PlayTemporary
+                    } else {
+                        SpeakerMediaTransferMode.Store
+                    },
+                    volume = request.autoPlayVolume ?: 100,
+                    recordType = when (request.recordType) {
+                        "tts" -> SpeakerMediaTransferClient.RECORD_TYPE_TTS
+                        "test" -> SpeakerMediaTransferClient.RECORD_TYPE_TEST
+                        else -> SpeakerMediaTransferClient.RECORD_TYPE_RECORD
+                    },
+                    visible = request.visible
                 )
+            )
+            /* MCU 在最终 UDP ACK 前发布业务事件；MQTT 可能先到 App。 */
+            if (!pendingSaves.isCurrent(pending)) {
                 return
             }
             talkState.value = talkState.value.copy(progress = 0.92f)
             feedback.value = SpeakerCommandFeedback(
                 status = SpeakerCommandFeedbackStatus.Pending,
-                text = "等待设备保存${request.label}"
+                text = if (request.temporary) {
+                    "设备正在播放${request.label}"
+                } else {
+                    "等待设备保存${request.label}"
+                }
             )
             waitForEvent(pending)
         } catch (throwable: Throwable) {
@@ -163,7 +158,7 @@ internal class SpeakerRecordSaveCoordinator(
                 return@launch
             }
             if (!discard(pending)) return@launch
-            Log.w(
+            SpeakerLogger.warn(
                 SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
                 "record save timeout recordId=${pending.recordId} " +
                     "elapsedMs=${System.currentTimeMillis() - pending.startedAt}"
@@ -186,12 +181,6 @@ internal class SpeakerRecordSaveCoordinator(
         val eventKey = listOf(event.type, event.recordId, event.code, event.timestamp).joinToString("|")
         if (eventKey == lastSaveEventKey) return
         lastSaveEventKey = eventKey
-        Log.d(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "record save device event type=${event.type} ok=${event.ok} code=${event.code} " +
-                "recordId=${event.recordId} elapsedMs=${System.currentTimeMillis() - pending.startedAt} " +
-                "msg=${event.message}"
-        )
         when (event.type) {
             "record_playback" -> {
                 if (event.ok) {
@@ -245,10 +234,6 @@ internal class SpeakerRecordSaveCoordinator(
         ).joinToString("|")
         if (eventKey == lastMutationEventKey) return
         lastMutationEventKey = eventKey
-        Log.d(
-            SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-            "record mutation refresh type=${event.type} recordId=${event.recordId} sn=$serialNumber"
-        )
         refreshDeviceRecords(serialNumber)
     }
 
@@ -327,10 +312,6 @@ internal class SpeakerRecordSaveCoordinator(
             delay(RECORD_CONFIRM_PAGE_WAIT_MS)
             val state = devices.value.firstOrNull { it.serialNumber == serialNumber }
             if (state?.records.orEmpty().any { it.recordId == recordId }) {
-                Log.d(
-                    SpeakerAudioConfig.Debug.AUDIO_DEBUG_TAG,
-                    "record save confirmed by list recordId=$recordId offset=$offset"
-                )
                 return true
             }
             val total = state?.recordTotal?.takeIf { it > 0 } ?: RECORD_CONFIRM_MAX_RECORDS
@@ -359,13 +340,14 @@ internal class SpeakerRecordSaveCoordinator(
     }
 }
 
-internal data class SpeakerRecordUploadRequest(
+internal data class SpeakerRecordTransferRequest(
     val serialNumber: String,
     val recordId: String,
     val storeTaskId: String,
     val createdAt: String,
     val recordName: String,
-    val hadp: SpeakerHadpFile,
+    val recordType: String = "record",
+    val opusFile: SpeakerOpusFile,
     val label: String,
     val downloadMsgPrefix: String,
     val autoPlayVolume: Int?,
@@ -377,14 +359,15 @@ internal data class SpeakerRecordUploadRequest(
     val fallbackPlayAfterSave: Boolean = true
 )
 
-private fun SpeakerRecordUploadResult.toSpeakerRecord(
+private fun SpeakerOpusFile.toSpeakerRecord(
+    recordId: String,
     name: String,
     createdAt: String
 ): SpeakerRecord =
     SpeakerRecord(
         recordId = recordId,
         name = name,
-        fileSize = fileSize,
+        fileSize = fileSize.toLong(),
         durationMs = durationMs.toLong(),
         codec = codec,
         sampleRate = sampleRate,

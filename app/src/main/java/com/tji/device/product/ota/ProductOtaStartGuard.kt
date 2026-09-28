@@ -23,8 +23,16 @@ internal class ProductOtaStartGuard {
     }
 
     @Synchronized
+    fun adoptServerTask(deviceKey: DeviceKey, cmdId: String) {
+        activeStarts[deviceKey] = cmdId
+    }
+
+    @Synchronized
     fun isActive(deviceKey: DeviceKey, msgId: String): Boolean =
         activeStarts[deviceKey] == msgId
+
+    @Synchronized
+    fun isReserved(deviceKey: DeviceKey): Boolean = activeStarts.containsKey(deviceKey)
 
     @Synchronized
     fun releaseAfterPublishFailure(deviceKey: DeviceKey, msgId: String): Boolean {
@@ -34,9 +42,9 @@ internal class ProductOtaStartGuard {
     }
 
     @Synchronized
-    fun releaseIfRetryAllowed(deviceKey: DeviceKey, status: ProductOtaStatus?): Boolean {
+    fun releaseIfTerminal(deviceKey: DeviceKey, status: ProductOtaStatus?): Boolean {
         val activeMsgId = activeStarts[deviceKey] ?: return false
-        if (status?.allowsRetry() != true) return false
+        if (status?.isTerminalForReservation() != true) return false
         if (!status.cmdId.isNullOrBlank() && status.cmdId != activeMsgId) return false
         activeStarts.remove(deviceKey)
         return true
@@ -53,9 +61,11 @@ internal sealed interface OtaStartReservation {
     data class AlreadyReserved(val activeMsgId: String) : OtaStartReservation
 }
 
-private fun ProductOtaStatus.allowsRetry(): Boolean =
+private fun ProductOtaStatus.isTerminalForReservation(): Boolean =
     when (status.normalizedOtaStatus()) {
         "FAILED",
-        "ROLLBACK" -> true
+        "ROLLED_BACK",
+        "SUCCESS",
+        "TEST_DONE" -> true
         else -> false
     }

@@ -27,8 +27,8 @@ internal class SpeakerCommandCoordinator(
 ) {
     private val pending = SpeakerPendingCommandTracker()
 
-    fun handleAck(ack: SpeakerAck) {
-        val label = pending.acknowledge(ack) ?: return
+    fun handleAck(serialNumber: String, ack: SpeakerAck) {
+        val label = pending.acknowledge(serialNumber, ack) ?: return
         if (feedback.value.msgId != ack.msgId) return
         feedback.value = SpeakerCommandFeedback(
             msgId = ack.msgId,
@@ -49,7 +49,7 @@ internal class SpeakerCommandCoordinator(
         awaitAck: Boolean = true
     ) {
         if (!canSend(serialNumber, command, label)) return
-        if (awaitAck) pending.track(command.msgId, label)
+        if (awaitAck) pending.track(command.msgId, serialNumber, label)
         feedback.value = SpeakerCommandFeedback(
             msgId = command.msgId,
             status = SpeakerCommandFeedbackStatus.Pending,
@@ -111,7 +111,7 @@ internal class SpeakerCommandCoordinator(
     ): SpeakerAck? {
         if (!canSend(serialNumber, command, label)) return null
         val waiter = CompletableDeferred<SpeakerAck>()
-        pending.track(command.msgId, label, waiter)
+        pending.track(command.msgId, serialNumber, label, waiter)
         feedback.value = SpeakerCommandFeedback(
             msgId = command.msgId,
             status = SpeakerCommandFeedbackStatus.Pending,

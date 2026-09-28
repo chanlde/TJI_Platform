@@ -7,10 +7,10 @@ import org.junit.Test
 
 class FloatingSwitchCommandPolicyTest {
     @Test
-    fun linkAndSwitchMustBothBeOnline() {
+    fun onlineLinkCanProbeAReportedOfflineBucket() {
         assertTrue(canToggleFloatingSwitch(link(online = true), switch(online = true)))
+        assertTrue(canToggleFloatingSwitch(link(online = true), switch(online = false)))
         assertFalse(canToggleFloatingSwitch(link(online = false), switch(online = true)))
-        assertFalse(canToggleFloatingSwitch(link(online = true), switch(online = false)))
         assertFalse(canToggleFloatingSwitch(null, switch(online = true)))
     }
 

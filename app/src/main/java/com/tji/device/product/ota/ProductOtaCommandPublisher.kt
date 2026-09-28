@@ -49,26 +49,11 @@ class ProductOtaMqttCommandPublisher : ProductOtaCommandPublisher {
         onSuccess: () -> Unit,
         onError: (Throwable) -> Unit
     ) {
-        val payload = basePayload(msgId = msgId, cmd = CMD_START_OTA, cmdName = "START_OTA").apply {
-            put("deviceId", serialNumber)
-            put("params", JSONObject().apply {
-                put("targetVersion", packageInfo.targetVersion)
-                packageInfo.targetInnerVersion?.let { put("targetInnerVersion", it) }
-                packageInfo.hardwareVersion?.let { put("hardwareVersion", it) }
-                put("fileSize", packageInfo.fileSize)
-                put("sha256", packageInfo.sha256)
-                put("downloadUrl", packageInfo.downloadUrl)
-                packageInfo.signature?.let { put("signature", it) }
-            })
-            // 过渡期兼容旧 MCU flat snake_case 字段；正式字段在 params 内。
-            put("target_version", packageInfo.targetVersion)
-            put("download_url", packageInfo.downloadUrl)
-            put("file_size", packageInfo.fileSize)
-            put("sha256", packageInfo.sha256)
-            packageInfo.targetInnerVersion?.let { put("target_inner_version", it) }
-            packageInfo.hardwareVersion?.let { put("hardware_version", it) }
-            packageInfo.signature?.let { put("signature", it) }
-        }
+        val payload = buildProductOtaStartPayload(
+            serialNumber = serialNumber,
+            msgId = msgId,
+            packageInfo = packageInfo
+        )
         publish(
             serialNumber = serialNumber,
             productType = productType,
@@ -106,8 +91,40 @@ class ProductOtaMqttCommandPublisher : ProductOtaCommandPublisher {
         }
     }
 
-    private companion object {
-        const val CMD_GET_DEVICE_INFO = 1
-        const val CMD_START_OTA = 20
-    }
 }
+
+internal fun buildProductOtaStartPayload(
+    serialNumber: String,
+    msgId: String,
+    packageInfo: ProductOtaPackage,
+    timestampMillis: Long = System.currentTimeMillis()
+): JSONObject = JSONObject().apply {
+    put("v", 1)
+    put("msgId", msgId)
+    put("cmdId", msgId)
+    put("ts", timestampMillis)
+    put("cmd", CMD_START_OTA)
+    put("cmdName", "START_OTA")
+    put("deviceId", serialNumber)
+    packageInfo.taskId?.let { put("taskId", it) }
+    put("params", JSONObject().apply {
+        put("targetVersion", packageInfo.targetVersion)
+        packageInfo.targetInnerVersion?.let { put("targetInnerVersion", it) }
+        packageInfo.hardwareVersion?.let { put("hardwareVersion", it) }
+        put("fileSize", packageInfo.fileSize)
+        put("sha256", packageInfo.sha256)
+        put("downloadUrl", packageInfo.downloadUrl)
+        packageInfo.signature?.let { put("signature", it) }
+    })
+    // 过渡期兼容旧 MCU flat snake_case 字段；正式字段在 params 内。
+    put("target_version", packageInfo.targetVersion)
+    put("download_url", packageInfo.downloadUrl)
+    put("file_size", packageInfo.fileSize)
+    put("sha256", packageInfo.sha256)
+    packageInfo.targetInnerVersion?.let { put("target_inner_version", it) }
+    packageInfo.hardwareVersion?.let { put("hardware_version", it) }
+    packageInfo.signature?.let { put("signature", it) }
+}
+
+private const val CMD_GET_DEVICE_INFO = 1
+private const val CMD_START_OTA = 20

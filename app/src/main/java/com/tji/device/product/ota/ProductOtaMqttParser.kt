@@ -71,6 +71,7 @@ object ProductOtaMqttParser {
                 "version"
             ).ifBlank { null },
             firmwareInnerVersion = json.optFirstInt("innerVersion", "inner_version"),
+            otaTaskProtocolVersion = json.optFirstInt("otaTaskProtocolVersion", "ota_task_protocol_version"),
             otaStatus = json.optFirstString("otaStatus", "ota_status", "status").ifBlank { null },
             lastOtaResult = json.optFirstString("lastOtaResult", "last_ota_result").ifBlank { null },
             lastFailReason = json.optFirstString("lastFailReason", "last_fail_reason").ifBlank { null },

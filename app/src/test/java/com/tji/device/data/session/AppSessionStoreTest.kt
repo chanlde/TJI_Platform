@@ -24,10 +24,11 @@ class AppSessionStoreTest {
             serverId = 42
         )
 
-        store.startSession(userId = "user-1", devices = listOf(device, device))
+        store.startSession(account = "account-1", userId = "user-1", devices = listOf(device, device))
         store.selectDevice(device)
         store.renameDevice(device, "现场喊话器")
 
+        assertEquals("account-1", store.state.value.account)
         assertEquals("user-1", store.state.value.userId)
         assertEquals(1, store.state.value.boundDevices.size)
         assertEquals("现场喊话器", store.state.value.boundDevices.single().name)
@@ -52,7 +53,7 @@ class AppSessionStoreTest {
             store.state.collect(observed::add)
         }
 
-        store.startSession(userId = "user-1", devices = listOf(speaker))
+        store.startSession(account = "account-1", userId = "user-1", devices = listOf(speaker))
         yield()
         store.selectDevice(speaker)
         yield()
@@ -109,7 +110,7 @@ class AppSessionStoreTest {
             productType = ProductType.Speaker
         )
 
-        store.startSession(userId = "user-1", devices = listOf(device))
+        store.startSession(account = "account-1", userId = "user-1", devices = listOf(device))
         val loggedInGeneration = store.currentSessionGeneration()
         store.selectDevice(device)
         store.renameDevice(device, "新名称")

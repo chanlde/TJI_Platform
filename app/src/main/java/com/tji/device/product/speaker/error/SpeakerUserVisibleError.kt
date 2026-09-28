@@ -88,8 +88,7 @@ private fun String.toSpeakerTechnicalMessage(): String? {
             "sai" in lower ||
             "i2s" in lower ||
             "pcm" in lower ||
-            "adpcm" in lower ||
-            "hadp" in lower ||
+            "ogg opus" in lower ||
             "buffer" in lower ->
             "语音播放失败，请重试"
 
@@ -104,8 +103,7 @@ private fun String.hasSpeakerTechnicalTerms(): Boolean {
         "kokoro",
         "onnx",
         "sherpa",
-        "hadp",
-        "adpcm",
+        "opus",
         "pcm",
         "udp",
         "sai",

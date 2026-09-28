@@ -297,7 +297,7 @@ class SolarCleanMqttInbound(
             // 本地 TTL 不是设备消息，没有设备时钟域时间戳；传 null 可保留最后设备时间，
             // 同时避免设备时钟略快于手机时把本地离线判定误当成旧消息。
             repository.updateOnlineStatus(serialNumber, isOnline = false, timestamp = null)
-            Log.w(TAG, "SolarClean state timeout, mark offline: deviceId=$serialNumber")
+            Log.w(TAG, "SolarClean state timeout, mark offline")
             synchronized(timeoutLock) {
                 if (lastOnlineSignalAt[serialNumber] == signalAt) {
                     onlineTimeoutJobs.remove(serialNumber)

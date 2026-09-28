@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -42,8 +43,10 @@ import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.session.deviceKey
 import com.tji.device.di.AppContainer
+import com.tji.device.diagnostics.AppDiagnostics
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.firebucket.ui.control.FireBucketControlScreen
+import com.tji.device.product.firegun.ui.FireGunControlScreen
 import com.tji.device.product.droppersixstage.ui.control.DropperSixStageControlScreen
 import com.tji.device.product.glassbreaker.ui.control.GlassBreakerControlScreen
 import com.tji.device.product.ota.toProductDeviceInfo
@@ -64,8 +67,12 @@ fun ProductControlRoute(
     runtimeDevice: ProductDeviceRuntimeSnapshot? = null,
     showSettings: Boolean = false,
     onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> },
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    fireBucketBelowControlContent: (@Composable () -> Unit)? = null
 ) {
+    require(hasProductControlRoute(device.productType)) {
+        "Product ${device.productType} is not enabled for control routing"
+    }
     key(device.deviceKey) {
         if (showSettings) {
             CommonDeviceSettingsScreen(
@@ -78,6 +85,12 @@ fun ProductControlRoute(
             when (device.productType) {
                 ProductType.FireBucket -> FireBucketControlScreen(
                     link = fireBucketLink ?: fireBucketLinkPlaceholderFromBoundAccount(device),
+                    belowControlContent = fireBucketBelowControlContent,
+                    modifier = modifier
+                )
+
+                ProductType.FireGun -> FireGunControlScreen(
+                    device = device,
                     modifier = modifier
                 )
 
@@ -109,37 +122,26 @@ fun ProductControlRoute(
                     modifier = modifier
                 )
 
-                ProductType.Searchlight -> UnsupportedProductControlScreen(
-                    device = device,
-                    modifier = modifier
-                )
+                ProductType.Searchlight -> error("Disabled product passed route guard")
             }
         }
     }
 }
 
-@Composable
-private fun UnsupportedProductControlScreen(
-    device: BoundAccountDevice,
-    modifier: Modifier = Modifier
-) {
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(PayloadColors.Background),
-        contentPadding = PaddingValues(PayloadDimens.ScreenPadding),
-        verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
-    ) {
-        item {
-            TjiSectionCard(title = ProductCatalog.definitionOf(device.productType).displayName) {
-                CommonInfoLine(label = "设备名称", value = device.name)
-                CommonInfoLine(label = "设备序列号", value = device.serialNumber)
-                CommonInfoLine(label = "控制状态", value = "等待设备协议接入")
-            }
-        }
-    }
-}
+private val IMPLEMENTED_CONTROL_ROUTE_TYPES: Set<ProductType> = setOf(
+    ProductType.FireBucket,
+    ProductType.FireGun,
+    ProductType.SolarClean,
+    ProductType.DropperSixStage,
+    ProductType.RadioDetection,
+    ProductType.Speaker,
+    ProductType.BreakWindowProjectile
+)
 
+internal fun hasProductControlRoute(productType: ProductType): Boolean =
+    productType in IMPLEMENTED_CONTROL_ROUTE_TYPES
+
+@Suppress("LongMethod") // The settings screen keeps its Compose state and callbacks together.
 @Composable
 private fun CommonDeviceSettingsScreen(
     device: BoundAccountDevice,
@@ -152,6 +154,8 @@ private fun CommonDeviceSettingsScreen(
         viewModel(factory = AppContainer.productOtaViewModelFactory)
     val otaCheckState by otaViewModel.otaCheckState.collectAsStateWithLifecycle()
     val commandFeedback by otaViewModel.commandFeedback.collectAsStateWithLifecycle()
+    val isOtaStartReserved by otaViewModel.isOtaStartReserved.collectAsStateWithLifecycle()
+    val serverOtaTask by otaViewModel.serverTask.collectAsStateWithLifecycle()
     val otaRuntimeStates by AppContainer.productOtaRuntimeRepository.states.collectAsStateWithLifecycle()
     val commonOtaRuntime = otaRuntimeStates.firstOrNull {
         it.productType == device.productType && it.serialNumber == device.serialNumber
@@ -160,7 +164,15 @@ private fun CommonDeviceSettingsScreen(
     val otaStatus = commonOtaRuntime?.otaStatus ?: runtimeDevice?.payload.toProductOtaStatus()
 
     LaunchedEffect(device.serialNumber, device.productType) {
-        otaViewModel.resetForDevice(device.serialNumber, device.productType)
+        otaViewModel.resetForDevice(
+            device.serialNumber,
+            device.productType
+        )
+    }
+    DisposableEffect(device.serialNumber, device.productType, otaViewModel) {
+        onDispose {
+            otaViewModel.unbindDevice(device.serialNumber, device.productType)
+        }
     }
     LaunchedEffect(device.serialNumber, device.productType, runtimeDevice?.isOnline) {
         if (runtimeDevice?.isOnline == true) {
@@ -173,6 +185,27 @@ private fun CommonDeviceSettingsScreen(
             productType = device.productType,
             status = otaStatus
         )
+    }
+    LaunchedEffect(device.serialNumber, device.productType, deviceInfo) {
+        deviceInfo ?: return@LaunchedEffect
+        AppDiagnostics.record(
+            "device_firmware",
+            mapOf(
+                "product" to device.productType.name,
+                "device" to AppDiagnostics.deviceRef(device.serialNumber),
+                "firmware" to deviceInfo.firmwareVersion,
+                "innerVersion" to deviceInfo.firmwareInnerVersion,
+                "hardware" to deviceInfo.hardwareVersion
+            )
+        )
+    }
+    LaunchedEffect(
+        device.serialNumber,
+        device.productType,
+        deviceInfo?.otaTaskProtocolVersion,
+        deviceInfo?.firmwareInnerVersion
+    ) {
+        otaViewModel.restoreActiveTask(device.serialNumber, device.productType, deviceInfo)
     }
 
     LazyColumn(
@@ -209,8 +242,10 @@ private fun CommonDeviceSettingsScreen(
             com.tji.device.product.ota.ui.ProductOtaCard(
                 deviceInfo = deviceInfo,
                 otaStatus = otaStatus,
+                serverTask = serverOtaTask,
                 otaCheckState = otaCheckState,
                 commandFeedback = commandFeedback,
+                startReserved = isOtaStartReserved,
                 deviceOnline = runtimeDevice?.isOnline == true,
                 onRefreshDeviceInfo = {
                     otaViewModel.requestDeviceInfo(device.serialNumber, device.productType)
