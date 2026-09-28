@@ -58,6 +58,7 @@ private const val OTA_PROGRESS_ANIMATION_MS = 700
 private const val OTA_PROGRESS_TICK_MS = 300L
 private const val OTA_PROGRESS_OPTIMISTIC_STEP = 0.004f
 
+@Suppress("LongParameterList") // Live device, task and action state come from separate sources.
 @Composable
 fun ProductOtaCard(
     deviceInfo: ProductDeviceInfo?,

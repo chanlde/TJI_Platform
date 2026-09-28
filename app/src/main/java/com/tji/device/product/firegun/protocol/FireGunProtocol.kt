@@ -46,6 +46,7 @@ sealed interface FireGunResponse {
     ) : FireGunResponse
 }
 
+@Suppress("TooManyFunctions") // Request, status and ACK parsing share the same wire contract.
 object FireGunProtocol {
     fun unlockRequest(targetSerial: String, requestId: String): JSONObject = JSONObject().apply {
         put("event_type", "LockControlRequest")

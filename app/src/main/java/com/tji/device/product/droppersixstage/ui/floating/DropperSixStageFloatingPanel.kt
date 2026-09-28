@@ -40,6 +40,7 @@ import com.tji.device.ui.floating.FloatingLinkSummary
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
 
+@Suppress("LongMethod") // The floating control shares one device and safety-state scope.
 @Composable
 fun DropperSixStageFloatingPanel(
     link: FloatingLinkSummary?,

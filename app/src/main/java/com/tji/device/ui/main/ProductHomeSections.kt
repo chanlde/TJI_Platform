@@ -50,6 +50,7 @@ internal val PlatformInk = PayloadColors.TextPrimary
 internal val PlatformMuted = PayloadColors.TextSecondary
 internal val PlatformBlue = PayloadColors.Primary
 
+@Suppress("LongMethod") // Declarative sections share one home-screen state scope.
 @Composable
 internal fun ProductHome(
     onProductSelected: (ProductType) -> Unit,

@@ -141,6 +141,7 @@ private val IMPLEMENTED_CONTROL_ROUTE_TYPES: Set<ProductType> = setOf(
 internal fun hasProductControlRoute(productType: ProductType): Boolean =
     productType in IMPLEMENTED_CONTROL_ROUTE_TYPES
 
+@Suppress("LongMethod") // The settings screen keeps its Compose state and callbacks together.
 @Composable
 private fun CommonDeviceSettingsScreen(
     device: BoundAccountDevice,

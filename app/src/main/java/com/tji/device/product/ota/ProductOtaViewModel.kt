@@ -271,6 +271,7 @@ class ProductOtaViewModel(
     private fun isCurrentCheck(deviceKey: DeviceKey, requestId: Long): Boolean =
         activeDeviceKey == deviceKey && checkRequests.isLatest(deviceKey, requestId)
 
+    @Suppress("LongMethod") // Keep validation and one-command reservation in the same transition.
     fun startOta(
         serialNumber: String,
         productType: ProductType,
@@ -384,6 +385,7 @@ class ProductOtaViewModel(
         }
     }
 
+    @Suppress("LongMethod") // Reservation, local persistence and publication share one task identity.
     private fun startTaskBackedOta(
         deviceKey: DeviceKey,
         packageInfo: ProductOtaPackage,

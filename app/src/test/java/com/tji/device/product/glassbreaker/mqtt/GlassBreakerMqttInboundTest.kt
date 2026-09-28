@@ -14,8 +14,23 @@ class GlassBreakerMqttInboundTest {
     fun deviceInvalidationClearsPreviousSelectionAndBattery() = runBlocking {
         val repo = GlassBreakerRepo()
         val inbound = GlassBreakerMqttInbound(repo)
-        inbound.handleEvent(SERIAL, "state", JSONObject("""{"ts":1,"lockState":"unlocked","selectedChannel":2,"batteryPercent":80}"""))
-        inbound.handleEvent(SERIAL, "state", JSONObject("""{"ts":2,"lockState":"unlocked","selectionValid":false,"selectedChannel":null,"batteryPercentValid":false,"batteryPercent":null}"""))
+        inbound.handleEvent(
+            SERIAL, "state",
+            JSONObject("""{"ts":1,"lockState":"unlocked","selectedChannel":2,"batteryPercent":80}""")
+        )
+        inbound.handleEvent(
+            SERIAL, "state",
+            JSONObject(
+                """{
+                    "ts":2,
+                    "lockState":"unlocked",
+                    "selectionValid":false,
+                    "selectedChannel":null,
+                    "batteryPercentValid":false,
+                    "batteryPercent":null
+                }"""
+            )
+        )
         assertNull(repo.devices.value.single().selectedChannel)
         assertNull(repo.devices.value.single().batteryPercent)
     }

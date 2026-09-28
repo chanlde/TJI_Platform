@@ -53,10 +53,28 @@ class FireGunProtocolTest {
     @Test
     fun parsesDocumentResponses() {
         val lock = FireGunProtocol.parseResponse(
-            """{"event_type":"LockControlResponse","serial_number":"ESP-001","request_id":"lock-1","success":true,"action":"unlock","state":"unlocking","pulse_ms":500,"error":""}"""
+            """{
+                "event_type":"LockControlResponse",
+                "serial_number":"ESP-001",
+                "request_id":"lock-1",
+                "success":true,
+                "action":"unlock",
+                "state":"unlocking",
+                "pulse_ms":500,
+                "error":""
+            }"""
         ) as FireGunResponse.Lock
         val actuator = FireGunProtocol.parseResponse(
-            """{"event_type":"ActuatorControlResponse","serial_number":"ESP-001","request_id":"actuator-1","success":false,"action":"open","state":"stopped","max_run_ms":90000,"error":"command_rejected"}"""
+            """{
+                "event_type":"ActuatorControlResponse",
+                "serial_number":"ESP-001",
+                "request_id":"actuator-1",
+                "success":false,
+                "action":"open",
+                "state":"stopped",
+                "max_run_ms":90000,
+                "error":"command_rejected"
+            }"""
         ) as FireGunResponse.Actuator
 
         assertTrue(lock.success)

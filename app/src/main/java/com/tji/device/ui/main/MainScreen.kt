@@ -210,7 +210,8 @@ internal fun MainScreenContent(
     onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> }
 ) {
     when {
-        isLoading && activeProductPage == null && activeCatalogProductCode == null && selectedBoundDevice == null -> CircularProgressIndicator(
+        isLoading && activeProductPage == null && activeCatalogProductCode == null &&
+            selectedBoundDevice == null -> CircularProgressIndicator(
             modifier = modifier
                 .fillMaxSize()
                 .wrapContentSize(Alignment.Center)

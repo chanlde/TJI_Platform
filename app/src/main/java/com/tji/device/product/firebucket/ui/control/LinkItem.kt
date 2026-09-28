@@ -38,6 +38,7 @@ import com.tji.device.ui.icon.product.productIconVector
 import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
 
+@Suppress("LongMethod") // This Compose item renders one Link and its device summary.
 @Composable
 fun LinkItem(
     link: FireBucketLinkDevice,

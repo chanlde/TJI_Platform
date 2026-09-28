@@ -16,6 +16,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import retrofit2.HttpException
 
+@Suppress("TooManyFunctions") // One facade keeps login, version and OTA calls on the same configured client.
 object TjiApiGateway {
 
     private const val TAG = "TjiApiGateway"

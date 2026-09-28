@@ -24,6 +24,7 @@ import com.tji.device.ui.theme.PayloadColors
 import com.tji.device.ui.theme.PayloadDimens
 import com.tji.device.ui.theme.TjiWarning
 
+@Suppress("LongMethod") // Control slider and switch feedback form one Compose item.
 @Composable
 fun SwitchItem(
     switch: FireBucketSwitchState,
