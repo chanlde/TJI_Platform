@@ -4,6 +4,7 @@ import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.di.DropperSixStageProductModule
 import com.tji.device.di.FireBucketProductModule
+import com.tji.device.di.FireGunProductModule
 import com.tji.device.di.GlassBreakerProductModule
 import com.tji.device.di.ProductFloatingQuickControl
 import com.tji.device.di.ProductModule
@@ -14,6 +15,7 @@ import com.tji.device.product.droppersixstage.repository.DropperSixStageRepo
 import com.tji.device.product.firebucket.repository.FireBucketLinkRepo
 import com.tji.device.product.firebucket.repository.FireBucketSwitchCommandRepository
 import com.tji.device.product.glassbreaker.repository.GlassBreakerRepo
+import com.tji.device.product.firegun.repository.FireGunRepo
 import com.tji.device.product.ota.ProductOtaRuntimeRepo
 import com.tji.device.product.radiodetection.mqtt.RadioDetectionMqttInbound
 import com.tji.device.product.radiodetection.repository.RadioDetectionRepo
@@ -142,6 +144,7 @@ class SimulatedDeviceFleetStressTest {
 
     private class FleetFixture {
         val fireBucket = FireBucketLinkRepo()
+        val fireGun = FireGunRepo()
         val solarClean = SolarCleanRepo()
         val dropper = DropperSixStageRepo()
         val radio = RadioDetectionRepo(maxTargetsPerDevice = 8)
@@ -153,6 +156,7 @@ class SimulatedDeviceFleetStressTest {
         private val modules = ProductModuleRegistry(
             modules = listOf(
                 FireBucketProductModule(fireBucket, FireBucketSwitchCommandRepository()),
+                FireGunProductModule(fireGun),
                 SolarCleanProductModule(solarClean),
                 DropperSixStageProductModule(dropper),
                 radioModule,
@@ -220,6 +224,11 @@ class SimulatedDeviceFleetStressTest {
                 ProductType.FireBucket -> """
                     {"event_type":"LinkDeviceHeartbeat","serial_number":"${device.serialNumber}",
                      "isOnline":true,"uptime":$round,"timestamp":"$timestamp"}
+                """.trimIndent()
+                ProductType.FireGun -> """
+                    {"event_type":"ActuatorControlResponse","serial_number":"${device.serialNumber}",
+                     "request_id":"sim-$round","success":true,"action":"open",
+                     "state":"opening","max_run_ms":90000,"error":""}
                 """.trimIndent()
                 ProductType.SolarClean ->
                     """{"type":"state","battery":$value,"water":$value,"ts":$timestamp}"""

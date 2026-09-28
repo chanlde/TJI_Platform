@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.Close
 import com.tji.device.product.droppersixstage.ui.floating.DropperSixStageFloatingPanel
 import com.tji.device.product.firebucket.ui.floating.EmptyProductPanel
 import com.tji.device.product.firebucket.ui.floating.FireBucketFloatingPanel
+import com.tji.device.product.firegun.ui.floating.FireGunFloatingPanel
 import com.tji.device.product.glassbreaker.ui.floating.GlassBreakerFloatingPanel
 import com.tji.device.product.solarclean.ui.floating.SolarCleanFloatingPanel
 import com.tji.device.product.solarclean.viewmodel.SolarCleanCommandFeedback
@@ -119,6 +120,7 @@ fun ExpandedCard(
                     onSwitchSelected = onSwitchSelected,
                     onSwitchQuickToggle = onSwitchQuickToggle
                 )
+                ProductType.FireGun -> FireGunFloatingPanel(link = link)
                 ProductType.SolarClean -> SolarCleanFloatingPanel(link = link)
                 ProductType.DropperSixStage -> DropperSixStageFloatingPanel(link = link)
                 ProductType.RadioDetection -> EmptyProductPanel(message = "无线电检测暂不提供悬浮窗快捷控制")
@@ -171,7 +173,11 @@ private fun FloatingWindowHeader(
                 maxLines = 1,
                 modifier = Modifier.weight(1f, fill = false)
             )
-            if (productType == ProductType.SolarClean || productType == ProductType.DropperSixStage) {
+            if (
+                productType == ProductType.SolarClean ||
+                productType == ProductType.DropperSixStage ||
+                productType == ProductType.FireGun
+            ) {
                 TjiOnlineStatus(isOnline = link?.isOnline == true, pill = true)
             }
             if (productType == ProductType.SolarClean) {

@@ -18,6 +18,7 @@ class LoginResponseGsonTest {
               "data": {
                 "id": "user-1",
                 "token": "token-value",
+                "boundDevicesComplete": true,
                 "boundDevices": [
                   {
                     "id": 188,
@@ -38,6 +39,7 @@ class LoginResponseGsonTest {
         assertEquals("成功", response.message)
         assertEquals("user-1", response.data?.id)
         assertEquals("token-value", response.data?.token)
+        assertEquals(true, response.data?.boundDevicesComplete)
         assertEquals("SN001", response.data?.boundDevices?.single()?.sn1)
         assertEquals("光伏清洗 01", response.data?.boundDevices?.single()?.productName)
     }
@@ -72,5 +74,6 @@ class LoginResponseGsonTest {
         assertEquals(3, devices.single().productId)
         assertEquals(null, devices.single().productName)
         assertEquals("SolarClean", devices.single().productType)
+        assertEquals(null, response.boundDevicesComplete)
     }
 }

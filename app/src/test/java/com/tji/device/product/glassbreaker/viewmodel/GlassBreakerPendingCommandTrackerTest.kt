@@ -3,6 +3,7 @@ package com.tji.device.product.glassbreaker.viewmodel
 import com.tji.device.product.glassbreaker.model.GlassBreakerCommand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -63,6 +64,19 @@ class GlassBreakerPendingCommandTrackerTest {
         val fireTwo = GlassBreakerCommand.FireChannel("fire-2", 2)
 
         assertEquals(fireOne.conflictKey(SERIAL), fireTwo.conflictKey(SERIAL))
+    }
+
+    @Test
+    fun ackFromAnotherDeviceCannotCompleteOrReleaseSafetyLockCommand() {
+        val tracker = GlassBreakerPendingCommandTracker()
+        val lock = GlassBreakerCommand.Lock("lock-1")
+        val unlock = GlassBreakerCommand.Unlock("unlock-1")
+
+        assertTrue(tracker.start(lock.msgId, SERIAL, lock.conflictKey(SERIAL), "上锁"))
+        assertNull(tracker.complete(lock.msgId, OTHER_SERIAL))
+        assertFalse(tracker.start(unlock.msgId, SERIAL, unlock.conflictKey(SERIAL), "解锁"))
+        assertEquals("上锁", tracker.complete(lock.msgId, SERIAL)?.label)
+        assertTrue(tracker.start(unlock.msgId, SERIAL, unlock.conflictKey(SERIAL), "解锁"))
     }
 
     private companion object {

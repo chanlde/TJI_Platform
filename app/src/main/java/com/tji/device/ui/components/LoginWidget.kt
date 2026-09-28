@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.R
 import com.tji.device.data.model.Login
 import com.tji.device.ui.theme.LoginColors
@@ -86,7 +85,9 @@ private fun RememberMeAndForgotPassword(
 fun LoginWidget(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
+    isUpdateAvailable: Boolean = false,
     onLogin: (Login) -> Unit = {},
+    onUpdate: () -> Unit = {},
     onDirectControl: () -> Unit = {},
     onForgotPassword: () -> Unit = {},
     context: Context
@@ -171,6 +172,7 @@ fun LoginWidget(
             passwordVisible = passwordVisible,
             rememberMe = rememberMe,
             isLoading = isLoading || isRestoringRememberedLogin,
+            isUpdateAvailable = isUpdateAvailable,
             onAccountChange = {
                 userHasEditedLogin = true
                 account = it
@@ -186,7 +188,7 @@ fun LoginWidget(
                 userHasEditedLogin = true
                 rememberMe = it
             },
-            onLogin = { handleLogin() },
+            onLogin = { if (isUpdateAvailable) onUpdate() else handleLogin() },
             onDirectControl = onDirectControl,
             onForgotPassword = onForgotPassword
         )
@@ -276,6 +278,7 @@ private fun BoxScope.LoginLayout(
     passwordVisible: Boolean,
     rememberMe: Boolean,
     isLoading: Boolean,
+    isUpdateAvailable: Boolean,
     onAccountChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPasswordVisibilityToggle: () -> Unit,
@@ -308,6 +311,7 @@ private fun BoxScope.LoginLayout(
                     passwordVisible = passwordVisible,
                     rememberMe = rememberMe,
                     isLoading = isLoading,
+                    isUpdateAvailable = isUpdateAvailable,
                     onAccountChange = onAccountChange,
                     onPasswordChange = onPasswordChange,
                     onPasswordVisibilityToggle = onPasswordVisibilityToggle,
@@ -340,6 +344,7 @@ private fun BoxScope.LoginLayout(
                     passwordVisible = passwordVisible,
                     rememberMe = rememberMe,
                     isLoading = isLoading,
+                    isUpdateAvailable = isUpdateAvailable,
                     onAccountChange = onAccountChange,
                     onPasswordChange = onPasswordChange,
                     onPasswordVisibilityToggle = onPasswordVisibilityToggle,
@@ -364,6 +369,7 @@ private fun LoginFormContent(
     passwordVisible: Boolean,
     rememberMe: Boolean,
     isLoading: Boolean,
+    isUpdateAvailable: Boolean,
     onAccountChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPasswordVisibilityToggle: () -> Unit,
@@ -385,6 +391,7 @@ private fun LoginFormContent(
         passwordVisible = passwordVisible,
         rememberMe = rememberMe,
         isLoading = isLoading,
+        isUpdateAvailable = isUpdateAvailable,
         onAccountChange = onAccountChange,
         onPasswordChange = onPasswordChange,
         onPasswordVisibilityToggle = onPasswordVisibilityToggle,
@@ -417,11 +424,10 @@ fun LogoOrTitle(isLandscape: Boolean) {
 @Composable
 fun LoginButton(
     isLoading: Boolean,
+    isUpdateAvailable: Boolean,
     onLogin: () -> Unit,
     isLandscape: Boolean
 ) {
-    val needUpdate by AppUiNotifier.appUpdateAvailable.collectAsStateWithLifecycle()
-
     Button(
         onClick = onLogin,
         enabled = !isLoading,
@@ -442,7 +448,7 @@ fun LoginButton(
             )
         } else {
             Text(
-                text = if (needUpdate) "需更新到最新版本" else "登录",
+                text = if (isUpdateAvailable) "需更新到最新版本" else "登录",
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White
             )
@@ -460,6 +466,7 @@ fun LoginForm(
     passwordVisible: Boolean,
     rememberMe: Boolean,
     isLoading: Boolean,
+    isUpdateAvailable: Boolean,
     onAccountChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPasswordVisibilityToggle: () -> Unit,
@@ -492,7 +499,7 @@ fun LoginForm(
 
         RememberMeAndForgotPassword(rememberMe, onRememberMeChange, onForgotPassword)
 
-        LoginButton(isLoading, onLogin, isLandscape)
+        LoginButton(isLoading, isUpdateAvailable, onLogin, isLandscape)
 
         if (SHOW_DIRECT_LINK_LOGIN_ENTRY) {
             HorizontalDivider(color = PayloadColors.Border)

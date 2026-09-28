@@ -86,7 +86,7 @@ class ProductOtaRuntimeRepo(
             }
             eventType.equals("online", ignoreCase = true) -> {
                 updateState(productType, serialNumber) { current ->
-                    current.completeRebootWaitOnOnline(receivedAtMillis)
+                    current.markRebootOnlinePendingVerification(receivedAtMillis)
                 }
             }
         }
@@ -96,7 +96,7 @@ class ProductOtaRuntimeRepo(
         _states.value = emptyList()
     }
 
-    private fun ProductOtaRuntimeState.completeRebootWaitOnOnline(
+    private fun ProductOtaRuntimeState.markRebootOnlinePendingVerification(
         receivedAtMillis: Long
     ): ProductOtaRuntimeState {
         val currentStatus = otaStatus ?: return this
@@ -108,10 +108,9 @@ class ProductOtaRuntimeRepo(
             "PENDING_REBOOT",
             "REBOOTING" -> copy(
                 otaStatus = currentStatus.copy(
-                    status = "SUCCESS",
-                    progress = 100,
-                    message = "设备已重启并上线",
-                    reason = null,
+                    status = "BOOT_VERIFY",
+                    progress = 99,
+                    message = "设备已重启并上线，等待升级结果确认",
                     timestamp = receivedAtMillis
                 ),
                 rebootWaitStartedAtMillis = null,
@@ -255,7 +254,7 @@ private fun ProductOtaStatus.isTerminalOtaState(): Boolean {
         "FAILED",
         "TEST_DONE",
         "SUCCESS",
-        "ROLLBACK" -> true
+        "ROLLED_BACK" -> true
         else -> false
     }
 }

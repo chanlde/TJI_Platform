@@ -22,6 +22,7 @@ fun ProductTypeBadge(
 ) {
     val (backgroundColor, contentColor) = when (productType) {
         ProductType.FireBucket -> PayloadColors.PrimarySoft to PayloadColors.Primary
+        ProductType.FireGun -> PayloadColors.PrimarySoft to PayloadColors.Primary
         ProductType.SolarClean -> PayloadColors.WarningSoft to PayloadColors.Warning
         ProductType.DropperSixStage -> PayloadColors.PrimarySoft to PayloadColors.Primary
         ProductType.RadioDetection -> PayloadColors.PrimarySoft to PayloadColors.Primary

@@ -100,6 +100,71 @@ class MainViewModelSessionTest {
         subscriptionManager.cleanup()
     }
 
+    @Test
+    fun productListOpensWhileMqttSubscriptionFails() = runTest {
+        val sessionStore = AppSessionStore()
+        val device = BoundAccountDevice("SPEAKER-001", "喊话器", ProductType.Speaker)
+        sessionStore.startSession("account", "user", listOf(device))
+        val runtimeController = RecordingRuntimeController()
+        val mqttGateway = RecordingMqttGateway(failSubscribe = true)
+        val subscriptionManager = MqttSubscriptionManager(
+            mqttEventHandler = NoOpMqttMessageHandler(),
+            clientFor = { mqttGateway }
+        )
+        val viewModel = MainViewModel(
+            authRepository = NoOpAuthRepository(),
+            sessionStore = sessionStore,
+            productRuntimeRegistryProvider = { ProductRuntimeRegistry(listOf(runtimeController)) },
+            mqttSubscriptionManagerProvider = { subscriptionManager },
+            productOtaRuntimeRepositoryProvider = { RecordingOtaRepository() },
+            clearRadioDetectionReplay = {}
+        )
+
+        var result: Boolean? = null
+        viewModel.openProduct(ProductType.Speaker) { success, _ -> result = success }
+        advanceUntilIdle()
+
+        assertEquals(true, result)
+        assertEquals(ProductType.Speaker, sessionStore.state.value.preferredProductType)
+        assertEquals(1, runtimeController.clearCount)
+        subscriptionManager.cleanup()
+    }
+
+    @Test
+    fun deviceOpensOfflineAfterMqttSubscriptionFails() = runTest {
+        val sessionStore = AppSessionStore()
+        val device = BoundAccountDevice("SPEAKER-001", "喊话器", ProductType.Speaker)
+        sessionStore.startSession("account", "user", listOf(device))
+        val runtimeController = RecordingRuntimeController()
+        val mqttGateway = RecordingMqttGateway(failSubscribe = true)
+        val subscriptionManager = MqttSubscriptionManager(
+            mqttEventHandler = NoOpMqttMessageHandler(),
+            clientFor = { mqttGateway }
+        )
+        val viewModel = MainViewModel(
+            authRepository = NoOpAuthRepository(),
+            sessionStore = sessionStore,
+            productRuntimeRegistryProvider = { ProductRuntimeRegistry(listOf(runtimeController)) },
+            mqttSubscriptionManagerProvider = { subscriptionManager },
+            productOtaRuntimeRepositoryProvider = { RecordingOtaRepository() },
+            clearRadioDetectionReplay = {}
+        )
+
+        var result: Boolean? = null
+        var message: String? = null
+        viewModel.openDevice(device) { success, detail ->
+            result = success
+            message = detail
+        }
+        advanceUntilIdle()
+
+        assertEquals(true, result)
+        assertEquals(device.deviceKey, sessionStore.state.value.selectedDeviceKey)
+        assertEquals("设备未连接，已打开离线页面", message)
+        assertEquals(1, runtimeController.clearCount)
+        subscriptionManager.cleanup()
+    }
+
     private class RecordingRuntimeController : ProductRuntimeController {
         override val productType: ProductType = ProductType.Speaker
         override val devices: Flow<List<ProductDeviceRuntimeSnapshot>> = MutableStateFlow(emptyList())
@@ -150,7 +215,9 @@ class MainViewModelSessionTest {
         override suspend fun logout() = Unit
     }
 
-    private class RecordingMqttGateway : MqttClientGateway {
+    private class RecordingMqttGateway(
+        private val failSubscribe: Boolean = false
+    ) : MqttClientGateway {
         val subscribedTopics = mutableListOf<String>()
 
         override fun getConfig(): MqttConnectionConfig = MqttConnectionConfig.default()
@@ -160,6 +227,7 @@ class MainViewModelSessionTest {
             qos: Int,
             onMessage: (message: String, isRetained: Boolean) -> Unit
         ): Result<Unit> {
+            if (failSubscribe) return Result.failure(IllegalStateException("offline"))
             subscribedTopics += topic
             return Result.success(Unit)
         }

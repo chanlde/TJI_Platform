@@ -3,6 +3,7 @@ package com.tji.device.data.viewmodel
 import com.tji.device.MainDispatcherRule
 import com.tji.device.data.model.LoginUiState
 import com.tji.device.data.model.ProductCatalog
+import com.tji.device.data.model.ProductType
 import com.tji.device.data.repository.AuthRepository
 import com.tji.device.data.session.AppSessionState
 import com.tji.device.data.session.AppSessionStore
@@ -117,6 +118,43 @@ class LoginViewModelTest {
     }
 
     @Test
+    fun knownProductUsesDeviceNameInsteadOfProductCategoryName() = runTest {
+        val repository = RecordingAuthRepository(
+            loginResponse = ApiResponse(
+                code = 200,
+                message = "ok",
+                data = LoginResponse(
+                    id = "user-device-name",
+                    token = "token",
+                    boundDevices = listOf(
+                        BoundDeviceRow(
+                            id = 66,
+                            serialNumber = "SPEAKER-RENAMED-01",
+                            name = "旧设备名",
+                            deviceName = "现场喊话器 01",
+                            productName = "喊话器",
+                            productId = 6,
+                            productType = "Speaker",
+                            productCode = "Speaker"
+                        )
+                    )
+                )
+            )
+        )
+        val sessionStore = AppSessionStore()
+        val viewModel = LoginViewModel(
+            authRepository = repository,
+            sessionStore = sessionStore,
+            accountMqttConnector = { _, _, _ -> }
+        )
+
+        viewModel.login("account", "password", rememberMe = false) { _, _ -> }
+        advanceUntilIdle()
+
+        assertEquals("现场喊话器 01", sessionStore.state.value.boundDevices.single().name)
+    }
+
+    @Test
     fun successfulLoginPreservesCatalogProductMappingAndBackendDeviceOrder() = runTest {
         val rows = ProductCatalog.enabledDefinitions.mapIndexed { index, definition ->
             BoundDeviceRow(
@@ -151,6 +189,90 @@ class LoginViewModelTest {
         )
         assertEquals(rows.map { it.serialNumber }, sessionStore.state.value.boundDevices.map { it.serialNumber })
         assertEquals(rows.map { it.productName }, sessionStore.state.value.boundDevices.map { it.name })
+    }
+
+    @Test
+    fun adminCreatedProductStaysReadOnlyAndNeverBecomesFireBucket() = runTest {
+        val repository = RecordingAuthRepository(
+            loginResponse = ApiResponse(
+                code = 200,
+                message = "ok",
+                data = LoginResponse(
+                    id = "user-catalog",
+                    token = "token",
+                    boundDevicesComplete = true,
+                    boundDevices = listOf(
+                        BoundDeviceRow(
+                            serialNumber = "SPEAKER-001",
+                            deviceName = "现场喊话器",
+                            productName = "喊话器",
+                            productCode = "Speaker"
+                        ),
+                        BoundDeviceRow(
+                            serialNumber = "TANK-001",
+                            deviceName = "水箱样机",
+                            productName = "消防水箱",
+                            productType = "FireWaterTank",
+                            productCode = "FireWaterTank"
+                        )
+                    )
+                )
+            )
+        )
+        val sessionStore = AppSessionStore()
+        val viewModel = LoginViewModel(
+            authRepository = repository,
+            sessionStore = sessionStore,
+            accountMqttConnector = { _, _, _ -> }
+        )
+
+        viewModel.login("account", "password", rememberMe = false) { _, _ -> }
+        advanceUntilIdle()
+
+        assertEquals(listOf("SPEAKER-001"), sessionStore.state.value.boundDevices.map { it.serialNumber })
+        assertEquals("TANK-001", sessionStore.state.value.catalogDevices.single().serialNumber)
+        assertEquals("FireWaterTank", sessionStore.state.value.catalogDevices.single().productCode)
+        assertEquals("消防水箱", sessionStore.state.value.catalogDevices.single().productName)
+        assertEquals(null, viewModel.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun bucketProductRowWithHydroGunLinkNameIsPublishedAsFireGun() = runTest {
+        val repository = RecordingAuthRepository(
+            loginResponse = ApiResponse(
+                code = 200,
+                message = "ok",
+                data = LoginResponse(
+                    id = "user-fire-gun",
+                    token = "token",
+                    boundDevices = listOf(
+                        BoundDeviceRow(
+                            id = 1,
+                            serialNumber = "E465B062174A5124",
+                            sn = "7003DEF5",
+                            productName = "HydroGunLink_V1-9526D839",
+                            productId = 2,
+                            productType = "FireBucket",
+                            productCode = "FireBucket"
+                        )
+                    )
+                )
+            )
+        )
+        val sessionStore = AppSessionStore()
+        val viewModel = LoginViewModel(
+            authRepository = repository,
+            sessionStore = sessionStore,
+            accountMqttConnector = { _, _, _ -> }
+        )
+
+        viewModel.login("fire-gun-account", "password", rememberMe = false) { _, _ -> }
+        advanceUntilIdle()
+
+        val device = sessionStore.state.value.boundDevices.single()
+        assertEquals(ProductType.FireGun, device.productType)
+        assertEquals("E465B062174A5124", device.serialNumber)
+        assertEquals("HydroGunLink_V1-9526D839", device.name)
     }
 
     @Test

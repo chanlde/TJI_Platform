@@ -40,9 +40,9 @@ class DropperSixStageViewModel(
                     .map { it.serialNumber }
                     .toSet()
                 states.asSequence()
-                    .mapNotNull { it.lastAck }
-                    .forEach { ack ->
-                        val pending = pendingCommands.complete(ack.msgId) ?: return@forEach
+                    .mapNotNull { state -> state.lastAck?.let { state.serialNumber to it } }
+                    .forEach { (serialNumber, ack) ->
+                        val pending = pendingCommands.complete(ack.msgId, serialNumber) ?: return@forEach
                         if (_commandFeedback.value.msgId != ack.msgId) return@forEach
                         if (ack.ok) {
                             when (pending.safetyEffect) {

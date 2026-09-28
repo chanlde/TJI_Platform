@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.tji.device.concurrent.LatestRequestTracker
 import com.tji.device.diagnostics.AppDiagnostics
 import com.tji.device.data.model.BoundAccountDevice
+import com.tji.device.data.model.CatalogBoundDevice
 import com.tji.device.data.model.AuthState
 import com.tji.device.data.model.LoginUiState
 import com.tji.device.data.model.ProductCatalog
@@ -177,15 +178,25 @@ class LoginViewModel(
         if (!isCurrentLogin(loginAttempt, accountOperation)) return
 
         val boundDevices = parseBoundDevices(loginData)
-        sessionStore.startSession(account = account, userId = userId, devices = boundDevices)
-        AppDiagnostics.record("login_success", mapOf("deviceCount" to boundDevices.size))
+        val catalogDevices = parseCatalogBoundDevices(loginData)
+        sessionStore.startSession(
+            account = account,
+            userId = userId,
+            devices = boundDevices,
+            catalogDevices = catalogDevices
+        )
+        AppDiagnostics.record(
+            "login_success",
+            mapOf("deviceCount" to boundDevices.size + catalogDevices.size)
+        )
         startMqttForAccount(account)
-        Log.d(TAG, "登录成功，解析到 ${boundDevices.size} 个后台设备")
+        Log.d(TAG, "登录成功，解析到 ${boundDevices.size + catalogDevices.size} 个后台设备")
 
         updateLoginSuccessState(
             account = account,
             userId = userId,
-            boundDevices = boundDevices
+            boundDevices = boundDevices,
+            catalogDevices = catalogDevices
         )
         callback(true, null)
     }
@@ -240,22 +251,49 @@ class LoginViewModel(
             .distinctBy { "${it.productType.name}:${it.serialNumber}" }
     }
 
+    private fun parseCatalogBoundDevices(loginData: LoginResponse?): List<CatalogBoundDevice> =
+        loginData?.boundDevices.orEmpty().mapNotNull { row ->
+            val serial = row.serialNumber?.takeIf { it.isNotBlank() }
+                ?: row.sn1?.takeIf { it.isNotBlank() }
+                ?: row.sn?.takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            val code = row.productCode?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return@mapNotNull null
+            if (ProductCatalog.controlTypeForBoundDevice(
+                    row.productId,
+                    row.productType,
+                    code,
+                    row.productName ?: row.deviceName ?: row.name
+                ) != null
+            ) return@mapNotNull null
+
+            CatalogBoundDevice(
+                serialNumber = serial,
+                name = row.deviceName?.takeIf { it.isNotBlank() }
+                    ?: row.name?.takeIf { it.isNotBlank() }
+                    ?: serial,
+                productCode = code,
+                productName = row.productName?.takeIf { it.isNotBlank() } ?: code
+            )
+        }.distinctBy { it.productCode to it.serialNumber }
+
     private fun updateLoginSuccessState(
         account: String,
         userId: String?,
-        boundDevices: List<BoundAccountDevice>
+        boundDevices: List<BoundAccountDevice>,
+        catalogDevices: List<CatalogBoundDevice>
     ) {
-        if (boundDevices.isEmpty()) {
+        if (boundDevices.isEmpty() && catalogDevices.isEmpty()) {
             Log.w(TAG, "登录成功但无可用设备")
         } else {
-            Log.d(TAG, "登录成功，共 ${boundDevices.size} 台设备，进入首页后按产品线选择")
+            Log.d(TAG, "登录成功，共 ${boundDevices.size + catalogDevices.size} 台设备，进入首页后按产品线选择")
         }
 
         _uiState.value = _uiState.value.copy(
             isLoading = false,
             authState = AuthState.LoggedIn(account),
             userId = userId,
-            errorMessage = if (boundDevices.isEmpty()) "未找到可用设备" else null
+            errorMessage = if (boundDevices.isEmpty() && catalogDevices.isEmpty()) "未找到可用设备" else null
         )
     }
 
@@ -358,19 +396,19 @@ class LoginViewModel(
             ?: sn1?.takeIf { it.isNotBlank() }
             ?: sn?.takeIf { it.isNotBlank() }
             ?: return null
-        val displayName = productName?.takeIf { it.isNotBlank() }
-            ?: deviceName?.takeIf { it.isNotBlank() }
+        val displayName = deviceName?.takeIf { it.isNotBlank() }
             ?: name?.takeIf { it.isNotBlank() }
+            ?: productName?.takeIf { it.isNotBlank() }
             ?: serial
         return BoundAccountDevice(
             serialNumber = serial,
             name = displayName,
-            productType = ProductCatalog.fromBackendFields(
+            productType = ProductCatalog.controlTypeForBoundDevice(
                 productId = productId,
                 productType = productType,
                 productCode = productCode,
                 fallbackName = displayName
-            ),
+            ) ?: return null,
             serverId = id
         )
     }

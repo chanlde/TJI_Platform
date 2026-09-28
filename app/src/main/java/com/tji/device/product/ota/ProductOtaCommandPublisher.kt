@@ -106,6 +106,7 @@ internal fun buildProductOtaStartPayload(
     put("cmd", CMD_START_OTA)
     put("cmdName", "START_OTA")
     put("deviceId", serialNumber)
+    packageInfo.taskId?.let { put("taskId", it) }
     put("params", JSONObject().apply {
         put("targetVersion", packageInfo.targetVersion)
         packageInfo.targetInnerVersion?.let { put("targetInnerVersion", it) }

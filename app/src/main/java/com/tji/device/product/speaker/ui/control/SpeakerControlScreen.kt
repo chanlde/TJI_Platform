@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,6 +34,8 @@ import com.tji.device.data.model.BoundAccountDevice
 import com.tji.device.di.AppContainer
 import com.tji.device.product.speaker.audio.SpeakerAudioConfig
 import com.tji.device.product.speaker.model.SpeakerRecord
+import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedback
+import com.tji.device.product.speaker.viewmodel.SpeakerCommandFeedbackStatus
 import com.tji.device.product.speaker.viewmodel.SpeakerControlViewModel
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophonePhase
 import com.tji.device.product.speaker.viewmodel.SpeakerMcuMicrophoneState
@@ -61,6 +64,9 @@ fun SpeakerControlScreen(
     }
     val talkState by viewModel?.talkState?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerTalkState()) }
+    }
+    val commandFeedback by viewModel?.feedback?.collectAsStateWithLifecycle().let {
+        it ?: remember { mutableStateOf(SpeakerCommandFeedback()) }
     }
     val mcuMicrophoneState by viewModel?.mcuMicrophoneState?.collectAsStateWithLifecycle().let {
         it ?: remember { mutableStateOf(SpeakerMcuMicrophoneState()) }
@@ -294,6 +300,21 @@ fun SpeakerControlScreen(
                     onSpeak = { viewModel?.speakText(device.serialNumber, text, (volumeGain * 100f).toInt()) }
                 )
             }
+        }
+        commandFeedback.text?.takeIf { it.isNotBlank() }?.let { message ->
+            SpeakerStatusBadge(
+                text = message,
+                color = when (commandFeedback.status) {
+                    SpeakerCommandFeedbackStatus.Success -> SpeakerSuccess
+                    SpeakerCommandFeedbackStatus.Failed,
+                    SpeakerCommandFeedbackStatus.Timeout -> SpeakerDanger
+                    SpeakerCommandFeedbackStatus.Pending -> SpeakerAccent
+                    SpeakerCommandFeedbackStatus.Idle -> SpeakerMuted
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 92.dp)
+            )
         }
         SpeakerBottomNavigation(
             selected = selectedPanel,

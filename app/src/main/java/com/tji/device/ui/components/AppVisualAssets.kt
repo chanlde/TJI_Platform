@@ -8,6 +8,7 @@ import com.tji.device.data.model.ProductType
 fun productEmptyIllustrationRes(productType: ProductType): Int {
     return when (productType) {
         ProductType.FireBucket -> R.drawable.img_empty_fire_bucket
+        ProductType.FireGun -> R.drawable.img_empty_fire_gun
         ProductType.SolarClean -> R.drawable.img_empty_solar_clean
         ProductType.DropperSixStage -> R.drawable.img_empty_fire_bucket
         ProductType.RadioDetection -> R.drawable.img_empty_fire_bucket
@@ -21,6 +22,7 @@ fun productEmptyIllustrationRes(productType: ProductType): Int {
 fun productSceneRes(productType: ProductType): Int {
     return when (productType) {
         ProductType.FireBucket -> R.drawable.img_scene_fire_bucket
+        ProductType.FireGun -> R.drawable.img_scene_fire_gun
         ProductType.SolarClean -> R.drawable.img_scene_solar_clean
         ProductType.DropperSixStage -> R.drawable.img_scene_fire_bucket
         ProductType.RadioDetection -> R.drawable.img_scene_radio_detection

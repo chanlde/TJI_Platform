@@ -161,17 +161,18 @@ class MainViewModel(
                     .map { it.serialNumber }
 
                 val desiredTargets = targetSerials.map { SubscriptionTarget(it, productType) }
-                mqttSubscriptionManager.reconcileSubscriptions(desiredTargets)
-                if (!isCurrentNavigation(requestId, sessionGeneration)) return@launch
                 clearRetiredProductRuntimes(previousTargets, desiredTargets)
                 sessionStore.openProduct(productType)
                 callback(true, null)
+                // The bound-device list comes from login. MQTT only supplies live state;
+                // an unavailable broker must not block browsing that list.
+                mqttSubscriptionManager.reconcileSubscriptions(desiredTargets)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (e: Exception) {
-                Log.e(LoginViewModel.TAG, "打开产品失败: $productType", e)
+                Log.e(LoginViewModel.TAG, "订阅产品设备失败: $productType", e)
                 if (isCurrentNavigation(requestId, sessionGeneration)) {
-                    callback(false, "连接设备失败，请检查网络后重试")
+                    productRuntimeRegistry.clear(productType)
                 }
             } finally {
                 if (navigationRequests.isLatest(Unit, requestId)) {
@@ -209,7 +210,9 @@ class MainViewModel(
             } catch (e: Exception) {
                 Log.e(LoginViewModel.TAG, "打开设备失败: product=${device.productType}", e)
                 if (isCurrentNavigation(requestId, sessionGeneration)) {
-                    callback(false, "连接设备失败，请检查网络后重试")
+                    productRuntimeRegistry.clear(device.productType)
+                    sessionStore.selectDevice(device)
+                    callback(true, "设备未连接，已打开离线页面")
                 }
             } finally {
                 if (navigationRequests.isLatest(Unit, requestId)) {

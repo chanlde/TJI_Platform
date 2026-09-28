@@ -12,8 +12,6 @@ import com.tji.device.update.AppUpdateValidation
  * 仅负责短提示和 App 更新提示；具体产品页面状态不应放在这里。
  */
 object AppUiNotifier {
-    private val _appUpdateAvailable = MutableStateFlow(false)
-    val appUpdateAvailable = _appUpdateAvailable.asStateFlow()
     private val _appUpdateCandidate = MutableStateFlow<AppUpdateValidation.Available?>(null)
     internal val appUpdateCandidate = _appUpdateCandidate.asStateFlow()
 
@@ -32,6 +30,5 @@ object AppUiNotifier {
 
     internal fun setAppUpdateCandidate(candidate: AppUpdateValidation.Available?) {
         _appUpdateCandidate.value = candidate
-        _appUpdateAvailable.value = candidate != null
     }
 }

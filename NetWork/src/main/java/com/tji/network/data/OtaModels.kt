@@ -32,6 +32,8 @@ data class AppVersion(
 )
 
 data class OtaLatestResponse(
+    @SerializedName("backendFirmwareId")
+    val backendFirmwareId: String? = null,
     @SerializedName("id")
     val id: Int? = null,
     @SerializedName("has_update")

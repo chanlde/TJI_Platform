@@ -271,6 +271,30 @@ class MqttSubscriptionManagerTest {
     }
 
     @Test
+    fun firstConnectionRestoresDesiredTargetsAfterInitialSubscribeFailure() = runBlocking {
+        val gateway = RecordingMqttGateway()
+        gateway.failSubscribe = true
+        val manager = MqttSubscriptionManager(
+            mqttEventHandler = RecordingMessageHandler(),
+            clientFor = { gateway }
+        )
+        val target = SubscriptionTarget(SERIAL, ProductType.Speaker)
+
+        runCatching { manager.reconcileSubscriptions(setOf(target)) }
+            .onSuccess { error("Initial subscription should fail while offline") }
+        assertTrue(manager.getSubscribedTargets().isEmpty())
+
+        gateway.failSubscribe = false
+        gateway.reconnect()
+        withTimeout(2_000L) {
+            while (manager.getSubscribedTargets() != listOf(target)) delay(10)
+        }
+
+        assertEquals(2, gateway.subscribedTopics.size)
+        manager.cleanup()
+    }
+
+    @Test
     fun emptyDesiredTargetsStopsUnusedConnectionObserver() = runBlocking {
         val gateway = RecordingMqttGateway(initialConnectionEpoch = 1L)
         val manager = MqttSubscriptionManager(
@@ -416,6 +440,7 @@ class MqttSubscriptionManagerTest {
         val unsubscribedTopics: MutableList<String> = Collections.synchronizedList(mutableListOf())
         private val callbacks = mutableMapOf<String, (String, Boolean) -> Unit>()
         var failUnsubscribe = false
+        var failSubscribe = false
 
         override fun getConfig(): MqttConnectionConfig = MqttConnectionConfig.default()
 
@@ -424,6 +449,7 @@ class MqttSubscriptionManagerTest {
             qos: Int,
             onMessage: (message: String, isRetained: Boolean) -> Unit
         ): Result<Unit> {
+            if (failSubscribe) return Result.failure(IllegalStateException("offline"))
             val subscriptionIndex = subscribedTopics.size
             subscribedTopics += topic
             subscribedQos += qos

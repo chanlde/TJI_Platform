@@ -9,6 +9,9 @@ import com.tji.device.product.firebucket.mqtt.FireBucketMqttInbound
 import com.tji.device.product.firebucket.repository.FireBucketLinkRepository
 import com.tji.device.product.firebucket.repository.FireBucketSwitchRepository
 import com.tji.device.product.firebucket.runtime.FireBucketRuntimeController
+import com.tji.device.product.firegun.mqtt.FireGunMqttInbound
+import com.tji.device.product.firegun.repository.FireGunRepository
+import com.tji.device.product.firegun.runtime.FireGunRuntimeController
 import com.tji.device.product.glassbreaker.mqtt.GlassBreakerMqttInbound
 import com.tji.device.product.glassbreaker.repository.GlassBreakerRepository
 import com.tji.device.product.glassbreaker.runtime.GlassBreakerRuntimeController
@@ -53,6 +56,7 @@ interface ProductModule : ProductMqttEventHandler {
 
 internal val IMPLEMENTED_PRODUCT_MODULE_TYPES: Set<ProductType> = setOf(
     ProductType.FireBucket,
+    ProductType.FireGun,
     ProductType.SolarClean,
     ProductType.DropperSixStage,
     ProductType.RadioDetection,
@@ -124,6 +128,28 @@ class FireBucketProductModule(
         FireBucketRuntimeController(linkRepository, inbound::cleanup)
     override val floatingQuickControl: ProductFloatingQuickControl =
         FireBucketFloatingQuickControl(switchRepository)
+
+    override suspend fun handleJsonEvent(
+        serialNumber: String,
+        eventType: String,
+        json: JSONObject,
+        isRetained: Boolean
+    ) {
+        inbound.handleEvent(serialNumber, eventType, json, isRetained)
+    }
+
+    override fun cleanup() {
+        inbound.cleanup()
+    }
+}
+
+class FireGunProductModule(
+    repository: FireGunRepository
+) : ProductModule {
+    private val inbound = FireGunMqttInbound(repository)
+
+    override val productType: ProductType = ProductType.FireGun
+    override val runtimeController: ProductRuntimeController = FireGunRuntimeController(repository)
 
     override suspend fun handleJsonEvent(
         serialNumber: String,

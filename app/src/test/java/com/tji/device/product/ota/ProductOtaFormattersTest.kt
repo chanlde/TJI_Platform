@@ -13,7 +13,7 @@ class ProductOtaFormattersTest {
     fun normalizesDeviceOtaStatesForDisplay() {
         assertEquals("升级成功", otaStateText("OTA_SUCCESS"))
         assertEquals("正在升级", otaStateText("installing"))
-        assertEquals("--", otaStateText("UNKNOWN"))
+        assertEquals("结果待核对", otaStateText("UNKNOWN"))
         assertEquals("CUSTOM_STATE", otaStateText("CUSTOM_STATE"))
     }
 
@@ -52,33 +52,45 @@ class ProductOtaFormattersTest {
     }
 
     @Test
-    fun treatsPendingRebootAsCompleteWhenDeviceReportsLatest() {
+    fun keepsPendingRebootUnconfirmedEvenWhenDeviceReportsLatest() {
         val status = ProductOtaStatus(status = "PENDING_REBOOT", progress = 88, message = "wait")
-
-        val completed = status.toCompletedIfDeviceReachedLatest(deviceReachedLatest = true)
-
-        assertEquals("SUCCESS", completed.status)
-        assertEquals(100, completed.progress)
-        assertNull(completed.message)
         assertEquals("等待重启", otaStatusText(status))
-        assertEquals("升级成功", otaStatusText(completed))
+        assertEquals(88, status.displayProgressPercent())
+        assertTrue(status.isOtaBusy())
+        assertEquals("升级结果待核对", otaCandidateSummaryText(false, status))
     }
 
     @Test
-    fun keepsDownloadingProgressEvenWhenPackageVersionIsNotNewer() {
-        val status = ProductOtaStatus(status = "OTA_DOWNLOADING", progress = 36)
+    fun keepsRollbackBusyUntilDeviceConfirmsItFinished() {
+        val rollingBack = ProductOtaStatus(status = "OTA_ROLLBACK", cmdId = "ota-1", progress = 100)
+        val rolledBack = ProductOtaStatus(status = "OTA_ROLLED_BACK", cmdId = "ota-1", progress = 100)
 
-        val effective = status.toCompletedIfDeviceReachedLatest(deviceReachedLatest = true)
+        assertEquals("正在回滚", otaStatusText(rollingBack))
+        assertEquals(99, rollingBack.displayProgressPercent())
+        assertTrue(rollingBack.isOtaBusy())
+        assertEquals("已回滚", otaStatusText(rolledBack))
+        assertFalse(rolledBack.isOtaBusy())
+        assertEquals(100, rolledBack.displayProgressPercent())
+    }
 
-        assertEquals("OTA_DOWNLOADING", effective.status)
-        assertEquals(36, effective.progress)
+    @Test
+    fun keepsUnknownNamedTaskOccupiedUntilItIsReconciled() {
+        assertTrue(ProductOtaStatus(status = "UNKNOWN", cmdId = "ota-1").isOtaBusy())
+        assertFalse(ProductOtaStatus(status = "UNKNOWN").isOtaBusy())
+        assertEquals("结果待核对", otaStateText("UNKNOWN"))
     }
 
     @Test
     fun filtersOpaqueOtaStatusMessages() {
         assertNull(otaUserMessage("OTA_DOWNLOADING"))
         assertNull(otaUserMessage("UNKNOWN"))
-        assertEquals("flash write failed", otaUserMessage("flash write failed"))
+        assertEquals(
+            "固件文件大小与发布信息不一致，请联系管理员",
+            otaUserMessage("Firmware size mismatch: expected 53, got 1")
+        )
+        assertEquals("固件写入失败，请联系管理员", otaUserMessage("flash write failed"))
+        assertEquals("电量不足，已停止升级", otaUserMessage("电量不足，已停止升级"))
+        assertEquals("设备升级失败，请查看后台升级记录", otaUserMessage("ERROR_42"))
     }
 
     @Test
@@ -106,7 +118,7 @@ class ProductOtaFormattersTest {
     fun derivesProgressFromKnownOtaStageWhenNoPercentOrBytes() {
         assertEquals(0, ProductOtaStatus(status = "OTA_PREPARING").displayProgressPercent())
         assertEquals(90, ProductOtaStatus(status = "OTA_VERIFYING").displayProgressPercent())
-        assertEquals(100, ProductOtaStatus(status = "OTA_PENDING_REBOOT").displayProgressPercent())
+        assertEquals(99, ProductOtaStatus(status = "OTA_PENDING_REBOOT").displayProgressPercent())
     }
 
     @Test

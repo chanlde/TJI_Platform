@@ -47,7 +47,10 @@ class MyApplication : Application() {
                 "开始检查 App 更新: productId=$productId " +
                         "localVersionCode=${BuildConfig.VERSION_CODE} localVersionName=${BuildConfig.VERSION_NAME}"
             )
-            val response = TjiApiGateway.getProductInfo(productId)
+            val response = TjiApiGateway.getProductInfo(
+                productId = productId,
+                packageName = BuildConfig.APPLICATION_ID
+            )
             if (response.code != 200) {
                 Log.w(TAG, "版本检查接口非 200: code=${response.code} message=${response.message}")
                 return

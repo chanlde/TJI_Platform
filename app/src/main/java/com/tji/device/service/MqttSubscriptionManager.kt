@@ -180,17 +180,16 @@ class MqttSubscriptionManager(
                     if (epoch <= lastEpoch) return@collect
                     val isReconnect = lastEpoch > 0L
                     lastEpoch = epoch
-                    if (isReconnect) {
-                        restoreSubscriptionsAfterReconnect(client, epoch)
-                    }
+                    restoreSubscriptionsAfterConnection(client, epoch, isReconnect)
                 }
             }
         }
     }
 
-    private suspend fun restoreSubscriptionsAfterReconnect(
+    private suspend fun restoreSubscriptionsAfterConnection(
         client: MqttClientGateway,
-        epoch: Long
+        epoch: Long,
+        isReconnect: Boolean
     ) {
         val requestedGeneration = subscriptionGeneration.get()
         reconciliationMutex.withLock {
@@ -200,12 +199,16 @@ class MqttSubscriptionManager(
                 .toSet()
             if (desiredForClient.isEmpty()) return
 
-            val knownForClient = (subscribedDevices + desiredForClient)
-                .filter { clientFor(it.productType) === client }
-                .toSet()
-            knownForClient.forEach { target -> forgetTargetLocally(target) }
+            if (isReconnect) {
+                val knownForClient = (subscribedDevices + desiredForClient)
+                    .filter { clientFor(it.productType) === client }
+                    .toSet()
+                knownForClient.forEach { target -> forgetTargetLocally(target) }
+            } else if (desiredForClient.all { it in subscribedDevices }) {
+                return
+            }
             debugLog {
-                "MQTT 会话已重连，恢复订阅: epoch=$epoch targets=${desiredForClient.size}"
+                "MQTT 会话已连接，恢复订阅: epoch=$epoch targets=${desiredForClient.size}"
             }
             reconcileSubscriptionsUnlocked(desiredForClient)
             ensureCurrentGeneration(requestedGeneration)

@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tji.device.data.model.BoundAccountDevice
+import com.tji.device.data.model.CatalogBoundDevice
 import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.session.DeviceKey
@@ -55,6 +56,8 @@ internal fun ProductHome(
     boundAccountDevices: List<BoundAccountDevice>,
     runtimeDevices: List<ProductDeviceRuntimeSnapshot>,
     onSettingsClick: () -> Unit,
+    catalogDevices: List<CatalogBoundDevice> = emptyList(),
+    onCatalogProductSelected: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     homeTitle: String = "设备平台首页",
     homeDescription: String? = null,
@@ -80,6 +83,9 @@ internal fun ProductHome(
             .map { it.productType }
             .distinct()
     }
+    val catalogProducts = remember(catalogDevices) {
+        catalogDevices.groupBy { it.productCode }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -90,14 +96,14 @@ internal fun ProductHome(
     ) {
         item {
             PlatformHomeHeader(
-                totalDeviceCount = totalDeviceCountOverride ?: boundAccountDevices.size,
+                totalDeviceCount = totalDeviceCountOverride ?: boundAccountDevices.size + catalogDevices.size,
                 onlineDeviceCount = onlineDeviceCountOverride ?: onlineCount,
-                productCount = accountProductTypes.size,
+                productCount = accountProductTypes.size + catalogProducts.size,
                 onSettingsClick = onSettingsClick,
                 title = homeTitle,
                 description = homeDescription ?: when {
-                    boundAccountDevices.isNotEmpty() ->
-                        "统一查看账号下各产品设备，并按设备进入对应控制台。"
+                    boundAccountDevices.isNotEmpty() || catalogDevices.isNotEmpty() ->
+                        "统一查看账号下各产品设备；已支持的设备可进入专用控制台。"
                     else -> "暂无绑定设备，请先添加或联系管理员开通。"
                 },
                 deviceMetricTitle = deviceMetricTitle
@@ -112,44 +118,66 @@ internal fun ProductHome(
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
-        item {
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val products = accountProductTypes
-                if (maxWidth >= 620.dp) {
-                    Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
-                        products.chunked(2).forEach { rowProducts ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
-                            ) {
-                                rowProducts.forEach { productType ->
-                                    ProductEntryCard(
-                                        productType = productType,
-                                        selected = false,
-                                        onClick = { onProductSelected(productType) },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                if (rowProducts.size == 1) {
-                                    Box(modifier = Modifier.weight(1f))
+        if (accountProductTypes.isNotEmpty()) {
+            item {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val products = accountProductTypes
+                    if (maxWidth >= 620.dp) {
+                        Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
+                            products.chunked(2).forEach { rowProducts ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)
+                                ) {
+                                    rowProducts.forEach { productType ->
+                                        ProductEntryCard(
+                                            productType = productType,
+                                            selected = false,
+                                            onClick = { onProductSelected(productType) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    if (rowProducts.size == 1) {
+                                        Box(modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
-                        products.forEach { productType ->
-                            ProductEntryCard(
-                                productType = productType,
-                                selected = false,
-                                onClick = { onProductSelected(productType) }
-                            )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(PayloadDimens.SectionGap)) {
+                            products.forEach { productType ->
+                                ProductEntryCard(
+                                    productType = productType,
+                                    selected = false,
+                                    onClick = { onProductSelected(productType) }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-        if (accountProductTypes.isEmpty()) {
+        if (catalogProducts.isNotEmpty()) {
+            item {
+                Text(
+                    text = "其他产品",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = PlatformInk
+                )
+            }
+            catalogProducts.forEach { (code, devices) ->
+                item(key = "catalog:$code") {
+                    CatalogProductEntryCard(
+                        productName = devices.first().productName,
+                        productCode = code,
+                        deviceCount = devices.size,
+                        onClick = { onCatalogProductSelected(code) }
+                    )
+                }
+            }
+        }
+        if (accountProductTypes.isEmpty() && catalogProducts.isEmpty()) {
             item {
                 EmptyProductHomeCard(
                     title = emptyTitle,
@@ -249,6 +277,7 @@ private fun ProductEntryCard(
                         brush = Brush.horizontalGradient(
                             colors = when (productType) {
                                 ProductType.FireBucket -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
+                                ProductType.FireGun -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
                                 ProductType.SolarClean -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
                                 ProductType.DropperSixStage -> listOf(PayloadColors.Surface, PayloadColors.SurfaceSoft)
                                 ProductType.RadioDetection -> listOf(PayloadColors.Surface, PayloadColors.PrimarySoft)
@@ -343,6 +372,7 @@ private fun ProductGlyph(productType: ProductType) {
 internal fun productAccentColor(productType: ProductType): Color {
     return when (productType) {
         ProductType.FireBucket -> PlatformBlue
+        ProductType.FireGun -> PlatformBlue
         ProductType.SolarClean -> PayloadColors.Warning
         ProductType.DropperSixStage -> PlatformBlue
         ProductType.RadioDetection -> PlatformBlue

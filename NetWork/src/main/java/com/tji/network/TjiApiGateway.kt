@@ -5,12 +5,16 @@ import com.tji.network.data.ApiResponse
 import com.tji.network.data.AppVersion
 import com.tji.network.data.LoginResponse
 import com.tji.network.data.OtaLatestResponse
+import com.tji.network.data.OtaTaskRequest
+import com.tji.network.data.OtaTaskResponse
 import com.tji.network.data.mergeWith
 import com.tji.network.http.NetworkHttpClient
 import com.tji.network.http.NetworkResponseHandler
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
+import retrofit2.HttpException
 
 object TjiApiGateway {
 
@@ -30,6 +34,16 @@ object TjiApiGateway {
         authToken = null
         val uniqueProductIds = productIds.distinct()
         require(uniqueProductIds.isNotEmpty()) { "At least one login product ID is required" }
+        val completeResponse = loginProduct(
+            account = account,
+            password = password,
+            productId = null
+        )
+        if (completeResponse.code == 200 && completeResponse.data?.boundDevicesComplete == true) {
+            return completeResponse
+        }
+
+        // Older servers have no complete-catalog marker. Keep their per-product login flow.
         val responses = loginAllProducts(
             account = account,
             password = password,
@@ -75,7 +89,7 @@ object TjiApiGateway {
     private suspend fun loginProduct(
         account: String,
         password: String,
-        productId: Int
+        productId: Int?
     ): ApiResponse<LoginResponse> {
         val response = responseHandler.safeApiCall {
             httpClient.apiService.login(
@@ -95,19 +109,61 @@ object TjiApiGateway {
         return response
     }
 
-    suspend fun getProductInfo(productId: Int = 2): ApiResponse<AppVersion> {
+    suspend fun getProductInfo(
+        productId: Int = 2,
+        packageName: String? = null
+    ): ApiResponse<AppVersion> {
         val response = responseHandler.safeApiCall {
-            httpClient.apiService.getProductInfo(productId = productId, type = OTA_TYPE_APP)
+            httpClient.apiService.getProductInfo(
+                productId = productId,
+                type = OTA_TYPE_APP,
+                packageName = packageName
+            )
         }
         return responseHandler.parseVersionResponse(response, AppVersion::class.java)
     }
 
-    suspend fun getOtaLatest(productId: Int): ApiResponse<OtaLatestResponse> {
+    suspend fun getOtaLatest(productId: Int, hardwareVersion: String?): ApiResponse<OtaLatestResponse> {
         val response = responseHandler.safeApiCall {
-            httpClient.apiService.getOtaLatest(productId = productId, type = OTA_TYPE_FIRMWARE)
+            httpClient.apiService.getOtaLatest(
+                productId = productId,
+                type = OTA_TYPE_FIRMWARE,
+                hardwareVersion = hardwareVersion
+            )
         }
         return responseHandler.parseVersionResponse(response, OtaLatestResponse::class.java)
     }
+
+    suspend fun getActiveOtaTask(deviceSn: String): Result<OtaTaskResponse?> = try {
+        Result.success(httpClient.apiService.getActiveOtaTask(bearerToken(), deviceSn))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (notFound: HttpException) {
+        if (notFound.code() == 404) Result.success(null) else Result.failure(notFound)
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
+
+    suspend fun reserveOtaTask(request: OtaTaskRequest): Result<OtaTaskResponse> = try {
+        Result.success(httpClient.apiService.reserveOtaTask(bearerToken(), request))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
+
+    suspend fun getOtaTask(taskId: String): Result<OtaTaskResponse> = try {
+        Result.success(httpClient.apiService.getOtaTask(bearerToken(), taskId))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
+
+    private fun bearerToken(): String = authToken
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "Bearer $it" }
+        ?: throw IllegalStateException("登录状态已失效，请重新登录")
 
     suspend fun updateDeviceName(id: Int, productName: String): ApiResponse<Unit> {
         return responseHandler.safeApiCall {

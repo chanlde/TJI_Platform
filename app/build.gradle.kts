@@ -113,7 +113,7 @@ android {
         buildConfigField(
             "int",
             "TJI_APP_UPDATE_PRODUCT_ID",
-            configString("TJI_APP_UPDATE_PRODUCT_ID", "-1")
+            configString("TJI_APP_UPDATE_PRODUCT_ID", "2")
         )
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

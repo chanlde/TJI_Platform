@@ -98,4 +98,27 @@ class ProductOtaStartGuardTest {
             guard.reserve(otherDevice, "ota-speaker-duplicate")
         )
     }
+
+    @Test
+    fun rollbackInProgressDoesNotReleaseReservation() {
+        val guard = ProductOtaStartGuard()
+        guard.reserve(deviceKey, "ota-1")
+
+        assertFalse(
+            guard.releaseIfTerminal(
+                deviceKey,
+                ProductOtaStatus(status = "OTA_ROLLBACK", cmdId = "ota-1")
+            )
+        )
+        assertEquals(
+            OtaStartReservation.AlreadyReserved("ota-1"),
+            guard.reserve(deviceKey, "ota-2")
+        )
+        assertTrue(
+            guard.releaseIfTerminal(
+                deviceKey,
+                ProductOtaStatus(status = "OTA_ROLLED_BACK", cmdId = "ota-1")
+            )
+        )
+    }
 }

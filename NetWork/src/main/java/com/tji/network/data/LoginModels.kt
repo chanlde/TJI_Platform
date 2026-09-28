@@ -32,6 +32,9 @@ data class LoginResponse(
     val id: String? = null,
     @SerializedName("token")
     val token: String,
+    /** New backend: an unfiltered login contains every bound device, including admin-created products. */
+    @SerializedName("boundDevicesComplete")
+    val boundDevicesComplete: Boolean? = null,
     /**
      * 推荐 JSON 字段（多产品中性命名）。格式：`["SN,Name", ...]`，与 [bucketsns] 相同形态。
      */

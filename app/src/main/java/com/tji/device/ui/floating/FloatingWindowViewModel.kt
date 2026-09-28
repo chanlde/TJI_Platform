@@ -96,6 +96,8 @@ class FloatingWindowViewModel(
                         sources.session.boundDevices.firstOrNull {
                             it.productType == key.productType && it.serialNumber == key.serialNumber
                         }
+                    } ?: sources.session.boundDevices.firstOrNull {
+                        it.productType == sources.session.preferredProductType
                     }
                     val explicitlySelected = selectedKey?.let { key ->
                         summaries.firstOrNull {
@@ -116,7 +118,7 @@ class FloatingWindowViewModel(
                     val selectedSerial = when {
                         !selectedProductType.supportsFloatingWindow() -> null
                         selectedKey != null -> selectedKey.serialNumber
-                        else -> selectedLink?.serialNumber
+                        else -> selectedLink?.serialNumber ?: selectedBoundDevice?.serialNumber
                     }
                     if (BuildConfig.DEBUG) {
                         Log.d(

@@ -45,6 +45,25 @@ class MqttTopicLayoutTest {
     }
 
     @Test
+    fun fireGunUsesControlEventStatusAndLifecycleTopics() {
+        val deviceId = "E465B062174A5124"
+        val topics = mqttTopicsFor(ProductType.FireGun)
+
+        assertEquals("FireBucket/devices/$deviceId/control", topics.controlTopic(deviceId))
+        assertEquals(
+            listOf("FireBucket/devices/$deviceId/lifecycle"),
+            topics.lifecycleTopics(deviceId)
+        )
+        assertEquals(
+            listOf(
+                "FireBucket/devices/$deviceId/event",
+                "FireBucket/devices/$deviceId/status"
+            ),
+            topics.statusTopics(deviceId)
+        )
+    }
+
+    @Test
     fun disabledProductCannotCreatePlaceholderTopics() {
         assertThrows(IllegalArgumentException::class.java) {
             mqttTopicsFor(ProductType.Searchlight)

@@ -46,6 +46,7 @@ import com.tji.device.di.AppContainer
 import com.tji.device.diagnostics.AppDiagnostics
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
 import com.tji.device.product.firebucket.ui.control.FireBucketControlScreen
+import com.tji.device.product.firegun.ui.FireGunControlScreen
 import com.tji.device.product.droppersixstage.ui.control.DropperSixStageControlScreen
 import com.tji.device.product.glassbreaker.ui.control.GlassBreakerControlScreen
 import com.tji.device.product.ota.toProductDeviceInfo
@@ -88,6 +89,11 @@ fun ProductControlRoute(
                     modifier = modifier
                 )
 
+                ProductType.FireGun -> FireGunControlScreen(
+                    device = device,
+                    modifier = modifier
+                )
+
                 ProductType.SolarClean -> SolarCleanControlScreen(
                     device = device,
                     onRenameDevice = onRenameDevice,
@@ -124,6 +130,7 @@ fun ProductControlRoute(
 
 private val IMPLEMENTED_CONTROL_ROUTE_TYPES: Set<ProductType> = setOf(
     ProductType.FireBucket,
+    ProductType.FireGun,
     ProductType.SolarClean,
     ProductType.DropperSixStage,
     ProductType.RadioDetection,
@@ -146,6 +153,8 @@ private fun CommonDeviceSettingsScreen(
         viewModel(factory = AppContainer.productOtaViewModelFactory)
     val otaCheckState by otaViewModel.otaCheckState.collectAsStateWithLifecycle()
     val commandFeedback by otaViewModel.commandFeedback.collectAsStateWithLifecycle()
+    val isOtaStartReserved by otaViewModel.isOtaStartReserved.collectAsStateWithLifecycle()
+    val serverOtaTask by otaViewModel.serverTask.collectAsStateWithLifecycle()
     val otaRuntimeStates by AppContainer.productOtaRuntimeRepository.states.collectAsStateWithLifecycle()
     val commonOtaRuntime = otaRuntimeStates.firstOrNull {
         it.productType == device.productType && it.serialNumber == device.serialNumber
@@ -156,8 +165,7 @@ private fun CommonDeviceSettingsScreen(
     LaunchedEffect(device.serialNumber, device.productType) {
         otaViewModel.resetForDevice(
             device.serialNumber,
-            device.productType,
-            AppContainer.appSessionStore.currentSessionGeneration()
+            device.productType
         )
     }
     DisposableEffect(device.serialNumber, device.productType, otaViewModel) {
@@ -189,6 +197,14 @@ private fun CommonDeviceSettingsScreen(
                 "hardware" to deviceInfo.hardwareVersion
             )
         )
+    }
+    LaunchedEffect(
+        device.serialNumber,
+        device.productType,
+        deviceInfo?.otaTaskProtocolVersion,
+        deviceInfo?.firmwareInnerVersion
+    ) {
+        otaViewModel.restoreActiveTask(device.serialNumber, device.productType, deviceInfo)
     }
 
     LazyColumn(
@@ -225,8 +241,10 @@ private fun CommonDeviceSettingsScreen(
             com.tji.device.product.ota.ui.ProductOtaCard(
                 deviceInfo = deviceInfo,
                 otaStatus = otaStatus,
+                serverTask = serverOtaTask,
                 otaCheckState = otaCheckState,
                 commandFeedback = commandFeedback,
+                startReserved = isOtaStartReserved,
                 deviceOnline = runtimeDevice?.isOnline == true,
                 onRefreshDeviceInfo = {
                     otaViewModel.requestDeviceInfo(device.serialNumber, device.productType)

@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tji.device.data.model.BoundAccountDevice
+import com.tji.device.data.model.CatalogBoundDevice
 import com.tji.device.data.model.ProductType
 import com.tji.device.data.session.DeviceKey
 import com.tji.device.product.firebucket.model.FireBucketLinkDevice
@@ -42,10 +43,17 @@ fun MainScreen(
     val session by mainViewModel.sessionStore.state.collectAsStateWithLifecycle()
     val account = session.account
     val boundAccountDevices = session.boundDevices
+    val catalogDevices = session.catalogDevices
     val selectedDeviceKey = session.selectedDeviceKey
     var activeProductPage by remember { mutableStateOf<ProductType?>(null) }
+    var activeCatalogProductCode by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var showDeviceSettings by remember { mutableStateOf(false) }
+    LaunchedEffect(account) {
+        activeProductPage = null
+        activeCatalogProductCode = null
+        showDeviceSettings = false
+    }
     val selectedBoundDevice = remember(selectedDeviceKey, boundAccountDevices) {
         val key = selectedDeviceKey ?: return@remember null
         boundAccountDevices.firstOrNull {
@@ -73,7 +81,8 @@ fun MainScreen(
                 selectedBoundDevice != null && selectedBoundDevice.productType != ProductType.RadioDetection -> DeviceDetailTopBar(
                     title = if (showDeviceSettings) "设备设置" else selectedBoundDevice.name,
                     isOnline = selectedRuntimeDevice?.isOnline == true,
-                    showSettings = !showDeviceSettings,
+                    // `HydroGunLink_` 是当前喷枪分类依据，暂不允许在 App 内改掉该名称。
+                    showSettings = !showDeviceSettings && selectedBoundDevice.productType != ProductType.FireGun,
                     onBack = {
                         if (showDeviceSettings) {
                             showDeviceSettings = false
@@ -87,6 +96,12 @@ fun MainScreen(
                     productType = activeProductPage,
                     onBack = { activeProductPage = null }
                 )
+                activeCatalogProductCode != null -> DeviceDetailTopBar(
+                    title = catalogDevices.firstOrNull {
+                        it.productCode == activeCatalogProductCode
+                    }?.productName ?: activeCatalogProductCode.orEmpty(),
+                    onBack = { activeCatalogProductCode = null }
+                )
             }
         }
     ) { padding ->
@@ -95,12 +110,15 @@ fun MainScreen(
             isLoading = isLoading,
             runtimeDevices = runtimeDevices,
             boundAccountDevices = boundAccountDevices,
+            catalogDevices = catalogDevices,
             activeProductPage = activeProductPage,
+            activeCatalogProductCode = activeCatalogProductCode,
             selectedBoundDevice = selectedBoundDevice,
             selectedFireBucketLink = selectedFireBucketLink,
             selectedRuntimeDevice = selectedRuntimeDevice,
             onProductSelected = {
                 showDeviceSettings = false
+                activeCatalogProductCode = null
                 mainViewModel.openProduct(it) { success, message ->
                     if (success) {
                         activeProductPage = it
@@ -109,10 +127,15 @@ fun MainScreen(
                     }
                 }
             },
+            onCatalogProductSelected = { code ->
+                showDeviceSettings = false
+                activeProductPage = null
+                activeCatalogProductCode = code
+            },
             onLinkSelected = {
                 showDeviceSettings = false
                 mainViewModel.openDevice(it) { success, message ->
-                    if (!success) {
+                    if (!success || message != null) {
                         AppUiNotifier.showShortMessage(message ?: "打开设备失败")
                     }
                 }
@@ -138,7 +161,7 @@ fun MainScreen(
     if (showSettings) {
         PlatformSettingsSheet(
             account = account,
-            deviceCount = boundAccountDevices.size,
+            deviceCount = boundAccountDevices.size + catalogDevices.size,
             isFloatingWindowEnabled = isFloatingWindowEnabled,
             hasFloatingWindowPermission = hasFloatingWindowPermission,
             connectionMode = connectionMode,
@@ -157,6 +180,8 @@ fun MainScreen(
                 mainViewModel.sessionStore.clearSelection()
             } else if (activeProductPage != null) {
                 activeProductPage = null
+            } else if (activeCatalogProductCode != null) {
+                activeCatalogProductCode = null
             } else {
                 onBack()
             }
@@ -175,6 +200,9 @@ internal fun MainScreenContent(
     onProductSelected: (ProductType) -> Unit,
     onLinkSelected: (BoundAccountDevice) -> Unit,
     onSettingsClick: () -> Unit,
+    catalogDevices: List<CatalogBoundDevice> = emptyList(),
+    activeCatalogProductCode: String? = null,
+    onCatalogProductSelected: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     selectedRuntimeDevice: ProductDeviceRuntimeSnapshot? = null,
     onSelectedDeviceBack: () -> Unit = {},
@@ -182,7 +210,7 @@ internal fun MainScreenContent(
     onRenameDevice: (BoundAccountDevice, String) -> Unit = { _, _ -> }
 ) {
     when {
-        isLoading -> CircularProgressIndicator(
+        isLoading && activeProductPage == null && activeCatalogProductCode == null && selectedBoundDevice == null -> CircularProgressIndicator(
             modifier = modifier
                 .fillMaxSize()
                 .wrapContentSize(Alignment.Center)
@@ -194,6 +222,11 @@ internal fun MainScreenContent(
             showSettings = showDeviceSettings,
             onRenameDevice = onRenameDevice,
             onBack = onSelectedDeviceBack,
+            modifier = modifier
+        )
+        activeCatalogProductCode != null -> CatalogProductDevicesScreen(
+            productCode = activeCatalogProductCode,
+            devices = catalogDevices,
             modifier = modifier
         )
         activeProductPage != null -> {
@@ -209,8 +242,10 @@ internal fun MainScreenContent(
             ProductHome(
                 onProductSelected = onProductSelected,
                 boundAccountDevices = boundAccountDevices,
+                catalogDevices = catalogDevices,
                 runtimeDevices = runtimeDevices,
                 onSettingsClick = onSettingsClick,
+                onCatalogProductSelected = onCatalogProductSelected,
                 modifier = modifier
             )
         }

@@ -9,4 +9,11 @@
         <domain includeSubdomains="false">192.168.5.10</domain>
         <domain includeSubdomains="false">146.56.250.203</domain>
     </domain-config>
+
+    <!-- 仅调试包信任模拟器安装的本地测试 CA；正式包仍只信任系统 CA。 -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
 </network-security-config>

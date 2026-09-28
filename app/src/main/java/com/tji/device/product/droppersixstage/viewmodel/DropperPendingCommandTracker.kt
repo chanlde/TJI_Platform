@@ -22,8 +22,10 @@ internal class DropperPendingCommandTracker {
         return true
     }
 
-    fun complete(msgId: String): PendingDropperCommand? {
-        val pending = commandsById.remove(msgId) ?: return null
+    fun complete(msgId: String, serialNumber: String? = null): PendingDropperCommand? {
+        val pending = commandsById[msgId] ?: return null
+        if (serialNumber != null && pending.serialNumber != serialNumber) return null
+        commandsById.remove(msgId)
         activeResourceKeys -= pending.resourceKeys
         return pending
     }

@@ -15,15 +15,18 @@ internal class SpeakerPendingCommandTracker {
     @Synchronized
     fun track(
         msgId: String,
+        serialNumber: String,
         label: String,
         ackWaiter: CompletableDeferred<SpeakerAck>? = null
     ) {
-        commands[msgId] = PendingSpeakerCommand(label, ackWaiter)
+        commands[msgId] = PendingSpeakerCommand(serialNumber, label, ackWaiter)
     }
 
-    fun acknowledge(ack: SpeakerAck): String? {
+    fun acknowledge(serialNumber: String, ack: SpeakerAck): String? {
         val pending = synchronized(this) {
-            commands.remove(ack.msgId)
+            commands[ack.msgId]?.takeIf { it.serialNumber == serialNumber }?.also {
+                commands.remove(ack.msgId)
+            }
         } ?: return null
         pending.ackWaiter?.complete(ack)
         return pending.label
@@ -38,6 +41,7 @@ internal class SpeakerPendingCommandTracker {
 }
 
 private data class PendingSpeakerCommand(
+    val serialNumber: String,
     val label: String,
     val ackWaiter: CompletableDeferred<SpeakerAck>?
 )

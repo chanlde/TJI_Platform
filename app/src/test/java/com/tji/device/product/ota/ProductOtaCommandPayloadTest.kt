@@ -17,7 +17,8 @@ class ProductOtaCommandPayloadTest {
                 downloadUrl = "https://www.tjinnovations.cloud/download/speaker.bin",
                 fileSize = 216_256,
                 sha256 = SHA256,
-                signature = "signed-manifest"
+                signature = "signed-manifest",
+                taskId = "server-task-1"
             )
         )
 
@@ -28,6 +29,7 @@ class ProductOtaCommandPayloadTest {
         assertEquals(20, payload.getInt("cmd"))
         assertEquals("START_OTA", payload.getString("cmdName"))
         assertEquals("SPEAKER-01", payload.getString("deviceId"))
+        assertEquals("server-task-1", payload.getString("taskId"))
 
         val params = payload.getJSONObject("params")
         assertEquals("V1.0.2", params.getString("targetVersion"))

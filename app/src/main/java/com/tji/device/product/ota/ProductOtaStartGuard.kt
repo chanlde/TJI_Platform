@@ -23,8 +23,16 @@ internal class ProductOtaStartGuard {
     }
 
     @Synchronized
+    fun adoptServerTask(deviceKey: DeviceKey, cmdId: String) {
+        activeStarts[deviceKey] = cmdId
+    }
+
+    @Synchronized
     fun isActive(deviceKey: DeviceKey, msgId: String): Boolean =
         activeStarts[deviceKey] == msgId
+
+    @Synchronized
+    fun isReserved(deviceKey: DeviceKey): Boolean = activeStarts.containsKey(deviceKey)
 
     @Synchronized
     fun releaseAfterPublishFailure(deviceKey: DeviceKey, msgId: String): Boolean {
@@ -56,7 +64,7 @@ internal sealed interface OtaStartReservation {
 private fun ProductOtaStatus.isTerminalForReservation(): Boolean =
     when (status.normalizedOtaStatus()) {
         "FAILED",
-        "ROLLBACK",
+        "ROLLED_BACK",
         "SUCCESS",
         "TEST_DONE" -> true
         else -> false

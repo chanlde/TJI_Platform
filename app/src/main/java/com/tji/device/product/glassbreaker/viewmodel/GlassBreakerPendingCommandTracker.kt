@@ -27,8 +27,10 @@ internal class GlassBreakerPendingCommandTracker {
         return true
     }
 
-    fun complete(msgId: String): PendingGlassBreakerCommand? {
-        val pending = commandsById.remove(msgId) ?: return null
+    fun complete(msgId: String, serialNumber: String? = null): PendingGlassBreakerCommand? {
+        val pending = commandsById[msgId] ?: return null
+        if (serialNumber != null && pending.serialNumber != serialNumber) return null
+        commandsById.remove(msgId)
         activeConflictKeys.remove(pending.conflictKey)
         return pending
     }

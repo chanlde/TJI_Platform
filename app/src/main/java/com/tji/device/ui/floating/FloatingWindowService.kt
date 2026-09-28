@@ -170,6 +170,7 @@ class FloatingWindowService : LifecycleService(), ViewModelStoreOwner, SavedStat
             FloatingWindowMode.ICON -> WindowSize(dpToPx(50), dpToPx(50))
             FloatingWindowMode.EXPANDED -> when (productType) {
                 ProductType.FireBucket -> WindowSize(width = dpToPx(360), height = dpToPx(520))
+                ProductType.FireGun -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
                 ProductType.SolarClean -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
                 ProductType.DropperSixStage -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)
                 ProductType.RadioDetection -> WindowSize(width = dpToPx(300), height = WRAP_CONTENT)

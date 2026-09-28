@@ -10,6 +10,19 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class FloatingWindowStateTest {
+    @Test
+    fun fireGunBoundDeviceCanDriveFloatingWindowBeforeRuntimeArrives() {
+        val state = FloatingWindowUiState(
+            links = emptyList(),
+            selectedLinkSerial = "E465B062174A5124",
+            selectedLinkName = "HydroGunLink_V1-9526D839",
+            preferredProductType = ProductType.FireGun
+        )
+
+        assertEquals(ProductType.FireGun, state.activeProductType)
+        assertEquals("E465B062174A5124", state.selectedLink?.serialNumber)
+        assertEquals("HydroGunLink_V1-9526D839", state.selectedLink?.name)
+    }
 
     @Test
     fun selectedLinkUsesBoundDeviceFallbackWhenRuntimeIsMissing() {

@@ -4,6 +4,7 @@ import com.tji.device.data.model.ProductCatalog
 import com.tji.device.data.model.ProductType
 import com.tji.device.product.droppersixstage.mqtt.DropperSixStageMqttTopics
 import com.tji.device.product.firebucket.mqtt.FireBucketMqttTopics
+import com.tji.device.product.firegun.mqtt.FireGunMqttTopics
 import com.tji.device.product.glassbreaker.mqtt.GlassBreakerMqttTopics
 import com.tji.device.product.radiodetection.mqtt.RadioDetectionMqttTopics
 import com.tji.device.product.speaker.mqtt.SpeakerMqttTopics
@@ -30,6 +31,7 @@ fun mqttTopicsFor(productType: ProductType): MqttTopicLayout {
     }
     return when (productType) {
         ProductType.FireBucket -> FireBucketMqttTopics
+        ProductType.FireGun -> FireGunMqttTopics
         ProductType.SolarClean -> SolarCleanMqttTopics
         ProductType.DropperSixStage -> DropperSixStageMqttTopics
         ProductType.RadioDetection -> RadioDetectionMqttTopics

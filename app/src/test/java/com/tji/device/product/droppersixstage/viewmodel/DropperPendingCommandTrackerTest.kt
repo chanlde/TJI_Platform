@@ -2,6 +2,7 @@ package com.tji.device.product.droppersixstage.viewmodel
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,5 +52,18 @@ class DropperPendingCommandTrackerTest {
         assertTrue(tracker.start("stage-1", "DROP-1", setOf("DROP-1:stage:2"), "2段开钩"))
         assertTrue(tracker.start("stage-2", "DROP-1", setOf("DROP-1:stage:3"), "3段开钩"))
         assertFalse(tracker.start("all-1", "DROP-1", allStages, "全部抛投"))
+    }
+
+    @Test
+    fun ackFromAnotherDeviceCannotCompleteArmOrReleaseSafetyResource() {
+        val tracker = DropperPendingCommandTracker()
+        val safety = setOf("DROP-1:safety")
+
+        assertTrue(tracker.start("arm-1", "DROP-1", safety, "解锁", DropperSafetyEffect.Arm))
+        assertNull(tracker.complete("arm-1", "DROP-2"))
+        assertTrue(tracker.isPending("DROP-1:safety"))
+        assertFalse(tracker.start("disarm-1", "DROP-1", safety, "上锁", DropperSafetyEffect.Disarm))
+        assertEquals(DropperSafetyEffect.Arm, tracker.complete("arm-1", "DROP-1")?.safetyEffect)
+        assertFalse(tracker.isPending("DROP-1:safety"))
     }
 }

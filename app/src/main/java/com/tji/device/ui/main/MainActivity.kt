@@ -76,23 +76,17 @@ class MainActivity : ComponentActivity() {
         val loginUiState by loginViewModel.uiState.collectAsStateWithLifecycle()
         val connectionMode by AppContainer.fireBucketConnectionMode.mode.collectAsStateWithLifecycle()
         val directState by AppContainer.directFireBucketState.state.collectAsStateWithLifecycle()
-        var updateBlockedLogin by rememberSaveable { mutableStateOf(false) }
         var directControlRequested by rememberSaveable { mutableStateOf(false) }
         var floatingWindowEnabled by remember { mutableStateOf(true) }
         val appUpdateCandidate by AppUiNotifier.appUpdateCandidate.collectAsStateWithLifecycle()
-        val needUpdate = appUpdateCandidate != null
         val appState = resolveAppState(
             authState = loginUiState.authState,
-            updateBlockedLogin = updateBlockedLogin,
+            updateBlockedLogin = appUpdateCandidate != null,
             directControlRequested = directControlRequested
         )
         val leaveCurrentSession = {
             AppContainer.useCloudFireBucketControl()
             loginViewModel.logout(onComplete = ::restartAfterLogout)
-        }
-
-        LaunchedEffect(loginUiState.authState) {
-            if (loginUiState.authState is AuthState.LoggedOut) updateBlockedLogin = false
         }
 
         LaunchedEffect(appState) {
@@ -132,7 +126,6 @@ class MainActivity : ComponentActivity() {
             )
             AppState.LOGIN -> LoginScreen(
                 appUpdateCandidate = appUpdateCandidate,
-                onLogin = { blockedByUpdate -> updateBlockedLogin = blockedByUpdate },
                 onDirectControl = { directControlRequested = true }
             )
             AppState.DIRECT_LINK -> DirectMainScreen(
@@ -249,7 +242,6 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun LoginScreen(
         appUpdateCandidate: AppUpdateValidation.Available?,
-        onLogin: (blockedByUpdate: Boolean) -> Unit,
         onDirectControl: () -> Unit
     ) {
         val context = LocalContext.current
@@ -258,12 +250,10 @@ class MainActivity : ComponentActivity() {
 
         LoginWidget(
             isLoading = loginState.isLoading,
-            onLogin = {
-                if (appUpdateCandidate != null) {
-                    onLogin(true)
-                    activity.startVerifiedAppUpdate(appUpdateCandidate)
-                } else {
-                    onLogin(false)
+            isUpdateAvailable = appUpdateCandidate != null,
+            onUpdate = {
+                appUpdateCandidate?.let { candidate ->
+                    activity.startVerifiedAppUpdate(candidate)
                 }
             },
             onDirectControl = onDirectControl,

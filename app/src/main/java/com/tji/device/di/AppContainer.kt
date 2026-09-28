@@ -25,6 +25,11 @@ import com.tji.device.product.firebucket.transport.FireBucketConnectionMode
 import com.tji.device.product.firebucket.transport.FireBucketConnectionModeStore
 import com.tji.device.BuildConfig
 import com.tji.device.product.firebucket.viewmodel.FireBucketSwitchViewModelFactory
+import com.tji.device.product.firegun.repository.FireGunControlRepo
+import com.tji.device.product.firegun.repository.FireGunControlRepository
+import com.tji.device.product.firegun.repository.FireGunRepo
+import com.tji.device.product.firegun.repository.FireGunRepository
+import com.tji.device.product.firegun.viewmodel.FireGunControlViewModelFactory
 import com.tji.device.product.glassbreaker.repository.GlassBreakerControlRepo
 import com.tji.device.product.glassbreaker.repository.GlassBreakerControlRepository
 import com.tji.device.product.glassbreaker.repository.GlassBreakerRepo
@@ -36,6 +41,7 @@ import com.tji.device.product.ota.ProductOtaRepository
 import com.tji.device.product.ota.ProductOtaRuntimeRepo
 import com.tji.device.product.ota.ProductOtaRuntimeRepository
 import com.tji.device.product.ota.ProductOtaViewModelFactory
+import com.tji.device.product.ota.SharedPreferencesProductOtaTaskStore
 import com.tji.device.product.radiodetection.repository.RadioDetectionControlRepo
 import com.tji.device.product.radiodetection.repository.RadioDetectionControlRepository
 import com.tji.device.product.radiodetection.repository.RadioDetectionRepo
@@ -154,6 +160,14 @@ object AppContainer {
         SolarCleanRepo()
     }
 
+    val fireGunRepository: FireGunRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        FireGunRepo()
+    }
+
+    val fireGunControlRepository: FireGunControlRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        FireGunControlRepo()
+    }
+
     val solarCleanControlRepository: SolarCleanControlRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         SolarCleanControlRepo()
     }
@@ -233,6 +247,7 @@ object AppContainer {
                     linkRepository = fireBucketLinkRepository,
                     switchRepository = switchRepository
                 ),
+                FireGunProductModule(fireGunRepository),
                 SolarCleanProductModule(solarCleanRepository),
                 DropperSixStageProductModule(dropperSixStageRepository),
                 RadioDetectionProductModule(
@@ -271,6 +286,13 @@ object AppContainer {
         FireBucketSwitchViewModelFactory(switchRepository)
     }
 
+    val fireGunControlViewModelFactory: FireGunControlViewModelFactory by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        FireGunControlViewModelFactory(
+            stateRepository = fireGunRepository,
+            controlRepository = fireGunControlRepository
+        )
+    }
+
     val solarCleanControlViewModelFactory: SolarCleanControlViewModelFactory by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         SolarCleanControlViewModelFactory(
             stateRepository = solarCleanRepository,
@@ -281,7 +303,8 @@ object AppContainer {
     val productOtaViewModelFactory: ProductOtaViewModelFactory by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         ProductOtaViewModelFactory(
             repository = productOtaRepository,
-            commandPublisher = ProductOtaMqttCommandPublisher()
+            commandPublisher = ProductOtaMqttCommandPublisher(),
+            taskStore = SharedPreferencesProductOtaTaskStore(appContext)
         )
     }
 

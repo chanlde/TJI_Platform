@@ -115,8 +115,8 @@ class SpeakerControlViewModel(
         viewModelScope.launch {
             devices.collect { states ->
                 states.asSequence()
-                    .mapNotNull { it.lastAck }
-                    .forEach(commandCoordinator::handleAck)
+                    .mapNotNull { state -> state.lastAck?.let { state.serialNumber to it } }
+                    .forEach { (serialNumber, ack) -> commandCoordinator.handleAck(serialNumber, ack) }
             }
         }
         viewModelScope.launch {

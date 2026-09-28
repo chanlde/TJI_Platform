@@ -33,7 +33,7 @@ class AppUpdateConfigurationTest {
         assertFalse(activity.contains("fun openUrl("))
         assertTrue(application.contains("validateAppUpdateCandidate"))
         assertTrue(application.contains("BuildConfig.TJI_APP_UPDATE_PRODUCT_ID"))
-        assertTrue(appBuild.contains("configString(\"TJI_APP_UPDATE_PRODUCT_ID\", \"-1\")"))
+        assertTrue(appBuild.contains("configString(\"TJI_APP_UPDATE_PRODUCT_ID\", \"2\")"))
         assertFalse(securityConfig.contains(">api.tjinnovations.cloud<"))
         assertTrue(manifest.contains("android.permission.REQUEST_INSTALL_PACKAGES"))
         assertTrue(manifest.contains("androidx.core.content.FileProvider"))
