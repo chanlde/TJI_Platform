@@ -16,6 +16,7 @@
 | 产品 | productId | enabled | ProductModule / handler | MQTT topic | 控制页 | 正式包处理 |
 | --- | ---: | --- | --- | --- | --- | --- |
 | FireBucket 消防吊桶 | 2 | 是 | `FireBucketProductModule` | `FireBucketMqttTopics` | `FireBucketControlScreen` | 正常登录、展示、订阅与控制 |
+| FireGun 消防喷枪 | 2（沿用消防吊桶绑定） | 是 | `FireGunProductModule` | `FireGunMqttTopics` | `FireGunControlScreen` | 按 Link 名称前缀识别，使用独立控制页与悬浮窗；真机协议仍需验收 |
 | SolarClean 光伏清洗 | 3 | 是 | `SolarCleanProductModule` | `SolarCleanMqttTopics` | `SolarCleanControlScreen` | 正常登录、展示、订阅与控制 |
 | RadioDetection 无线电检测 | 4 | 是 | `RadioDetectionProductModule` | `RadioDetectionMqttTopics` | `RadioDetectionControlScreen` | 正常登录、展示、订阅与控制 |
 | DropperSixStage 六段抛投 | 5 | 是 | `DropperSixStageProductModule` | `DropperSixStageMqttTopics` | `DropperSixStageControlScreen` | 正常登录、展示、订阅与控制 |

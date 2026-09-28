@@ -10,6 +10,7 @@
 |--------|------|
 | 文档模板 | [_template/README.md](_template/README.md) |
 | 消防吊桶 | [firebucket/README.md](firebucket/README.md) |
+| 消防喷枪 | [firegun/README.md](firegun/README.md) |
 | 光伏清洗 | [solarclean/README.md](solarclean/README.md) |
 | 六段抛投 | [droppersixstage/README.md](droppersixstage/README.md) |
 | 喊话器 | [speaker/README.md](speaker/README.md) |
